@@ -24,7 +24,7 @@ db=MONGODB["mus"]
 
 async def getUTPeoplePageData(authors):
     """
-    Asynchronous function to scrape UT people page data for the given authors. 
+    Asynchronous function to scrape UT people page data for the given authors.
     Parameters:
     - authors: A dictionary where each key is the author's openalex ID and the value is a list of known names.
 
@@ -84,8 +84,8 @@ async def getUTPeoplePageData(authors):
                     else:
                         ... # matchscore above 80 but secondary score below 95: 'maybe' match?
                             # left blank: possible to add fallback matching options here.
-                        
-                else: 
+
+                else:
                     ... # matchscore below 80 OR there is already a higher score
                         # left blank; probably not needed to add code here.
 
@@ -93,14 +93,14 @@ async def getUTPeoplePageData(authors):
             except Exception:
                 # this is here mostly to cases where there is no match found at all
                 continue
-        
+
 
         if foundname is not None:
             foundnames[foundname]["score"]=score
             return foundnames[foundname]
         else:
             return None
-        
+
 
     async def processUTPeoplePageData(author,searchname,data):
         """
@@ -112,7 +112,7 @@ async def getUTPeoplePageData(authors):
             data: The input data to be processed - consists of 1 entry per row in the search result
 
         Returns:
-            A list of dicts containing the processed data. 
+            A list of dicts containing the processed data.
         """
         output=[]
         foundnames=[]
@@ -177,7 +177,7 @@ def fillUTPeopleData():
     for author in authors_openalex.find():
         if author['id'] not in authors.keys():
             authors[author['id']]=author['display_name_alternatives']
-    
+
     print(f'adding {len(authors.keys())} rows of UT people page data')
     authorbatch={}
     for key, value in authors.items():
@@ -203,7 +203,7 @@ def fillUTPeopleData():
         batchtotal=batchtotal+len(authors.keys())
         print(f'added {total}/{batchtotal} rows of UT data')
         authors={}
-    print(f"Skipped (already in DB): {already_added} \n Added: {total} \n Failures: {batchtotal-total}") 
+    print(f"Skipped (already in DB): {already_added} \n Added: {total} \n Failures: {batchtotal-total}")
 async def getJournalBrowserData(journals):
     async def getOADealData(journalid, journaldata):
         """
@@ -291,7 +291,7 @@ async def getJournalBrowserData(journals):
                     if journal_title.lower() in title[0].lower():
                         if keyword == []:
                             keyword = ""
-                        
+
                         journalapc ={
                                 "id":journalid,
                                 "oa_display_name": journaldata['name'],
@@ -319,13 +319,13 @@ async def getJournalBrowserData(journals):
             print(f"error {e} at last exception")
             return None
         return journalapc
-    
+
 
     tasks=[]
     for key, value in journals.items():
         task = asyncio.create_task(getOADealData(key, value))
         tasks.append(task)
-    
+
     results = await asyncio.gather(*tasks)
     return results
 
@@ -333,7 +333,7 @@ def fillJournalData():
     '''
     get all journals listed in journal collection
     for every journal scrape dealdata and add to new collection
-    
+
     '''
     MONGODB = MongoClient('mongodb://smops:bazending@192.168.2.153:27017/')
     db=MONGODB["mus"]
@@ -369,8 +369,8 @@ def fillJournalData():
             batchtotal=batchtotal+batchsize
             print(f'added {total}/{batchtotal} rows of journal dealdata [{already_added} skipped]')
             journalbatch={}
-            
-        
+
+
     result=asyncio.run(getJournalBrowserData(journalbatch))
     for item in result:
         if item is not None and isinstance(item,dict) and not {}:

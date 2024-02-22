@@ -23,5 +23,4 @@ urlpatterns = [
     path("accounts/", include("allauth.urls")),
     path("data-browser/", include("data_browser.urls")),
     path("__debug__/", include("debug_toolbar.urls")),
-    path("django-rq/", include("django_rq.urls")),
 ]

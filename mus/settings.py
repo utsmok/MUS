@@ -214,7 +214,7 @@ LOGGING = {
     "disable_existing_loggers": False,  # retain the default loggers
     "handlers": {
             "file": {
-                "level": "DEBUG",
+                "level": LOGLEVEL,
                 "class": "logging.FileHandler",
                 "filename": "log_mus.log",
                 "formatter": "verbose",
@@ -226,14 +226,15 @@ LOGGING = {
     },
     "loggers": {
         "PureOpenAlex": {
-            "level":"INFO",
+            "level":LOGLEVEL,
             "handlers": ["file"],
         },
     },
     "formatters": {
         "verbose": {
-            "format": "{asctime} - {levelname} - {message}",
+            "format": "{asctime} | {module} [{levelname}] |> {message}",
             "style": "{",
+            "datefmt": "[%m %d] %H:%M:%S",
         },
 
     },

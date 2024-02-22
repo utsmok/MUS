@@ -25,7 +25,7 @@
 <nav class="navbar fixed-top justify-content-center navbar-expand-lg navbar-dark bg-primary bg-gradient" id='navbarbuttons' style="z-index:4;">
     <div class="d-flex justify-content-center align-items-center ps-5">
       <a class="navbar-brand ps-2 pe-1 " href="{% url 'PureOpenAlex:home' %}">
-        <img src="{% static 'MUSfulllogo.svg' %}" height="70" alt="Logo"/>
+        <img id='headerbigmuslogo' src="{% static 'MUSfulllogo.svg' %}" height="70" alt="Logo"/>
       </a>
       <h3 class='fw-bold text-black'>by</h3>
       <a class="navbar-brand  ps-3 pe-5" href="https://samuelmok.cc">
@@ -59,40 +59,43 @@
           <div class="mt-4 p-2 mb-2 rounded-top-3 pt-3 ps-5 bg-danger bg-gradient  text-black">
             <h5><i class="fas fa-wrench"></i>   |  Tools</h5>
           </div>
-          <div class="ps-1 justify-content-center align-items-center">
-            <div>
-              <a type='button' class="btn btn-warning" href="{% url 'PureOpenAlex:removeallmarks' %}">
-                <i class="fas fa-recycle"></i> Remove all current bookmarks
-              </a>
-            </div>
-            <div class="form-check form-switch">
-              <input class="form-check-input" type="checkbox" id="recheck" value="recheck" />
-              <label class="form-check-label" for="recheck">Completely refresh data from OpenAlex/Pure when adding a paper to MUS</label>
-            </div>
-            <button type='submit' id='cleanup' onclick="deleteDuplicates();" class="me-2 btn btn-warning">
-              Clean database errors (slow!)
-              <span id="cleanup_spinner" class=" ps-1 spinner-border spinner-border-sm visually-hidden" role="status"
-              aria-hidden="true"></span>
-            </button>
-            <button type='submit' id='match' class="me-2 btn btn-warning" onclick="matchPure();">
-              Match Pure Entries to Papers (slow!)
-              <span id="match_spinner" class=" ps-1 spinner-border spinner-border-sm visually-hidden" role="status"
-              aria-hidden="true"></span>
-            </button>
-          </div>
+          <div class='row'>
+              <div class="col-6 ps-1 justify-content-center align-items-center">
+                <div>
+                  <a type='button' class="btn btn-warning" href="{% url 'PureOpenAlex:removeallmarks' %}">
+                    <i class="fas fa-recycle"></i> Remove all current bookmarks
+                  </a>
+                </div>
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" id="recheck" value="recheck" />
+                  <label class="form-check-label" for="recheck">Completely refresh data from OpenAlex/Pure when adding a paper to MUS</label>
+                </div>
+                <button type='submit' id='cleanup' onclick="deleteDuplicates();" class="me-2 btn btn-warning">
+                  Clean database errors (slow!)
+                  <span id="cleanup_spinner" class=" ps-1 spinner-border spinner-border-sm visually-hidden" role="status"
+                  aria-hidden="true"></span>
+                </button>
+                <button type='submit' id='match' class="me-2 btn btn-warning" onclick="matchPure();">
+                  Match Pure Entries to Papers (slow!)
+                  <span id="match_spinner" class=" ps-1 spinner-border spinner-border-sm visually-hidden" role="status"
+                  aria-hidden="true"></span>
+                </button>
+              </div>
+
+              <div class=" col-6 align-items-center" >
+                <div class="mt-4 mb-2  rounded-top-3 pt-3 pb-1 ps-5 bg-primary bg-gradient text-light">
+                  <h5><i class="fas fa-message"></i>  |  Notifications</h5>
+                </div>
+                <div class="text-wrap text-black fw-bold rounded-bottom-3 pt-5 pb-5 mt-4 mb-2 ps-3 w-50 fs-5" id="notification">
+                </div>
+              </div>
       </div>
     </div>
   </div>
-  <div class=" container-fluid w-50 align-items-center" style="padding-top: 75px">
-    <div class="mt-4 mb-2  rounded-top-3 pt-3 pb-1 ps-5 bg-primary bg-gradient text-light">
-      <h5><i class="fas fa-message"></i>  |  Notifications</h5>
-    </div>
-    <div class="text-wrap text-black fw-bold rounded-bottom-3 pt-5 pb-5 mt-4 mb-2 ps-3 w-50 fs-5" id="notification">
-    </div>
-  </div>
+
 </div>
 
-<div id='dbinfo' class='text-center'>
+<div id='dbinfo' class='text-center ' style="padding-top: 75px">
   {% include 'dbinfo.html' %}
 </div>
 
@@ -102,6 +105,7 @@
         $('#facultytable').DataTable(
     );
   });
+
 
 
   const delay = ms => new Promise(res => setTimeout(res, ms));
@@ -142,6 +146,7 @@ function add_article(id){
             let btntext = document.getElementById(id+'-add-text');;
             loadtext.classList.toggle("visually-hidden");
             btntext.innerText = "Added item to MUS.";
+            updateNotification(response.status, response.message);
             spinner.classList.toggle("visually-hidden");
         }
     });

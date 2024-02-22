@@ -47,18 +47,15 @@ name_matcher = NameMatcher()
 logger = logging.getLogger(__name__)
 
 @transaction.atomic
-def processPaperData(work, jb, people, event=None):
+def processPaperData(work):
     """
     This function processes the given OpenAlex Work data and saves it to the database.
     The processing is split out into separate functions to make it easier to test and debug.
 
     Args:
         Work (pyalex Work object): the result of a pyalex Works() query.
-        jb (bool): True if the journal browser should be scraped
-        people (bool): True if the people page should be scraped
-
     Returns:
-        None -- all data is inserted in the database.
+        None -- all data is inserted directly into the database.
     """
     logger.info("Starting processData for doi %s", work["doi"])
     timelist = []
@@ -107,20 +104,17 @@ def processPaperData(work, jb, people, event=None):
         f"        getJournalData: {time.strftime('%M:%S',time.gmtime(time.time()-start_time))} s"
     )
 
-    if jb and journal is not None:
-        if not DealData.objects.filter(journal=journal).exists():
-            start_time = time.time()
-            getOADealData(journal)
+    if not DealData.objects.filter(journal=journal).exists():
+        start_time = time.time()
+        getOADealData(journal)
 
-            logger.debug("Got OADealdata for doi %s", work["doi"])
-            timelist.append(
-                f"           getOADealData: {time.strftime('%M:%S',time.gmtime((time.time()-start_time)))}"
-            )
-    else:
-        logger.debug("Not retrieving OADealdata for doi %s", work["doi"])
+        logger.debug("Got OADealdata for doi %s", work["doi"])
+        timelist.append(
+            f"           getOADealData: {time.strftime('%M:%S',time.gmtime((time.time()-start_time)))}"
+        )
 
     start_time = time.time()
-    authorships = getAuthorships(work, people)
+    authorships = getAuthorships(work)
 
     logger.debug("Got Authorships for doi %s", work["doi"])
     timelist.append(
@@ -234,7 +228,7 @@ def processPaperData(work, jb, people, event=None):
             paper.save()
 
     start_time = time.time()
-    locations = getLocations(work, event)
+    locations = getLocations(work)
 
     logger.debug("Got locations for doi %s", work["doi"])
     timelist.append(
@@ -295,7 +289,7 @@ def processPaperData(work, jb, people, event=None):
         logger.debug(timing)
 
 
-def getLocations(work, event=None):
+def getLocations(work):
     locations = []
     if work["best_oa_location"] is not None:
         best_oa = work["best_oa_location"]
@@ -537,7 +531,7 @@ def getJournals(work):
     return journal
 
 
-def getAuthorships(work, people):
+def getAuthorships(work):
     authorships = []
     utchecklist = []
     orcidlist = []
@@ -560,7 +554,6 @@ def getAuthorships(work, people):
             for institute in entry["institutions"]:
                 if (
                     "Twente" in institute["display_name"]
-                    and people
                     and tempAuthor not in utchecklist
                 ):
                     utchecklist.append(tempAuthor)
@@ -650,7 +643,7 @@ def getAuthorships(work, people):
                             tempaffl.save()
                         entry["author"].affiliations.add(tempaffl)
 
-    if people and utchecklist:
+    if utchecklist:
         utdata = asyncio.run(getUTPeoplePageData(utchecklist))
         for match in utdata:
             if not match["match"]:

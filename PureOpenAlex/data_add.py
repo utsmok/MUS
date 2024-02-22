@@ -1,4 +1,3 @@
-from django.conf import settings
 import pyalex
 from pyalex import Works
 from .namematcher import NameMatcher
@@ -9,8 +8,11 @@ from .data_process import processPaperData
 from .data_process_mongo import processMongoPaper
 from .data_repair import clean_duplicate_organizations
 from .data_helpers import APILOCK
-
 from pymongo import MongoClient
+
+from django.conf import settings
+APIEMAIL = getattr(settings, "APIEMAIL", "no@email.com")
+pyalex.config.email = APIEMAIL
 
 """
 data_add.py description

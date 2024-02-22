@@ -17,7 +17,6 @@ from django.views.decorators.cache import cache_page
 CACHE_TTL = getattr(settings, "CACHE_TTL", DEFAULT_TIMEOUT)
 logger = logging.getLogger(__name__)
 
-@cache_page(CACHE_TTL)
 @login_required
 def home(request):
     logger.info("[url] / [user] %s", request.user.username)
@@ -27,15 +26,18 @@ def home(request):
 @login_required
 def addarticle(request,doi):
     logger.info("addarticle [doi] %s [user] %s", doi, request.user.username)
-    status = addPaper(
-            doi,
-            event=None,
-            people=True,
-            recheck=False,
-            viewpaper=True,
-            user=request.user,
-        )
-    return JsonResponse({"status": status})
+    try:
+        result = addPaper(
+                doi,
+                recheck=False,
+                viewpaper=True,
+                user=request.user,
+            )
+    except:
+        result['status'] = False
+        result['action'] = 'An error occurred while adding paper.'
+
+    return JsonResponse({"status": result['status'],"message":result['action']})
 
 @login_required
 def searchpaper(request):
@@ -45,9 +47,9 @@ def searchpaper(request):
         logger.info("searchpaper [query] |invalid| [user] %s",request.user.username)
 
         return render(request, 'search_results.html', {'db_items': [], 'db_count': 0, 'oa_items': [], 'oa_count': 0})
-    
+
     logger.info("searchpaper [query] %s [user] %s",query, request.user.username)
-    
+
     all_papers = Paper.objects.all().only('id','doi', 'title', 'openalex_url')
 
     if query.startswith('http') or query[0].isdigit() or 'doi' in query.lower():
@@ -244,4 +246,4 @@ def customfilter(request):
         facultyname, stats, listpapers = getPapers('all', filters, request.user)
 
         print('rendering page')
-        return render(request, "faculty.html",{"faculty": facultyname, "stats": stats, "articles": listpapers, "filter":filters}) 
+        return render(request, "faculty.html",{"faculty": facultyname, "stats": stats, "articles": listpapers, "filter":filters})

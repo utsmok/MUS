@@ -12,6 +12,7 @@ django-debug-toolbar
 habanero
 more_itertools
 xmltodict
+psycopg
 psycopg[binary]
 django_extensions
 django-redis
@@ -26,3 +27,4 @@ pandas
 pillow
 pymongo
 python-dotenv
+fuzzywuzzy

@@ -11,8 +11,9 @@
         opacity: 0.5;
         z-index: 5;
         height: 90px;
+        transition: 1s ease-in-out;
       }
-      @keyframes example {
+      @keyframes mustextlogo {
         0% {color: #cc0066;}
         33% {color: #ffcc00;}
         66% {color: #ff6666;}
@@ -20,8 +21,8 @@
       }
       #mustextlogo{
         font-weight: bold;
-        animation-name: example;
-        animation-duration: 20s;
+        animation-name: mustextlogo;
+        animation-duration: 10s;
         animation-iteration-count: infinite;
 
       }
@@ -50,21 +51,26 @@
     <!-- MDB --><link href="https://cdnjs.cloudflare.com/ajax/libs/mdb-ui-kit/7.1.0/mdb.min.css" rel="stylesheet"/>
     <!-- JQuery --><script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
     <!-- htmx --> <script src="https://unpkg.com/htmx.org@1.9.10" integrity="sha384-D1Kt99CQMDuVetoL1lrYwg5t+9QdHe7NLX/SoJYkXDFfX37iInKRy5xLSi8nO7UC" crossorigin="anonymous"></script>
+    <!-- Datatable -->
     <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.11.5/css/jquery.dataTables.css">
     <script type="text/javascript" charset="utf8" src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.js"></script>
+    <!-- Ajax Datatable (django app) -->
     <script type="text/javascript" src="{% static 'ajax_datatable/js/utils.js' %}"></script>
     <link href="{% static 'ajax_datatable/css/style.css' %}" rel="stylesheet" />
-
+    <script src = "{% static 'svg.min.js' %}"></script>
 </head>
 <body>
     <!-- MDB --> <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mdb-ui-kit/7.1.0/mdb.umd.min.js" ></script>
-  <a href="{% url 'PureOpenAlex:home' %}"><img src="{% static 'MUSsmalllogo.svg' %}" class="muslogo" alt="MUS logo"></a>
+  <a href="{% url 'PureOpenAlex:home' %}"><img src="{% static 'MUSsmalllogo.svg' %}" id ='muslogoheader' class="muslogo" alt="MUS logo"></a>
+  <?xml version="1.0" encoding="UTF-8" standalone="no"?>
+
   <main>
       <div class="container-fluid justify-content-center align-items-center h-100  overflow-hidden">
-          {% block content %}
-          {% endblock %}
+          {% block content %}
+          {% endblock %}
       </div>
   </main>
+
 </body>
 </html>
 

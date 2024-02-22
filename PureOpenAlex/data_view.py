@@ -377,14 +377,12 @@ def open_alex_autocomplete(query, types=['works','authors'], amount=5):
     import httpx
 
     tresults={}
-    print(f"query: {query}")
     for oa_type in types:
         query = query.replace(' ', '+')
         if oa_type=='works':
             url = f"https://api.openalex.org/autocomplete/{oa_type}?q={query}"
         else:
             url = f"https://api.openalex.org/autocomplete/{oa_type}?q={query}"
-        print(f"url: {url}")
         result= {
         'count':0,
         'results':[]
@@ -405,17 +403,13 @@ def open_alex_autocomplete(query, types=['works','authors'], amount=5):
     maxlen=0
     most_results_type=''
     for key, value in tresults.items():
-        print(key)
-        print(value['count'])
         if value['count']>maxlen:
             maxlen=value['count']
             most_results_type=key
-    print(most_results_type)
     if tresults[most_results_type]['count']>=5:
         result=tresults[most_results_type]
     else:
         result=tresults[most_results_type]
-        print(result)
         for oa_type in types:
             if oa_type==most_results_type:
                 continue
@@ -425,9 +419,8 @@ def open_alex_autocomplete(query, types=['works','authors'], amount=5):
                 result['type']=result['type'].append(oa_type)
             if result['count']>=5:
                 break
-    print(result)
     return result
 
 def getAuthorPapers(display_name, user=None):
-    logger.info("Getting list of papers for author with id %s for %s", id, user)
+    logger.info("authorpapers [author] %s [user] %s", display_name, user.username)
     return getPapers(display_name, 'author', user)

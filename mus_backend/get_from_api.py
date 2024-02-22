@@ -10,22 +10,20 @@ To enable this, each SQL entry must have a mongo_link field pointing to the corr
 '''
 import requests
 import xml.etree.ElementTree as ET
-
 from more_itertools import batched
 from itertools import chain
-
-from pymongo import MongoClient
-MONGODB = MongoClient('mongodb://smops:bazending@192.168.2.153:27017/')
-db=MONGODB["mus"]
-
-from habanero import Crossref 
-cr = Crossref(mailto="s.mok@utwente.nl")
-
-from pyalex import Works, Authors, Journals
+from habanero import Crossref
+from pyalex import Works, Authors, Journals, config
 import pyalex
+from pymongo import MongoClient
+from django.conf import settings
+MONGOURL = getattr(settings, "MONGOURL")
+APIEMAIL = getattr(settings, "APIEMAIL", "no@email.com")
 
-pyalex.config.email="s.mok@utwente.nl"
-
+MONGODB=MongoClient(MONGOURL)
+db=MONGODB["mus"]
+pyalex.config.email = APIEMAIL
+cr = Crossref(mailto=APIEMAIL)
 
 UTKEYWORD=["UT-Hybrid-D", "UT-Gold-D", "NLA", "N/A OA procedure", "n/a OA procedure"]
 
@@ -43,7 +41,7 @@ def getItems(identifiers):
 
     Input:
     identifiers: a list of identifiers to retrieve data for, preferably in canonical format (see helpers.formatIdentifier)
-        
+
     returns ??
     '''
     from .identifier import IdentifierFactory, Identifier
@@ -63,7 +61,7 @@ def getPureItems(years):
 
         Parameters:
             year: integer representing the year to retrieve data for - e.g. 2019
-        
+
         Returns:
             total: the number of entries added
         '''
@@ -108,7 +106,7 @@ def getPureItems(years):
                         utkeywords=[]
                         subjects=[]
                         itckeywords=[]
-                        
+
                         for subj in article[tag]:
                             if subj in UTKEYWORD:
                                 utkeywords.append(subj)
@@ -133,7 +131,7 @@ def getPureItems(years):
                     if tag == 'source':
                         if '\\' in article[tag]:
                             article[tag]=article[tag].split('\\')
-                    
+
                     # 'identifier' field contains multiple types of identifiers, change from list into dict to make it easier to identify & access
                     if tag == 'identifier':
                         tmp={}
@@ -160,7 +158,7 @@ def getPureItems(years):
                     # initially, each item was added as a list, if it's length is 1, change back to a string
                     if isinstance(article[tag],list) and len(article[tag])==1:
                         article[tag]=article[tag][0]
-            
+
             # add the articles to mongodb
             api_responses_pure.insert_many(articles)
             total=total+len(articles)
@@ -194,9 +192,9 @@ def getPureItems(years):
 
 
         return total
-    
+
     results=[]
-    
+
     for year in years:
         t=fillFromPure(year)
         results.append({"year":year, "articles":t})
@@ -207,7 +205,7 @@ def getDataCiteItems(years):
     total=0
     # the url to retrieve the api response from datacite
     # returns json, with {data:..., meta:..., links:...} as root.
-    # data is a list of dicts, one per item. 
+    # data is a list of dicts, one per item.
     #The rest is not important for us; this query returns max 1000 items, and in feb 2024 there were 320 items total for this query.
     url = "https://api.datacite.org/dois?affiliation=true&query=creators.affiliation.affiliationIdentifier:%22https://ror.org/006hf6230%22&page[size]=1000"
     # retrieve json from url
@@ -333,7 +331,7 @@ def getOpenAlexAuthorData():
         print(f'{len(authorids)} other authors')
         print(f'{len(alreadyadded)} already in DB')
         return authorids, utauthorids
-    
+
     MONGODB = MongoClient('mongodb://smops:bazending@192.168.2.153:27017/')
     db=MONGODB["mus"]
     authors_openalex = db["api_responses_authors_openalex"]
@@ -384,7 +382,7 @@ def getOpenAlexJournalData():
                     except AttributeError:
                         pass
         return journals
-    
+
     journals_openalex = db["api_responses_journals_openalex"]
     journals=getJournalListFromDB()
     print(f'adding {len(journals)} journals')
