@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block content %}
 {% load static %}
-<div class="container-fluid justify-content-center align-items-center w-75" >
+<div class="container-fluid justify-content-center align-items-center col-10" >
     <div id="doi-input" class="card justify-content-center ">
         <div class="card-header bg-info bg-gradient " style="--mdb-bg-opacity: 0.9;">
             <h5 class="text-black ps-5 mb-0"><i class="fas fa-filter"></i>  |  Build your own list </h5>
@@ -16,11 +16,11 @@
                     </span>
                     <div class="card-body text-white bg-danger">Note: Currently filters always chain together.
                         For instance, selecting 'BMS' and 'EEMCS' will show only papers that are linked to BOTH faculties
-                        -- NOT all papers by BMS PLUS all papers by EEMCS. 
+                        -- NOT all papers by BMS PLUS all papers by EEMCS.
                         This will change in in a future update.<div>
                     </div>
                 </div>
-                
+
             </div>
             <form id="filter-form">
                 <div>
@@ -66,7 +66,7 @@
                                     <span class='text-black'><i class="me-2 fas fa-envelopes-bulk"></i>Item types</span>
                                 </div>
                                 <div class='card-body bg-success bg-gradient' style="--mdb-bg-opacity: 0.4;">
-                                    
+
                                         <div class='form-check'>
                                             <input class="form-check-input" name='type_journal' type="checkbox" id="check-type-journal" value="true" />
                                             <label class="form-check-label" for="check-type-journal">Journal articles</label>
@@ -95,7 +95,7 @@
                                     <span class='text-black'><i class="me-2 fas fa-graduation-cap"></i>Faculties</span>
                                 </div>
                                 <div class='card-body bg-info bg-gradient' style="--mdb-bg-opacity: 0.6;">
-                                    <div class='row'> 
+                                    <div class='row'>
                                     <div class='form-check col-6'>
                                         <input class="form-check-input" type="checkbox" name='faculty_eemcs' id="check-faculty-eemcs" value="true" />
                                         <label class="form-check-label" for="check-faculty-eemcs">EEMCS</label>
