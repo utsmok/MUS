@@ -1,0 +1,99 @@
+{% block content %}
+<thead>
+    <th>add/remove mark</th>
+    <th>details</th>
+    <th>doi</th>
+    <th>title</th>
+    <th>year</th>
+    <th>item type</th>
+    <th>oa type</th>
+    <th>pure link in OpenAlex?</th>
+    <th>found in OAI-PMH?</th>
+    <th>locations</th>
+    <th>author(s)</th>
+</thead>
+<tbody>
+    {% for article in articles %}
+        <tr>
+            <td id="{{article.id}}-mark">
+                {% if article.marked %}
+                <span class="visually-hidden d-flex badge badge-danger p-3 rounded-4 justify-content-center align-items-center" id="{{article.id}}-removespinner">
+                    <span class="spinner-grow text-danger " role="status"> </span> 
+                    <span id="loadingtext" class=" ps-1 text-danger"> Removing... </span>
+                </span>
+                <button onclick="remove_mark('{{article.id}}');" id="{{article.id}}-removemark" class="badge badge-danger p-3 rounded-4">
+                    <i class="fas fa-square-xmark"></i>
+                    Delete bookmark
+                </button>
+                {% else %}
+                <span class="visually-hidden d-flex badge badge-success p-3 rounded-4 justify-content-center align-items-center" id="{{article.id}}-addspinner">
+                    <span class="spinner-grow text-success " role="status"> </span> 
+                    <span id="loadingtext" class=" ps-1 text-success"> Adding... </span>
+                </span>
+                                    <button onclick="add_mark('{{article.id}}');" id="{{article.id}}-addmark" class="badge badge-success p-3 rounded-4">
+                    <i class="far fa-bookmark"></i>
+                                            Bookmark
+                    </button>
+                {% endif %}
+            </td>
+            <td>
+                <a href="{% url 'PureOpenAlex:single_article' article.id %}"  target ="_blank">
+                Open detailed view</a></td>
+            <td><a href="{{article.doi}}"  target ="_blank">{{article.doi}}<a></td>
+            <td>{{article.title}}</td>
+            <td>{{article.year}}</td>
+            <td>{{article.itemtype}}</td>
+            <td>
+                {% if article.is_oa %}
+                    {% if article.openaccess == 'gold' %}<span class="badge bg-warning">Gold</span>
+                    {% elif article.openaccess == 'green' %}<span class="badge bg-success">Green</span>
+                    {% elif article.openaccess == 'bronze' %}<span class="badge bg-info">Bronze</span>
+                    {% elif article.openaccess == 'hybrid'%}<span class="badge bg-primary">Hybrid</span>
+                    {% else %}<span class="badge bg-danger">{{openaccess}}</span>
+                    {% endif %}
+
+                {% else %}
+                <span class="badge bg-danger">Not OA</span>
+                {% endif %}
+            </td>
+            <td>
+                {% if article.is_in_pure %}<span class="badge bg-success">Yes</span>{% else %}<span class="badge bg-danger">No</span>{% endif %}
+            </td>
+            <td>
+                {% if article.has_pure_oai_match %}<span class="badge bg-success">Yes</span>{% else %}<span class="badge bg-danger">No</span>{% endif %}
+            </td>
+            <td>
+                {% for location in article.pref_locations %}
+                {% if location.pdf_url != "" %}
+                <div>
+                    <a href="{{ location.pdf_url }}"
+                        class="{%if 'twente' in location.pdf_url %} fs-5 link-info {% elif location.is_oa %} link-success {% endif %}"  target ="_blank">
+                            {% if 'twente' in location.pdf_url %} 
+                            UTwente RIS Pure 
+                            {% elif location.source.host_org %}
+                            Hosted by {{location.source.host_org}} ({{location.source.type}})
+                            {% else %}
+                            Unknown host
+                            {% endif %}
+                        {% if location.is_oa %}
+                            <i class="fas fa-lock-open"></i>
+                        {% endif %}
+                        {% if location.is_primary %}
+                            <i class="far fa-star"></i>
+                        {% endif %}
+                    </a>
+                </div>
+                {% endif %}
+                {% endfor %}
+            </td>
+            <td>
+            {% for author in article.pref_authors %}
+                <span class="{% if author.is_ut %} text-info {% endif %}">{{author.name}}</span>
+                {% if not forloop.last %},{% endif %}
+            {% endfor %}
+            </td>
+            
+        </tr>
+    {% endfor %}
+</tbody>
+{% endblock %}

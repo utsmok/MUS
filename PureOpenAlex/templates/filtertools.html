@@ -1,0 +1,198 @@
+{% extends 'base.html' %}
+{% block content %}
+{% load static %}
+<div class="container-fluid justify-content-center align-items-center w-75" >
+    <div id="doi-input" class="card justify-content-center ">
+        <div class="card-header bg-info bg-gradient " style="--mdb-bg-opacity: 0.9;">
+            <h5 class="text-black ps-5 mb-0"><i class="fas fa-filter"></i>  |  Build your own list </h5>
+        </div>
+        <div class="card-body text-dark bg-warning bg-gradient" style="--mdb-bg-opacity: 0.3;">
+            <div class=''>
+                Select whatever filters you like & press the button to generate the view.
+                Might take a while if there are many papers in your query!
+                <div class="card mb-3 mt-3">
+                    <span class="position-absolute top-0 start-0 translate-middle badge rounded-5 badge-danger">
+                        <i class="fs-4 fas fa-triangle-exclamation"></i>
+                    </span>
+                    <div class="card-body text-white bg-danger">Note: Currently filters always chain together.
+                        For instance, selecting 'BMS' and 'EEMCS' will show only papers that are linked to BOTH faculties
+                        -- NOT all papers by BMS PLUS all papers by EEMCS. 
+                        This will change in in a future update.<div>
+                    </div>
+                </div>
+                
+            </div>
+            <form id="filter-form">
+                <div>
+                    {% csrf_token %}
+                    <div class="row justify-content-center">
+                        <div id='date-start' class='col-3' style="--mdb-bg-opacity: 0.5;">
+                            <div class='card'>
+                                <div class="card-header bg-info bg-gradient " style="--mdb-bg-opacity: 0.9;">
+                                    <span class='text-black'><i class="me-2 far fa-calendar-days"></i>Starting date</span>
+                                </div>
+                                <div class='card-body bg-warning bg-gradient' style="--mdb-bg-opacity: 0.6;">
+                                    <div class="form-outline " data-mdb-input-init>
+                                        <input type="number" name='month_start' id='month-start' class="form-control" placeholder=""/>
+                                        <label class="form-label" for="month-start">Month (1-12)</label>
+                                    </div>
+                                    <div class="form-outline" data-mdb-input-init>
+                                        <input type="number" name='year_start'id='year-start' class="form-control" placeholder=""/>
+                                        <label class="form-label" for="year-start">Year (20xx)</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div id='date-end' class='col-3' style="--mdb-bg-opacity: 0.5;">
+                            <div class='card'>
+                                <div class="card-header bg-info bg-gradient " style="--mdb-bg-opacity: 0.9;">
+                                    <span class='text-black'><i class="me-2 far fa-calendar-days"></i>Ending date</span>
+                                </div>
+                                <div class='card-body bg-danger bg-gradient' style="--mdb-bg-opacity: 0.5;">
+                                    <div class="form-outline" data-mdb-input-init>
+                                        <input type="number" name='month_end' id='month-end' class="form-control" placeholder=""/>
+                                        <label class="form-label" for="month-end">Month (1-12)</label>
+                                    </div>
+                                    <div class="form-outline" data-mdb-input-init>
+                                        <input type="number" name='year_end' class="form-control" placeholder=""/>
+                                        <label class="form-label" for="year_end">Year (20xx)</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div id='item-types' class='col-4' style="--mdb-bg-opacity: 0.5;">
+                            <div class='card'>
+                                <div class="card-header bg-primary bg-gradient " style="--mdb-bg-opacity: 0.6;">
+                                    <span class='text-black'><i class="me-2 fas fa-envelopes-bulk"></i>Item types</span>
+                                </div>
+                                <div class='card-body bg-success bg-gradient' style="--mdb-bg-opacity: 0.4;">
+                                    
+                                        <div class='form-check'>
+                                            <input class="form-check-input" name='type_journal' type="checkbox" id="check-type-journal" value="true" />
+                                            <label class="form-check-label" for="check-type-journal">Journal articles</label>
+                                        </div>
+                                        <div class='form-check'>
+                                            <input class="form-check-input" name='type_conf' type="checkbox" id="check-type-conf" value="true" />
+                                            <label class="form-check-label" for="check-type-conf">Conference proceeding</label>
+                                        </div>
+
+                                        <div class='form-check'>
+                                            <input class="form-check-input" name='type_book' type="checkbox" id="check-type-book" value="true" />
+                                            <label class="form-check-label" for="check-type-book">Book (chapter)</label>
+                                        </div>
+                                        <div class='form-check'>
+                                            <input class="form-check-input" name='type_other' type="checkbox" id="check-type-other" value="true" />
+                                            <label class="form-check-label" for="check-type-other">Other</label>
+                                        </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row justify-content-center">
+                        <div id='faculties' class='col-4 pt-2' style="--mdb-bg-opacity: 0.5;">
+                            <div class='card'>
+                                <div class="card-header bg-success bg-gradient " style="--mdb-bg-opacity: 0.6;">
+                                    <span class='text-black'><i class="me-2 fas fa-graduation-cap"></i>Faculties</span>
+                                </div>
+                                <div class='card-body bg-info bg-gradient' style="--mdb-bg-opacity: 0.6;">
+                                    <div class='row'> 
+                                    <div class='form-check col-6'>
+                                        <input class="form-check-input" type="checkbox" name='faculty_eemcs' id="check-faculty-eemcs" value="true" />
+                                        <label class="form-check-label" for="check-faculty-eemcs">EEMCS</label>
+                                    </div>
+                                    <div class='form-check col-6'>
+                                        <input class="form-check-input" type="checkbox" name='faculty_bms' id="check-faculty-bms" value="true" />
+                                        <label class="form-check-label" for="check-faculty-bms">BMS</label>
+                                    </div>
+                                    </div>
+                                    <div class='row'>
+                                    <div class='form-check col-6'>
+                                        <input class="form-check-input" type="checkbox" name='faculty_itc' id="check-faculty-itc" value="true" />
+                                        <label class="form-check-label" for="check-faculty-itc">ITC</label>
+                                    </div>
+                                    <div class='form-check col-6'>
+                                        <input class="form-check-input" type="checkbox" name='faculty_tnw' id="check-faculty-tnw" value="true" />
+                                        <label class="form-check-label" for="check-faculty-tnw">TNW</label>
+                                    </div>
+                                    </div>
+                                    <div class='row'>
+                                    <div class='form-check col-6'>
+                                        <input class="form-check-input" type="checkbox" name='faculty_et' id="check-faculty-et" value="true" />
+                                        <label class="form-check-label" for="check-faculty-et">ET</label>
+                                    </div>
+                                    <div class='form-check col-6'>
+                                        <input class="form-check-input" type="checkbox" name='faculty_other' id="check-faculty-other" value="true" />
+                                        <label class="form-check-label" for="check-faculty-other">Other</label>
+                                    </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div id='faculties' class='pt-2 col-6' style="--mdb-bg-opacity: 0.5;">
+                            <div class='card'>
+                                <div class="card-header bg-warning bg-gradient " style="--mdb-bg-opacity: 0.6;">
+                                    <span class='text-black'><i class="me-2 fas fa-filter-circle-xmark"></i>Other filters</span>
+                                </div>
+                                <div class='card-body bg-primary bg-gradient' style="--mdb-bg-opacity: 0.4;">
+                                    <div class='row'>
+                                        <div class='form-check col-6'>
+                                            <input class="form-check-input" type="checkbox" name='is_oa' id="check-is-oa" value="true" />
+                                            <label class="form-check-label" for="check-is-oa">is Open Access</label>
+                                        </div>
+                                        <div class='form-check col-6'>
+                                            <input class="form-check-input" type="checkbox"  name='has_apc' id="check-has-apc" value="true" />
+                                            <label class="form-check-label" for="check-has-apc">has APC data </label>
+                                        </div>
+                                    </div>
+                                    <div class='row'>
+                                        <div class='form-check col-6'>
+                                            <input class="form-check-input" type="checkbox"  name='taverne_passed' id="check-taverne-passed" value="true" />
+                                            <label class="form-check-label" for="check-taverne-passed">after Tavernedate</label>
+                                        </div>
+                                        <div class='form-check col-6'>
+                                            <input class="form-check-input" type="checkbox"  name='has_pure_link' id="check-has-pure-link" value="true" />
+                                            <label class="form-check-label" for="check-has-pure-link">OA has Purelink</label>
+                                        </div>
+                                    </div>
+                                    <div class='row'>
+                                        <div class='form-check col-6'>
+                                            <input class="form-check-input" type="checkbox"  name='no_pure_link' id="check-no-pure-link" value="true" />
+                                            <label class="form-check-label" for="check-no-pure-link">NO OA Purelink</label>
+                                        </div>
+                                        <div class='form-check col-6'>
+                                            <input class="form-check-input" type="checkbox"  name='in_pure' id="check-in-pure" value="true" />
+                                            <label class="form-check-label" for="check-in-pure">Found in Pure</label>
+                                        </div>
+                                    </div>
+                                    <div class='row'>
+                                        <div class='form-check col-6'>
+                                            <input class="form-check-input" type="checkbox"  name='not_in_pure' id="check-not-in-pure" value="true" />
+                                            <label class="form-check-label" for="check-not-in-pure">NOT found in Pure</label>
+                                        </div>
+                                        <div class='form-check col-6 '>
+                                            <input class="form-check-input" type="checkbox"  name='group_tcs' id="check-group-tcs" value="true" />
+                                            <label class="form-check-label" for="check-group-tcs">1 or more TCS authors</label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+
+                        </div>
+                    </div>
+                    <div class="row justify-content-center pt-3">
+                        <div>
+                            <button hx-post="/customfilter/" hx-trigger="click" hx-target="#dbinfo" hx-push-url="true" class="btn btn-lg btn-danger">
+                                <div class='pt-4'>Apply filters</div>
+                                <img class="htmx-indicator" src="{% static 'rings.svg' %}">
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

@@ -1,0 +1,7 @@
+Hi there, this is an automated message from the OpenAlexApp ({site}).
+
+Please confirm your email address by clicking below link:
+
+{activate_url}
+
+If you have any questions or something is broken, send an email to s.mok@utwente.nl. 

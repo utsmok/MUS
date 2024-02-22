@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta charset="UTF-8">
+<meta name="description" content="Use the People Pages of the University of Twente to find contact details of faculty and staff and other personal research and education information." />
+		<title>People Pages: Find employees &#124; Contact &amp; phonebook  &#124; University of Twente</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0" />
+<link rel="stylesheet" href="https://apps.utwente.nl/webappassets/resources/utangular/v1/utwente.css" />
+<link rel="stylesheet" type="text/css" href="https://people.utwente.nl/resources/css/main.min.css?d=2022-03-28" media="screen" >
+<link rel="apple-touch-icon" type="image/png" href="https://webapps.utwente.nl/webappassets/resources/utwente/favicons/favicon-180x180.png" sizes="180x180" />
+<link rel="icon" type="image/png" href="https://webapps.utwente.nl/webappassets/resources/utwente/favicons/favicon-32x32.png" sizes="32x32" />
+<link rel="icon" type="image/png" href="https://webapps.utwente.nl/webappassets/resources/utwente/favicons/favicon-16x16.png" sizes="16x16" />
+<link rel="manifest" href="https://webapps.utwente.nl/webappassets/resources/utwente/favicons/manifest.json" />
+</head>
+<body>
+	<div class="page--wrapper">
+		<aside class="page--navigation navigation">
+			<div class="navigation--head">
+				<ul>
+					<li>
+						<a href="https://people.utwente.nl/login"> <i class="icon icon--person icon--small"></i> Login</a>
+							</li>
+				</ul>
+			</div>
+			<div class="navigation--main">
+				<ul>
+					<li><a href="https://people.utwente.nl/myprofile">My Profile</a></li>
+				</ul>
+			</div>
+			<div class="language-switch">
+				<a href="https://personen.utwente.nl">NL</a>
+						<a href="" class="is-active">EN</a>
+					</div>
+		</aside>
+		<div class="page--page">
+			<div class="page--flex--container">
+				<div class="page--flex">
+					<div class="page__header">
+					    <a href="https://www.utwente.nl/en/" class="header__logo--mobile"> <img
+							src="https://people.utwente.nl/resources/assets/img/UT-logo-EN-white.svg" alt="University of Twente">
+						</a>
+						<div class="header__navigation">
+							<i class="icon icon--menu icon--small navigation--toggle" data-navigation="toggle"></i> <a
+								href="https://www.utwente.nl/en/" class="header__logo"> <img src="https://people.utwente.nl/resources/assets/img/UT-logo-EN.svg"
+								alt="University of Twente">
+							</a> <span class="header__chevron"></span> <a href="https://people.utwente.nl">People</a>
+						</div>
+						<a href="https://people.utwente.nl/login" class="header__profile"> <i class="icon icon--person icon--small"></i></a>
+							</div>
+					<main class="page__main page__main--result profile-page">
+	
+	<div class="profile-banner" style="background-image: url( 'https://people.utwente.nl/buildings/campus/picture.jpg' )">
+		<div class="profile-banner__person-info text--white">
+			<div class="avatar avatar--large avatar--border"
+				style="background-image:url('https://people.utwente.nl/resources/assets/img/business.jpeg')"></div>
+			<h4></h4>
+			<h1 class="text--bold">Page not found</h1>
+		</div>
+	</div>
+	
+	<div class="container">
+		<div class="profile container--small">
+		
+			<section class="profile-section">
+				<h3 class="profile-section__header">Page not found</h3>
+				<p>The page you requested has been moved or does not exist anymore.  </p>
+				<p><i class="icon icon--border_chevron_left"></i> <a class="anchor" href="https://people.utwente.nl">Back to the address book</a></p>
+			</section>
+
+		</div>
+	</div>
+
+ 	<div class="page__footer--top">
+		<div class="container">
+			<div class="page__footer--top-container">
+				<ul class="pagecrumbs">
+					<li class="pagecrumbs__item"><a href=""> <i class="icon icon--home icon--gray icon--small"></i>
+					</a></li>
+					<li class="pagecrumbs__item"><a href="">People</a></li>
+				</ul>
+				<div class="footer__share">
+					<i class="icon icon--upload icon--small icon--gray"></i> <a href="" class="anchor" data-sharing="add-this">
+					  Share this page</a>
+					<div id="footer__share__buttons" class="footer__share__buttons">
+						<div class="addthis_toolbox addthis_default_style addthis_32x32_style">
+							<a class="footer__addthis addthis_button_linkedin"></a> <a class="footer__addthis addthis_button_facebook"></a> <a
+								class="footer__addthis addthis_button_twitter"></a> <a
+								class="footer__addthis addthis_button_google_plusone_share"></a> <a
+								class="footer__addthis addthis_button_compact"></a>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<div class="profile-banner profile-banner--footer text-right"
+		style="background-image: url( 'https://people.utwente.nl/resources/assets/img/profile-footer.jpg' )">
+		<div class="container">
+			<div class="address">
+				<span class="address__icon"> <svg class="icon--compass" xmlns="http://www.w3.org/2000/svg" width="12.282"
+						height="15.969" viewBox="0 0 12.282 15.969">
+                          <path fill="#ffffff"
+							d="M842.72,148.044a1,1,0,0,1-.869-0.507l-2.488-4.385-4.743.224a1,1,0,0,1-.719-1.739l10.266-9.333a1,1,0,0,1,1.662.889l-2.119,14a1,1,0,0,1-.807.834A1.021,1.021,0,0,1,842.72,148.044Z"
+							transform="translate(-833.562 -132.062)" />
+                        </svg>
+				</span>
+				<span class="text--bold text--uppercase">University of Twente</span>
+				<span class="text--uppercase">Drienerlolaan	5<br /> 7522 NB Enschede</span>
+				<div class="address__contact">
+					+31 (0)53 489 9111<br /> info@utwente.nl<br /> <a href=http://www.utwente.nl/en/contact/ class="address__route">Route</a>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	</main>
+</div>
+			</div>
+
+			<div class="page__footer">
+				<div class="container">
+					<div class="page__footer__links">
+						<ul class="list list__collapse--mobile text--white" data-collapse>
+							<li class="list__header" data-collapse-toggle>Organisation</li>
+							<li class="list__item"><a href=https://www.utwente.nl/schools>Faculties/schools</a></li>
+							<li class="list__item"><a href=https://www.utwente.nl/institutes>Research institutes</a></li>
+							<li class="list__item"><a href=https://www.utwente.nl/research-groups/>Research groups</a></li>
+							<li class="list__item"><a href=https://www.utwente.nl/service-departments>Service departments</a></li>
+							<li class="list__item"><a href=https://www.utwente.nl/board/>Management/board </a></li>
+							</ul>
+						<ul class="list list__collapse--mobile text--white" data-collapse>
+							<li class="list__header" data-collapse-toggle>UTwente  </li>
+							<li class="list__item"><a href=https://www.utwente.nl/en/contact/>Contact</a></li>
+							<li class="list__item"><a href=http://www.utwente.nl/en/contact/ >Route</a></li>
+							<li class="list__item"><a href=https://www.utwente.nl/campusmap/>Campusmap</a></li>
+							<li class="list__item"><a href=https://www.utwente.nl/vacancies/ >Vacancies</a></li>
+							<li class="list__item"><a href=https://www.utwente.nl/news/>News</a></li>
+							<li class="list__item"><a href=https://www.utwente.nl/events/>Events </a></li>
+							</ul>
+						<ul class="list list__collapse--mobile text--white" data-collapse>
+							<li class="list__header" data-collapse-toggle>Press information  </li>
+							<li class="list__item"><a href=http://www.utwente.nl/press>Press department</a></li>
+							<li class="list__item"><a href=http://www.utwente.nl/images>Images</a></li>
+							<li class="list__item"><a href=http://www.utwente.nl/factsandfigures>Facts & figures</a></li>
+							<li class="list__item"><a href=http://www.utwente.nl/corporatevideo>Corporate video</a></li>
+							<li class="list__item"><a href=http://www.utwente.nl/corporatepresentation>Corporate presentation</a></li>
+							</ul>
+						<ul class="list list__collapse--mobile list--social text--white" data-collapse>
+							<li class="list__header" data-collapse-toggle>Follow us</li>
+							<li class="list__item list__item--with-icon"><a href=https://www.facebook.com/utwente><i class="icon icon--facebook icon--border icon--gray icon--small"></i>Facebook</a></li>
+							<li class="list__item list__item--with-icon"><a href=https://twitter.com/utwenteEN><i class="icon icon--twitter icon--border icon--gray icon--small"></i>Twitter</a></li>
+							<li class="list__item list__item--with-icon"><a href=https://www.instagram.com/utwente/><i class="icon icon--instagram icon--border icon--gray icon--small"></i>Instagram</a></li>
+							<li class="list__item list__item--with-icon"><a href=https://www.snapchat.com/add/utwente/><i class="icon icon--snapchat icon--border icon--gray icon--small"></i>Snapchat</a></li>
+							<li class="list__item list__item--with-icon"><a href=https://www.linkedin.com/edu/school?id=15449><i class="icon icon--linkedin icon--border icon--gray icon--small"></i>LinkedIn</a></li>
+							<li class="list__item list__item--with-icon"><a href=http://www.vimeo.com/utwente><i class="icon icon--vimeo icon--border icon--gray icon--small"></i>Vimeo</a></li>
+							<li class="list__item list__item--with-icon"><a href=https://www.youtube.com/user/universityoftwente><i class="icon icon--youtube icon--border icon--gray icon--small"></i>YouTube</a></li>
+							<li class="list__item list__item--with-icon"><a href=https://www.issuu.com/utwente><i class="icon icon--issuu icon--border icon--gray icon--small"></i>Issuu</a></li>
+							<li class="list__item list__item--with-icon"><a href=https://plus.google.com/+utwente/posts><i class="icon icon--google icon--border icon--gray icon--small"></i>Google+</a></li>
+							<li class="list__item list__item--with-icon"><a href=https://www.flickr.com/pictures/utwente><i class="icon icon--flickr icon--border icon--gray icon--small"></i>Flickr</a></li>
+							<li class="list__item list__item--with-icon"><a href=http://www.utwente.nl/en/news.rss><i class="icon icon--rss icon--border icon--gray icon--small"></i>RSS-feed</a></li>
+							<li class="list__item list__item--with-icon"><a href=http://www.utwente.nl/en/activities.rss><i class="icon icon--rss icon--border icon--gray icon--small"></i>RSS-feed</a></li>
+							<li class="list--toggle-height"><a href="#" class="anchor__default-active">Show all channels</a></li>
+							</ul>
+						</div>
+				</div>
+				<div class="page__footer--bottom">
+					<div class="container">
+						<div class="page__footer--container">
+							<ul class="page__footer__bottom-links">
+								<li><a href="https://www.utwente.nl/over-de-website/disclaimer/">Disclaimer &amp; Copyright</a></li>
+								<li><a href="https://www.utwente.nl/en/about-our-website/">Privacy &amp; Cookies</a></li>
+								<li><a href="">Last update 2022-03-28</a></li>
+									</ul>
+							<a href="" class="page__footer__logo"> <img src="https://people.utwente.nl/resources/assets/img/UT-logo-EN-white.svg">
+							</a>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+	<script type="text/javascript" src="https://people.utwente.nl/resources/js/app.min.js?d=2022-03-28"></script>
+	<script async src="https://www.utwente.nl/.utwente_base/cookies/api.js"></script>	  	 
+	<!-- Google Tag Manager -->
+	<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+		new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+		j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+		'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+		})(window,document,'script','dataLayer','GTM-WW6CJT');</script>
+	<!-- End Google Tag Manager -->
+		
+	<!-- Google Tag Manager (noscript) -->
+	<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-WW6CJT"
+		height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+		<!-- End Google Tag Manager (noscript) -->
+</body>
+</html>

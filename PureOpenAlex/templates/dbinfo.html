@@ -1,0 +1,106 @@
+{% extends 'base.html' %}
+
+{% block content %}
+{% spaceless %}
+
+<div class='container pt-4 justify-content-center align-items-center'>
+    <div class='row row-cols-1 row-cols-md-2 g-4 justify-content-center align-items-center'>
+        {% for faculty in faculties|dictsort:"name" %}
+            {% if faculty.name == "Marked papers" %}
+                <div class="col-md-12">
+                    <div class="card p-1  bg-info bg-gradient text-black border border-info" style="--mdb-bg-opacity: 0.2;">
+                        <div class="card-body">
+                            <h5 class="card-title text-info">Workspace</h5>
+                            <p class="card-text">
+                                <div class='fw-bold'>{{faculty.articles}} items bookmarked</div>
+                                <div>{{faculty.oa}}% OA</div>
+                                <div >{{faculty.inpure_percent}}% has Pure link in OpenAlex and {{faculty.inpurematch_percent}}% has a match with a Pure OAI-PHM entry</div>
+                                <div><a href="{% url 'PureOpenAlex:faculty' 'marked' %}" class="btn btn-primary">Open workspace</a></div>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+        {% endfor %}
+
+        <div class="col-md-12">
+            {% include 'filtertools.html' %}
+        </div>
+        <h4 class="col-md-12 text-primary ps-5 mb-0">
+            <hr class="hr hr-blurry" />
+            Standard views
+            <hr class="hr hr-blurry" />
+        </h4>
+        <div class="col">
+            <div class="card p-1 bg-secondary bg-gradient text-black border border-primary" style="--mdb-bg-opacity: 0.2;">
+                <div class="card-body ">
+                    <h5 class="card-title text-primary">All OpenAlex items in <span id='mustextlogo'><i class="fas fa-crow" s></i> MUS</span></h5>
+                    <p class="card-text">
+                        <div class='fw-bold'>{{total.articles}} items</div>
+                        <div>{{total.oa}}% OA</div>
+                        <div >{{total.inpure_percent}}% has Pure link in OpenAlex and {{total.inpurematch_percent}}% has a match with a Pure OAI-PHM entry</div>
+                        <div>
+                            <div><a href="{% url 'PureOpenAlex:faculty' 'all'%}" class="btn btn-primary">View all (with filter/sort/search but slow)</a>
+                                <a href="{% url 'PureOpenAlex:facultypage' 'all' %}" class="btn btn-success">Quickview (no filter/sort/search but fast)</a></div>
+
+                                <a href="{% url 'PureOpenAlex:papersfiltered' name='all' filter='no_pure_match' %}" class="ms-1 btn btn-danger"> Filtered: {{faculty.name}} papers from OpenAlex but not found in Pure</a>
+                                <a href="{% url 'PureOpenAlex:papersfiltered' name='all' filter='no_pure_link' %}" class="btn btn-warning">Filtered:  {{faculty.name}} papers from OpenAlex without RIS link in Locations</a>
+                    </div>
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        {% for faculty in faculties|dictsort:"name" %}
+            {% if faculty.name == "Other groups" %}
+                <div class="col">
+                    <div class="card p-1 border border-danger bg-danger bg-gradient text-black" style="--mdb-bg-opacity: 0.2;">
+                        <div class="card-body">
+                            <h5 class="card-title text-danger">Items with 1 or more authors with unrecognized faculty</h5>
+                            <p class="card-text">
+                                <div class='fw-bold'>{{faculty.articles}} items</div>
+                                <div>{{faculty.oa}}% OA</div>
+                                <div>{{faculty.inpure_percent}}% has Pure link in OpenAlex and {{faculty.inpurematch_percent}}% has a match with a Pure OAI-PHM entry</div>
+                                <div><a href="{% url 'PureOpenAlex:faculty' faculty.name %}" class="btn btn-primary">View all (with filter/sort/search but slow)</a>
+                                    <a href="{% url 'PureOpenAlex:facultypage' faculty.name %}" class="btn btn-success">Quickview (no filter/sort/search but fast)</a></div>
+
+                                    <a href="{% url 'PureOpenAlex:papersfiltered' name=faculty.name filter='no_pure_match' %}" class="ms-1 btn btn-danger"> Filtered: {{faculty.name}} papers from OpenAlex but not found in Pure</a>
+                                    <a href="{% url 'PureOpenAlex:papersfiltered' name=faculty.name filter='no_pure_link' %}" class="btn btn-warning">Filtered:  {{faculty.name}} papers from OpenAlex without RIS link in Locations</a>
+
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+        {% endfor %}
+        <h4 class="col-md-12 text-success ps-5 mb-0">
+            <hr class="hr hr-blurry" />
+            Items matched to faculties
+            <hr class="hr hr-blurry" />
+        </h4>
+        {% for faculty in faculties|dictsort:"name" %}
+            {% if faculty.name != "Other groups" and faculty.name != "Marked papers" %}
+                <div class="col">
+                    <div class="card p-1 border border-success bg-success bg-gradient text-black" style="--mdb-bg-opacity: 0.2;">
+                        <div class="card-body">
+                            <div class='card-title'><h4><span class="badge badge-dark rounded-pill" style="--mdb-bg-opacity: 1;">{{faculty.name}}<span></h4></div>
+                            <p class="card-text">
+                                <div class='fw-bold'>{{faculty.articles}} items</div>
+                                <div>{{faculty.oa}}% OA</div>
+                                <div>{{faculty.inpure_percent}}% has Pure link in OpenAlex and {{faculty.inpurematch_percent}}% has a match with a Pure OAI-PHM entry</div>
+                                <div><a href="{% url 'PureOpenAlex:faculty' faculty.name %}" class="btn btn-primary">View all (with filter/sort/search but slow)</a>
+                                <a href="{% url 'PureOpenAlex:facultypage' faculty.name %}" class="btn btn-success">Quickview (no filter/sort/search but fast)</a></div>
+
+                                <a href="{% url 'PureOpenAlex:papersfiltered' name=faculty.name filter='no_pure_match' %}" class="ms-1 btn btn-danger"> Filtered: {{faculty.name}} papers from OpenAlex but not found in Pure</a>
+                                <a href="{% url 'PureOpenAlex:papersfiltered' name=faculty.name filter='no_pure_link' %}" class="btn btn-warning">Filtered:  {{faculty.name}} papers from OpenAlex without RIS link in Locations</a>
+
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+        {% endfor %}
+    </div>
+</div>
+{% endspaceless %}
+{% endblock %}

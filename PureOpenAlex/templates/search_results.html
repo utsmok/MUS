@@ -1,0 +1,64 @@
+<div class='' id='search-results'>
+{% for paper in db_items %}
+        <div class='htmx-fade card border border-success bg-success bg-gradient' style="--mdb-bg-opacity: 0.2;">
+            <span class="position-absolute top-50 start-100 translate-middle p-2 bg-info rounded-pill badge-danger">
+                <span id='mustextlogo'><i class="fas fa-crow" s></i></span>
+            </span>
+            <div class='ms-1'><span class='text-primary'>{{ paper.title }}</span></div>
+            <div class='ms-3'><span class='text-danger'>{{ paper.doi }}</span></div>
+            <div class='ms-5'>
+            <a class='button rounded btn-sm me-2 btn btn-info' href='{% url "PureOpenAlex:single_article" paper.id %}' target=_blank>
+                <i class="fas fa-book-open-reader"></i>
+                <span class="">
+                    View details in <span id='mustextlogo'><i class="fas fa-crow" s></i> MUS</span>
+                </span>
+            </a>
+            </div>
+        </div>
+{% endfor %}
+{% for paper in oa_items %}
+    <div class='htmx-fade card border border-warning bg-warning bg-gradient' style="--mdb-bg-opacity: 0.2;">
+        <span class="position-absolute top-50 start-100 translate-middle p-2 bg-danger  rounded-pill badge-danger">
+            <span class='text-white'>OA</span>
+        </span>
+
+        <div class='ms-1'>
+            <span class='text-primary'>{{ paper.item.display_name }}</span>
+        </div>
+        <div class='ms-3 text-danger'>
+            <a href="{{ paper.external_id }}" class='link-danger' target=_blank>           
+                {{ paper.item.external_id }}
+            </a>
+        </div>
+        {% if paper.type == 'works' %}
+            <div class='ms-5'>
+                <button onclick="add_article('{{paper.item.external_id}}');" id="{{paper.item.external_id}}-add" class="rounded btn-sm me-2 btn btn-info">
+                    <i id='{{paper.item.external_id}}-add-icon' class="fas fa-download"></i>
+                    <span id="{{paper.item.external_id}}-add-text" class="">
+                        Click to download item to <span id='mustextlogo'><i class="fas fa-crow" s></i> MUS</span>
+                    </span>
+                    <span id="{{paper.item.external_id}}-spinner" class="spinner-border spinner-border-sm visually-hidden" role="status"
+                    aria-hidden="true"></span>
+                    <span id="{{paper.item.external_id}}-loading-text" class="visually-hidden">Adding...</span>
+                </button>
+            </div>
+        {% elif paper.type == 'authors' %}
+            <div class='ms-5'>
+                <a class='button rounded btn-sm me-2 btn btn-info' href='{% url "PureOpenAlex:authorarticles" paper.item.display_name %}' target=_blank>
+                    <i class="fas fa-book-open-reader"></i>
+                    <span class="">
+                        Open list of papers by author in <span id='mustextlogo'><i class="fas fa-crow" s></i> MUS</span>
+                    </span>
+                </a>
+            </div>
+        {% endif %}
+    </div>
+{% endfor %}
+<span>Showing <span class='text-success fw-bold'>{{db_items|length}}</span>/{{db_count}} <span id='mustextlogo'><i class="fas fa-crow" s></i> MUS</span> items.</span>
+{% if db_count != oa_count %}
+    <span>{{oa_found_count}} OpenAlex results already in MUS. </span>
+    <span>Showing <span class='text-success fw-bold'>{{oa_items|length}}</span>/{{oa_count}} found OpenAlex items</span>
+{% else %}
+        <span> All OpenAlex results for this query already in MUS. </span>
+{% endif %}
+</div>
