@@ -1,6 +1,6 @@
 from django.shortcuts import render
 from django.http import JsonResponse
-from .models import Paper, viewPaper
+from .models import Paper, viewPaper, PureEntry
 from django.contrib.auth.decorators import login_required
 import logging
 from django.db import transaction
@@ -90,6 +90,12 @@ def single_article(request, article_id):
     beep, boop, paper = getPapers(article_id, "all", request.user)
     response = render(request, "single_article.html", {"article": paper[0]})
     return response
+
+def single_article_pure_view(request, article_id):
+    logger.info("[url] /pure_entries/%s [user] %s", article_id, request.user.username)
+    article=Paper.objects.get(pk=article_id).prefetch_related('pure_entries').only('id','doi', 'title', 'openalex_url', 'pure_entries')
+
+    return render(request, "pure_entries.html", {"article": article, 'pure_entries': article[0].pure_entries.all()})
 
 @cache_page(CACHE_TTL)
 @login_required

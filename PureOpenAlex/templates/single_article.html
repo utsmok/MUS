@@ -33,7 +33,9 @@
 				<i class="far fa-bookmark"></i> Bookmark
 			</button>
 		{% endif %}
-
+		<a href="{% url 'PureOpenAlex:pure_entries' article.id %}" target="_blank" id="{{article.id}}-pureentries" class="badge badge-primary p-3 rounded-4">
+			<i class="fas fa-server"></i> Overview of all found related Pure items
+		</a>
 	</div>
 </div>
 <div class="row pt-2 ">
