@@ -10,7 +10,8 @@ from .views import (
     searchpaper,
     addarticle,
     author,
-    customfilter
+    customfilter,
+    single_article_pure_view,
 )
 
 app_name = "PureOpenAlex"
@@ -34,5 +35,6 @@ urlpatterns = [
     path('search/results/', searchpaper, name='search_results_view'),
     path('addarticle/<path:doi>', addarticle, name='addarticle'),
     path('authorarticles/<str:name>', author, name='authorarticles'),
-    path('customfilter/',customfilter, name='customfilter')
+    path('customfilter/',customfilter, name='customfilter'),
+    path('pure_entries/<int:article_id>/', single_article_pure_view, name='pure_entries'),
 ]
