@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  mus:
+    build:
+      context: .
+      dockerfile: Dockerfile.dockerfile
+    command: gunicorn mus.wsgi:application --bind 0.0.0.0:8000
+    volumes:
+      - static_volume:/var/www/mus/static
+    expose:
+      - 8000
+    env_file:
+      - ./secrets.env
+    restart: always
+    depends_on:
+      - db
+      - redis
+      - mongo
+  db:
+    image: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    env_file:
+      - ./secrets.env.db
+  pgadmin:
+      image: dpage/pgadmin4
+      container_name: pgadmin
+      depends_on:
+        - db
+      ports:
+        - '5051:80'
+      env_file:
+      - ./secrets.env.man
+      restart: always
+  redis:
+    image: redis:latest
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/root/redis
+      - /docker/appdata/redis/redis.conf:/usr/local/etc/redis/redis.conf
+    env_file:
+      - ./secrets.env.db
+
+  mongo:
+    image: mongo
+    restart: always
+    ports:
+      - '27017:27017'
+    env_file:
+      - ./secrets.env.db
+
+  mongo-express:
+    image: mongo-express
+    restart: always
+    ports:
+      - '8050:8081'
+    env_file:
+      - ./secrets.env.man
+    volumes:
+      - mongo_express_data:/data/db
+
+  caddy:
+    build:
+      context: .
+      dockerfile: Dockerfile_caddy.dockerfile
+    volumes:
+      - static_volume:/var/www/mus/static
+    ports:
+      - '80:80'
+      - '443:443'
+    depends_on:
+      - mus
+
+volumes:
+  postgres_data:
+  static_volume:
+  redis_data:
+  mongo_express_data:
