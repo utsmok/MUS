@@ -128,7 +128,7 @@ def convertToEuro(amount, currency, publishdate):
     """
     folder = 'ecb_data'
     zipname = f"ecb_{date.today():%Y%m%d}.zip"
-    filename =os.path.join(folder, filename)
+    filename =os.path.join(folder, zipname)
 
     if not op.isfile(os.path.join(folder, filename)):
         urllib.request.urlretrieve(ECB_URL, filename)
@@ -137,13 +137,11 @@ def convertToEuro(amount, currency, publishdate):
 
     return int(c.convert(amount, currency, "EUR", publishdate))
 
-
 def determineIsInPure(paper):
     for location in paper.locations.all():
         if "twente" in location.pdf_url.lower():
             return True
     return False
-
 
 def processDOI(doi):
     startdoi = doi
@@ -158,7 +156,6 @@ def processDOI(doi):
     if doi != startdoi:
         logger.debug("Changed DOI from %s to %s", startdoi, doi)
     return doi
-
 
 def calculateUTkeyword(work, paper, authorships):
     keyword = ""
@@ -215,7 +212,6 @@ def calculateUTkeyword(work, paper, authorships):
 
     return keyword
 
-
 def addAvatars():
     """
     Reads URL for avatar of UT author from UTData.avatar, grabs the jpg and stores that instead
@@ -238,7 +234,6 @@ def addAvatars():
             image = ImageFile(BytesIO(response.content))
             with transaction.atomic():
                 utdata.avatar.save(fn,image,save=True)
-
 
 def addEEMCSAuthorsFromCSV():
     import csv

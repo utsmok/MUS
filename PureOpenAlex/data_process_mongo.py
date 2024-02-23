@@ -7,7 +7,8 @@ from datetime import date, datetime
 from dateutil.relativedelta import relativedelta
 from pymongo import MongoClient
 from .data_helpers import (
-    determineIsInPure,)
+    determineIsInPure,
+    convertToEuro,)
 FACULTIES = ['ITC', 'EEMCS', 'ET', 'TNW', 'BMS', 'Science and Technology Faculty', 'Behavioural, Management and Social Sciences', 'Engineering Technology', 'Geo-Information Science and Earth Observation', 'Electrical Engineering, Mathematics and Computer Science']
 OA_WORK_COLUMNS = ['_id','id','doi','title','display_name','publication_year','publication_date','ids','language','primary_location','type','type_crossref','indexed_in','open_access','authorships','countries_distinct_count','institutions_distinct_count','corresponding_author_ids','corresponding_institution_ids','apc_list','apc_paid','has_fulltext','fulltext_origin','cited_by_count','cited_by_percentile_year','biblio','is_retracted','is_paratext','keywords','concepts','mesh','locations_count','locations','best_oa_location','sustainable_development_goals','grants','referenced_works_count','referenced_works','related_works','ngrams_url','abstract_inverted_index','cited_by_api_url','counts_by_year','updated_date','created_date','topics','primary_topic']
 CR_WORK_COLUMNS = ['_id','indexed','reference-count','publisher','content-domain','published-print','abstract','DOI','type','created','page','source','is-referenced-by-count','title','prefix','author','member','container-title','link','deposited','score','resource','subtitle','issued','references-count','URL','published','issue','volume','journal-issue','ISSN','issn-type','subject','short-container-title','language','isbn-type','ISBN']
@@ -65,26 +66,8 @@ def processMongoPaper(dataset):
     dates.append(openalex_date)
     earliestdate = min(dates)
     tavernedate = earliestdate + relativedelta(months=+6)
-    apcdict = {
-        'apc_listed_value':None,
-        'apc_listed_currency':"",
-        'apc_listed_value_usd':None,
-        'apc_paid_value':None,
-        'apc_paid_currency':"",
-        'apc_paid_value_usd':None,
-    }
 
-    if isinstance(data['apc_list'],dict):
-        if 'value' in data['apc_list'].keys():
-            if data['apc_list']['value'] is not None:
-                apcdict = {
-                    'apc_listed_value':data['apc_list']['value'],
-                    'apc_listed_currency':data['apc_list']['currency'],
-                    'apc_listed_value_usd':data['apc_list']['value_usd'],
-                    'apc_paid_value':data['apc_paid']['value'],
-                    'apc_paid_currency':data['apc_paid']['currency'],
-                    'apc_paid_value_usd':data['apc_paid']['value_usd'],
-                }
+    apc_data = getAPCData(data)
     prim_loc=""
     prim_pdf=""
     if 'primary_location' in data.keys():
@@ -116,18 +99,26 @@ def processMongoPaper(dataset):
         'published':crossrefdates['published'],
         'issued':crossrefdates['issued'],
         'taverne_date':tavernedate,
+        'apc_listed_value':apc_data[0],
+        'apc_listed_currency':apc_data[1],
+        'apc_listed_value_usd':apc_data[2],
+        'apc_listed_value_eur':apc_data[3],
+        'apc_paid_value':apc_data[4],
+        'apc_paid_currency':apc_data[5],
+        'apc_paid_value_usd':apc_data[6],
+        'apc_paid_value_eur':apc_data[7],
     }
-
     if fulldict['primary_link'] is None:
         fulldict['primary_link'] = ""
-    fulldict.update(apcdict)
+    
     work=Paper(**fulldict)
+    
+    with transaction.atomic():
+        work.journal = getJournals(data)
 
     with transaction.atomic():
         work.save()
 
-    with transaction.atomic():
-        work.journal = getJournals(data)
 
     locationdata = add_locations(data)
     if locationdata:
@@ -154,7 +145,6 @@ def processMongoPaper(dataset):
 
     with transaction.atomic():
         work.is_in_pure = determineIsInPure(work)
-
     with transaction.atomic():
         work.save()
 
@@ -663,3 +653,57 @@ def calculateUTkeyword(work, paper, authorships):
             keyword += f" Taverne with keyword {datetime.today().year} OA Procedure "
 
     return keyword
+
+
+def getAPCData(work):
+    publication_date = date.fromisoformat(work["publication_date"])
+
+    try:
+        apc_list = work["apc_list"]
+        if apc_list is None:
+            listed_value = 0
+            listed_currency = ""
+            listed_value_usd = 0
+            listed_value_eur = 0
+        else:
+            listed_value = int(apc_list["value"])
+            listed_currency = apc_list["currency"]
+            listed_value_usd = int(apc_list["value_usd"])
+            listed_value_eur = convertToEuro(
+                listed_value, listed_currency, publication_date
+            )
+
+    except Exception:
+        listed_value = 0
+        listed_currency = ""
+        listed_value_usd = 0
+        listed_value_eur = 0
+
+    try:
+        apc_paid = work["apc_paid"]
+        if apc_paid is None:
+            paid_value = 0
+            paid_currency = ""
+            paid_value_usd = 0
+            paid_value_eur = 0
+        else:
+            paid_value = int(apc_paid["value"])
+            paid_currency = apc_paid["currency"]
+            paid_value_usd = int(apc_paid["value_usd"])
+            paid_value_eur = convertToEuro(paid_value, paid_currency, publication_date)
+    except Exception:
+        paid_value = 0
+        paid_currency = ""
+        paid_value_usd = 0
+        paid_value_eur = 0
+
+    return [
+        listed_value,
+        listed_currency,
+        listed_value_usd,
+        listed_value_eur,
+        paid_value,
+        paid_currency,
+        paid_value_usd,
+        paid_value_eur,
+    ]

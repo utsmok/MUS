@@ -21,13 +21,13 @@ class Organization(models.Model):
     type = models.CharField(max_length=256, blank=True, null=False)
     data_source = models.CharField(max_length=256, blank=True, null=True)
     openalex_url = models.CharField(max_length=256, blank=True, null=True)
+    
     class Meta:
         indexes = [
             models.Index(fields=["name"]),
             models.Index(fields=["ror"]),
             models.Index(fields=["openalex_url"]),
         ]
-
 
 class AFASData(TimeStampedModel, models.Model):
     employee_id = models.CharField(max_length=256, blank=True, null=True)
@@ -78,8 +78,8 @@ class Author(TimeStampedModel, models.Model):
     )
     orcid = models.CharField(max_length=256, blank=True, null=True)
     is_ut = models.BooleanField()
-    afas_data = models.ForeignKey(
-        "AFASData", related_name="authors", on_delete=models.SET_NULL, null=True
+    afas_data = models.OneToOneField(
+        "AFASData", on_delete=models.SET_NULL, null=True
     )
     openalex_url = models.CharField(max_length=256, blank=True, null=True)
     known_as = models.JSONField(blank=True, null=True)
@@ -94,22 +94,7 @@ class Author(TimeStampedModel, models.Model):
             models.Index(fields=["openalex_url"]),
         ]
 
-
-class Department(models.Model):
-    name = models.CharField(max_length=256)
-    faculty = models.CharField(max_length=256, blank=True, null=False)
-
-    class Meta:
-        indexes = [
-            models.Index(fields=["faculty"]),
-            models.Index(fields=["name"]),
-        ]
-
-
 class UTData(models.Model):
-    departments = models.ManyToManyField(
-        Department, related_name="employees", db_index=True
-    )
     avatar = models.ImageField(
         upload_to="author_avatars/", blank=True, null=True
     )
@@ -318,13 +303,11 @@ class PureAuthor(TimeStampedModel, models.Model):
     author = models.ForeignKey(
         Author, on_delete=models.SET_NULL, related_name="pure_authors", null=True
     )
-
     class Meta:
         indexes = [
             models.Index(fields=["name"]),
             models.Index(fields=["author"]),
         ]
-
 
 class PureEntry(TimeStampedModel, models.Model):
     title = models.CharField(max_length=5120, blank=True, null=False)
@@ -333,6 +316,7 @@ class PureEntry(TimeStampedModel, models.Model):
     )
     contributors = models.ManyToManyField(PureAuthor, related_name="pure_entries")
     creators = models.ManyToManyField(PureAuthor, related_name="pure_creators")
+    authors = models.ManyToManyField(Author, related_name="pure_entries")
     language = models.CharField(max_length=256, blank=True, null=False)
     date = models.CharField(max_length=256, blank=True, null=False)
     year = models.CharField(max_length=256, blank=True, null=False)

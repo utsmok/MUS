@@ -371,23 +371,8 @@ def getLocations(work):
                 )
                 if created:
                     sourceclass.save()
-
-            # commented out because its taking a lot of time
-            """
-            data={}
-            if fullsource['x_concepts'] is not None:
-                data['concepts']=fullsource['x_concepts']
-                concepts=prepConcepts(data)
-                db_lock.acquire()
-                for concept in concepts:
-                    sourceclass.concepts.add(concept)
-                sourceclass.save()
-                db_lock.release()
-
-            """
         else:
             sourceclass = None
-
         with transaction.atomic():
             locationclass, created = Location.objects.get_or_create(
                 is_accepted=is_accepted,
