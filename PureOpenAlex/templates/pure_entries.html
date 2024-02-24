@@ -88,7 +88,17 @@
 						<div class="col-md-2 col badge badge-danger fs-6">Language</div>
 						<div class="col-md-2 col" ><span class="fs-6 text-black all"> {{ entry.language }} </span></div>
 						<div class="col-md-2 col badge badge-danger fs-6"> ISBN </div>
-						<div class="col-md-2 col" ><span class="fs-6 text-black all"> {{ entry.isbn }} </span></div>
+						<div class="col-md-2 col" ><span class="fs-6 text-black all"> {{ entry.isbn }} </span>
+						{% if entry.duplicate_ids %}
+							{% for key, value in entry.duplicate_ids.items %}
+								{% if 'isbn' in key %}
+									{% for isbnv in value %}
+										<span class="ms-2 fs-6 text-black all"> {{ isbnv }} </span>
+									{% endfor %}
+								{% endif %}
+							{% endfor %}
+						{% endif %}
+						</div>
 					</div>
 					<div class="mb-2 row row-cols-2 row-cols-md-2  text-center align-items-center">
 						<div class="col-md-2 col badge badge-danger fs-6">Publisher </div>
@@ -119,9 +129,31 @@
 					<div class="mb-2 row row-cols-2 row-cols-md-2  text-center align-items-center">
 						<div class="col-md-2 col badge badge-success rounded-pill rounded-3 fs-6"> <img src="{% static 'doi.svg' %}" height="40" alt="doi"/> </div>
 						<div class="col-md-4 col  fw-bolder fs-6" ><a href="{{ entry.doi }}" class="all"> {{ entry.doi }} </a></div>
-					{% if entry.scopus %}
+						{% if entry.duplicate_ids %}
+							{% for key, value in entry.duplicate_ids.items %}
+								{% if 'doi' in key %}
+									{% for doiv in value %}
+									<div class="col-md-2 col badge badge-success rounded-pill rounded-3 fs-6"> <img src="{% static 'doi.svg' %}" height="40" alt="doi"/> </div>
+									<div class="col-md-4 col  fw-bolder fs-6" ><a href="{{ entry.doi }}" class="all"> {{ doiv }} </a></div>
+									</div>
+									<div class="mb-2 row row-cols-2 row-cols-md-2  text-center align-items-center">
+									{% endfor %}
+								{% endif %}
+							{% endfor %}
+						{% endif %}
+						{% if entry.scopus %}
 						<div class="col-md-2 col badge badge-success rounded-pill rounded-3 fs-6"><img src="{% static 'scopus.png' %}" height="40" alt="scopus"/></div>
-						<div class="col-md-4 col  fw-bolder fs-6" ><a href="{{ entry.scopus }}" class="all "> {{ entry.scopus|truncatechars:40 }}</a></div>
+						<div class="col-md-4 col  fw-bolder fs-6" ><a href="{{ entry.scopus }}" class="all "> {{ entry.scopus|truncatechars:40 }}</a>
+						{% if entry.duplicate_ids %}
+							{% for key, value in entry.duplicate_ids.items %}
+								{% if 'scopus' in key %}
+									{% for scopusv in value %}
+									<a href="{{ scopusv }}" class="ms-2 all "> {{ scopusv|truncatechars:40 }} </a>
+									{% endfor %}
+								{% endif %}
+							{% endfor %}
+						{% endif %}
+						</div>
 					</div>
 					{% endif %}
 					{% if entry.other_links %}
@@ -150,10 +182,28 @@
 						<div class="col-md-2 col badge badge-warning rounded-pill rounded-3 fs-6"><img src="{% static 'utris.png' %}" height="40" alt="utris"/> </i> </div>
 						<div class="col-md-4 col  fw-bolder fs-6" >
 							<div class='row'>
-							<div class='col-12 mb-1'><i class="fab fa-chrome me-3"></i><a href="{{ entry.researchutwente }}" class="all">{{ entry.researchutwente|truncatechars:40}}</a></div>
+							<div class='col-12 mb-1'><i class="fab fa-chrome me-3"></i><a href="{{ entry.researchutwente }}" class="all">{{ entry.researchutwente|truncatechars:40}}</a>
+							{% if entry.duplicate_ids %}
+								{% for key, value in entry.duplicate_ids.items %}
+									{% if 'researchutwente' in key %}
+										{% for researchutwentev in value %}
+										<a href="{{ researchutwentev }}" class="ms-2 all "> {{ researchutwentev|truncatechars:40 }} </a>
+										{% endfor %}
+									{% endif %}
+								{% endfor %}
+							{% endif %}</div>
 							</div>
 							<div class='row'>
-								<div class='col-12'><i class="fas fa-file-lines me-3"></i><a href="{{ entry.risutwente }}" class="all"> {{ entry.risutwente|truncatechars:40 }}</a></div>
+								<div class='col-12'><i class="fas fa-file-lines me-3"></i><a href="{{ entry.risutwente }}" class="all"> {{ entry.risutwente|truncatechars:40 }}</a>
+								{% if entry.duplicate_ids %}
+									{% for key, value in entry.duplicate_ids.items %}
+										{% if 'risutwente' in key %}
+											{% for risutwentev in value %}
+											<a href="{{ risutwentev }}" class="ms-2 all "> {{ risutwentev|truncatechars:40 }} </a>
+											{% endfor %}
+										{% endif %}
+									{% endfor %}
+								{% endif %}</div>
 							</div>
 						</div>
 					</div>
@@ -272,8 +322,7 @@
 {% endfor %}
 <!--
 jsonfields:
-duplicate_ids = models.JSONField(blank=True, null=True)
-other_links = models.JSONField(blank=True, null=True)-->
+ = models.JSONField(blank=True, null=True)
 
 
 
