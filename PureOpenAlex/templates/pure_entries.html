@@ -152,10 +152,11 @@
 									{% endfor %}
 								{% endif %}
 							{% endfor %}
+							{% endif %}
+							</div>
 						{% endif %}
-						</div>
 					</div>
-					{% endif %}
+
 					{% if entry.other_links %}
 					{% for key, value in entry.other_links.items %}
 						{% for url in value %}
@@ -181,25 +182,25 @@
 					<div class="mb-2 row row-cols-4 row-cols-md-4  text-center align-items-center">
 						<div class="col-md-2 col badge badge-warning rounded-pill rounded-3 fs-6"><img src="{% static 'utris.png' %}" height="40" alt="utris"/> </i> </div>
 						<div class="col-md-4 col  fw-bolder fs-6" >
-							<div class='row'>
+							<div class='row text-start'>
 							<div class='col-12 mb-1'><i class="fab fa-chrome me-3"></i><a href="{{ entry.researchutwente }}" class="all">{{ entry.researchutwente|truncatechars:40}}</a>
 							{% if entry.duplicate_ids %}
 								{% for key, value in entry.duplicate_ids.items %}
 									{% if 'researchutwente' in key %}
 										{% for researchutwentev in value %}
-										<a href="{{ researchutwentev }}" class="ms-2 all "> {{ researchutwentev|truncatechars:40 }} </a>
+										<i class="fab fa-chrome me-3"></i><a href="{{ researchutwentev }}" class="ms-2 all "> {{ researchutwentev|truncatechars:40 }} </a>
 										{% endfor %}
 									{% endif %}
 								{% endfor %}
 							{% endif %}</div>
 							</div>
-							<div class='row'>
+							<div class='row text-start'>
 								<div class='col-12'><i class="fas fa-file-lines me-3"></i><a href="{{ entry.risutwente }}" class="all"> {{ entry.risutwente|truncatechars:40 }}</a>
 								{% if entry.duplicate_ids %}
 									{% for key, value in entry.duplicate_ids.items %}
 										{% if 'risutwente' in key %}
 											{% for risutwentev in value %}
-											<a href="{{ risutwentev }}" class="ms-2 all "> {{ risutwentev|truncatechars:40 }} </a>
+											<i class="fas fa-file-lines me-3"></i><a href="{{ risutwentev }}" class="ms-2 all "> {{ risutwentev|truncatechars:40 }} </a>
 											{% endfor %}
 										{% endif %}
 									{% endfor %}
