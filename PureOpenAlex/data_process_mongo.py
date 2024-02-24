@@ -474,7 +474,6 @@ def get_authorships_data(authordata):
                     'scopus_id':extradata[author['id']]['data']['ids']['scopus'] if 'scopus' in extradata[author['id']]['data']['ids'].keys() else None,
                     'orcid':author['orcid'] if author['orcid'] and author['orcid'] != "" else None,
                 }
-
                 if is_ut:
                     utdata=get_ut_data(author['id'])
                     if utdata:

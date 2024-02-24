@@ -340,6 +340,18 @@ def getPapers(name, filter="all", user=None):
     stats = getStats(listpapers)
     return facultyname, stats, listpapers
 
+def get_pure_entries(article_id, user):
+    article=Paper.objects.get(pk=article_id)
+    pure_entries = article.pure_entries.all()
+    author_prefetch=Prefetch(
+            'authors',
+            queryset=Author.objects.filter(pure_entries__in=pure_entries).distinct()
+            .prefetch_related('affiliations').select_related('utdata'),
+            to_attr="preloaded_authors",
+        )
+    pure_entries=pure_entries.prefetch_related(author_prefetch)
+
+    return article, pure_entries
 
 def open_alex_autocomplete(query, types=['works','authors'], amount=5):
     '''

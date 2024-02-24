@@ -1,6 +1,6 @@
 from django.shortcuts import render
 from django.http import JsonResponse
-from .models import Paper, viewPaper, PureEntry
+from .models import Paper, viewPaper
 from django.contrib.auth.decorators import login_required
 import logging
 from django.db import transaction
@@ -9,7 +9,7 @@ from django.db.models import Q
 from django.core.exceptions import ObjectDoesNotExist
 from .data_add import addPaper
 from .data_repair import removeDuplicates
-from .data_view import generateMainPage, getPapers, getAuthorPapers, open_alex_autocomplete
+from .data_view import generateMainPage, getPapers, getAuthorPapers, open_alex_autocomplete, get_pure_entries
 from django.conf import settings
 from .data_helpers import processDOI
 from django.views.decorators.cache import cache_page
@@ -33,7 +33,7 @@ def addarticle(request,doi):
                 viewpaper=True,
                 user=request.user,
             )
-    except:
+    except Exception:
         result['status'] = False
         result['action'] = 'An error occurred while adding paper.'
 
@@ -91,11 +91,11 @@ def single_article(request, article_id):
     response = render(request, "single_article.html", {"article": paper[0]})
     return response
 
+@login_required
 def single_article_pure_view(request, article_id):
     logger.info("[url] /pure_entries/%s [user] %s", article_id, request.user.username)
-    article=Paper.objects.get(pk=article_id).prefetch_related('pure_entries').only('id','doi', 'title', 'openalex_url', 'pure_entries')
-
-    return render(request, "pure_entries.html", {"article": article, 'pure_entries': article[0].pure_entries.all()})
+    article, pure_entries = get_pure_entries(article_id, request.user)
+    return render(request, "pure_entries.html", {"article": article, 'pure_entries': pure_entries})
 
 @cache_page(CACHE_TTL)
 @login_required
