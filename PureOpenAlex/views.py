@@ -87,7 +87,7 @@ def delete_duplicates(request):
 @login_required
 def single_article(request, article_id):
     logger.info("[url] /article/%s [user] %s", article_id, request.user.username)
-    beep, boop, paper = getPapers(article_id, "all", request.user)
+    _, _, paper = getPapers(article_id, "all", request.user)
     response = render(request, "single_article.html", {"article": paper[0]})
     return response
 
@@ -121,7 +121,7 @@ def faculty(request, name="all", filter="all"):
 def author(request, name):
     #get all papers by author and show them using the faculty view
     try:
-        display_name, stats, listpapers = getAuthorPapers(name, request.user)
+        _, stats, listpapers = getAuthorPapers(name, request.user)
     except ObjectDoesNotExist:
         name = "Author %s not found" % name
         stats = {}

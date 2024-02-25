@@ -171,61 +171,60 @@ def processPaperData(work):
     logger.debug(
         "initial data processed for doi %s, now inserting paper in db", work["doi"]
     )
-    with transaction.atomic():
-        paper, created = Paper.objects.get_or_create(
-            openalex_url=work.get("id"),
-            title=work.get("title"),
-            doi=work.get("doi"),
-            year=work.get("publication_year"),
-            citations=int(work.get("cited_by_count", 0))
-            if work.get("cited_by_count") is not None
-            else 0,
-            openaccess=openaccess,
-            primary_link=work["primary_location"].get("landing_page_url")
-            if work["primary_location"].get("landing_page_url") is not None
-            else "",
-            itemtype=work.get("type_crossref")
-            if work.get("type_crossref") is not None
-            else "",
-            date=work.get("publication_date")
-            if work.get("publication_date") is not None
-            else "",
-            language=work.get("language") if work.get("language") is not None else "",
-            abstract=invertAbstract(work.get("abstract_inverted_index"))
-            if work.get("abstract_inverted_index") is not None
-            else "",
-            pages=pages,
-            pagescount=pagescount,
-            volume=work["biblio"].get("volume")
-            if work["biblio"].get("volume") is not None
-            else "",
-            issue=work["biblio"].get("issue")
-            if work["biblio"].get("issue") is not None
-            else "",
-            is_oa=bool(work["open_access"].get("is_oa"))
-            if work["open_access"].get("is_oa") is not None
-            else False,
-            license=license,
-            pdf_link_primary=work["primary_location"]["pdf_url"]
-            if work["primary_location"]["pdf_url"] is not None
-            else "",
-            journal=journal,
-            apc_listed_value=apc_data[0],
-            apc_listed_currency=apc_data[1],
-            apc_listed_value_usd=apc_data[2],
-            apc_listed_value_eur=apc_data[3],
-            apc_paid_value=apc_data[4],
-            apc_paid_currency=apc_data[5],
-            apc_paid_value_usd=apc_data[6],
-            apc_paid_value_eur=apc_data[7],
-            issued=crossrefdata["issued"],
-            published=crossrefdata["published"],
-            published_online=crossrefdata["published_online"],
-            published_print=crossrefdata["published_print"],
-            taverne_date=tavernedate,
-        )
-        if created:
-            paper.save()
+    paper, created = Paper.objects.get_or_create(
+        openalex_url=work.get("id"),
+        title=work.get("title"),
+        doi=work.get("doi"),
+        year=work.get("publication_year"),
+        citations=int(work.get("cited_by_count", 0))
+        if work.get("cited_by_count") is not None
+        else 0,
+        openaccess=openaccess,
+        primary_link=work["primary_location"].get("landing_page_url")
+        if work["primary_location"].get("landing_page_url") is not None
+        else "",
+        itemtype=work.get("type_crossref")
+        if work.get("type_crossref") is not None
+        else "",
+        date=work.get("publication_date")
+        if work.get("publication_date") is not None
+        else "",
+        language=work.get("language") if work.get("language") is not None else "",
+        abstract=invertAbstract(work.get("abstract_inverted_index"))
+        if work.get("abstract_inverted_index") is not None
+        else "",
+        pages=pages,
+        pagescount=pagescount,
+        volume=work["biblio"].get("volume")
+        if work["biblio"].get("volume") is not None
+        else "",
+        issue=work["biblio"].get("issue")
+        if work["biblio"].get("issue") is not None
+        else "",
+        is_oa=bool(work["open_access"].get("is_oa"))
+        if work["open_access"].get("is_oa") is not None
+        else False,
+        license=license,
+        pdf_link_primary=work["primary_location"]["pdf_url"]
+        if work["primary_location"]["pdf_url"] is not None
+        else "",
+        journal=journal,
+        apc_listed_value=apc_data[0],
+        apc_listed_currency=apc_data[1],
+        apc_listed_value_usd=apc_data[2],
+        apc_listed_value_eur=apc_data[3],
+        apc_paid_value=apc_data[4],
+        apc_paid_currency=apc_data[5],
+        apc_paid_value_usd=apc_data[6],
+        apc_paid_value_eur=apc_data[7],
+        issued=crossrefdata["issued"],
+        published=crossrefdata["published"],
+        published_online=crossrefdata["published_online"],
+        published_print=crossrefdata["published_print"],
+        taverne_date=tavernedate,
+    )
+    if created:
+        paper.save()
 
     start_time = time.time()
     locations = getLocations(work)
@@ -236,11 +235,9 @@ def processPaperData(work):
     )
 
     for location in locations:
-        with transaction.atomic():
-            paper.locations.add(location)
+        paper.locations.add(location)
 
-    with transaction.atomic():
-        paper.is_in_pure = determineIsInPure(paper)
+    paper.is_in_pure = determineIsInPure(paper)
 
     """ TODO: add this to crossrefdata and integrate in authorships
         crossrefdata['author'] - list with dicts
@@ -250,25 +247,21 @@ def processPaperData(work):
     """
 
     for author in authorships:
-        with transaction.atomic():
-            paper.authors.add(
-                author["author"],
-                through_defaults={
-                    "paper": paper,
-                    "position": author["position"],
-                    "corresponding": author["corresponding"],
-                },
-            )
+        paper.authors.add(
+            author["author"],
+            through_defaults={
+                "paper": paper,
+                "position": author["position"],
+                "corresponding": author["corresponding"],
+            },
+        )
 
     for keyword in keywords:
-        with transaction.atomic():
-            paper.keywords.add(keyword)
+        paper.keywords.add(keyword)
 
-    with transaction.atomic():
-        paper.ut_keyword_suggestion = calculateUTkeyword(work, paper, authorships)
+    paper.ut_keyword_suggestion = calculateUTkeyword(work, paper, authorships)
 
-    with transaction.atomic():
-        paper.save()
+    paper.save()
 
     timelist.append(
         f"    Total time taken:     {time.strftime('%M:%S',time.gmtime((time.time() - start_time_total)))} s"
@@ -358,35 +351,33 @@ def getLocations(work):
                     if issn != e_issn:
                         issn = issn
                         break
-            with transaction.atomic():
-                sourceclass, created = Source.objects.get_or_create(
-                    openalex_url=fullsource["id"],
-                    homepage_url=homepage_url,
-                    host_org=host_org,
-                    is_in_doaj=fullsource["is_in_doaj"],
-                    type=fullsource["type"],
-                    display_name=fullsource["display_name"],
-                    issn=issn,
-                    e_issn=e_issn,
-                )
-                if created:
-                    sourceclass.save()
-        else:
-            sourceclass = None
-        with transaction.atomic():
-            locationclass, created = Location.objects.get_or_create(
-                is_accepted=is_accepted,
-                is_oa=is_oa,
-                is_published=is_published,
-                license=license,
-                landing_page_url=landing_page_url,
-                source=sourceclass,
-                is_primary=is_primary,
-                is_best_oa=is_best_oa,
-                pdf_url=pdf_url,
+            sourceclass, created = Source.objects.get_or_create(
+                openalex_url=fullsource["id"],
+                homepage_url=homepage_url,
+                host_org=host_org,
+                is_in_doaj=fullsource["is_in_doaj"],
+                type=fullsource["type"],
+                display_name=fullsource["display_name"],
+                issn=issn,
+                e_issn=e_issn,
             )
             if created:
-                locationclass.save()
+                sourceclass.save()
+        else:
+            sourceclass = None
+        locationclass, created = Location.objects.get_or_create(
+            is_accepted=is_accepted,
+            is_oa=is_oa,
+            is_published=is_published,
+            license=license,
+            landing_page_url=landing_page_url,
+            source=sourceclass,
+            is_primary=is_primary,
+            is_best_oa=is_best_oa,
+            pdf_url=pdf_url,
+        )
+        if created:
+            locationclass.save()
             locations.append(locationclass)
 
     return locations
@@ -504,10 +495,9 @@ def getJournals(work):
                 else "",
             }
 
-            with transaction.atomic():
-                journal, created = Journal.objects.get_or_create(**journal_data)
-                if created:
-                    journal.save()
+            journal, created = Journal.objects.get_or_create(**journal_data)
+            if created:
+                journal.save()
         except Exception:
             logger.error("Failed to store journal data for doi %s ", work["doi"])
             logger.debug("Journal data: %s", work["primary_location"]["source"])
@@ -522,18 +512,17 @@ def getAuthorships(work):
     orcidlist = []
     for entry in work["authorships"]:
         parsedname = HumanName(unidecode(entry["author"]["display_name"]))
-        with transaction.atomic():
-            tempAuthor, created = Author.objects.get_or_create(
-                name=entry["author"]["display_name"],
-                orcid=entry["author"]["orcid"],
-                first_name=parsedname.first,
-                last_name=parsedname.last,
-                middle_name=parsedname.middle,
-                defaults={"is_ut": False},
-                openalex_url=entry["author"]["id"],
-            )
-            if created:
-                tempAuthor.save()
+        tempAuthor, created = Author.objects.get_or_create(
+            name=entry["author"]["display_name"],
+            orcid=entry["author"]["orcid"],
+            first_name=parsedname.first,
+            last_name=parsedname.last,
+            middle_name=parsedname.middle,
+            defaults={"is_ut": False},
+            openalex_url=entry["author"]["id"],
+        )
+        if created:
+            tempAuthor.save()
 
         if entry["institutions"]:
             for institute in entry["institutions"]:
@@ -546,17 +535,16 @@ def getAuthorships(work):
                 created = False
                 tempaffl = None
                 if institute["display_name"] in TWENTENAMES:
-                    with transaction.atomic():
-                        tempaffl, created = Organization.objects.get_or_create(
-                            name="University of Twente",
-                            ror="https://ror.org/006hf6230",
-                            type="education",
-                            country_code="NL",
-                        )
-                        if created:
-                            tempaffl.data_source = "OpenAlex"
-                            tempaffl.save()
-                        tempAuthor.affiliations.add(tempaffl)
+                    tempaffl, created = Organization.objects.get_or_create(
+                        name="University of Twente",
+                        ror="https://ror.org/006hf6230",
+                        type="education",
+                        country_code="NL",
+                    )
+                    if created:
+                        tempaffl.data_source = "OpenAlex"
+                        tempaffl.save()
+                    tempAuthor.affiliations.add(tempaffl)
                 elif Organization.objects.filter(
                     name=institute["display_name"]
                 ).exists():
@@ -570,10 +558,9 @@ def getAuthorships(work):
                             currorg.type = institute.get("type", "")
                         if currorg.country_code == "" or currorg.country_code is None:
                             currorg.country_code = country_code
-                        with transaction.atomic():
-                            currorg.save()
-                            tempaffl = currorg
-                            tempAuthor.affiliations.add(tempaffl)
+                        currorg.save()
+                        tempaffl = currorg
+                        tempAuthor.affiliations.add(tempaffl)
                     except Exception:
                         logger.error(
                             "Org %s already exists, multiple times. Needs manual fix.",
@@ -581,17 +568,16 @@ def getAuthorships(work):
                         )
                 else:
                     try:
-                        with transaction.atomic():
-                            tempaffl, created = Organization.objects.get_or_create(
-                                name=institute["display_name"],
-                                country_code=institute.get("country_code", ""),
-                                ror=institute.get("ror", ""),
-                                type=institute.get("type", ""),
-                            )
-                            if created:
-                                tempaffl.data_source = "OpenAlex"
-                                tempaffl.save()
-                            tempAuthor.affiliations.add(tempaffl)
+                        tempaffl, created = Organization.objects.get_or_create(
+                            name=institute["display_name"],
+                            country_code=institute.get("country_code", ""),
+                            ror=institute.get("ror", ""),
+                            type=institute.get("type", ""),
+                        )
+                        if created:
+                            tempaffl.data_source = "OpenAlex"
+                            tempaffl.save()
+                        tempAuthor.affiliations.add(tempaffl)
                     except Exception as e:
                         logger.error("Failed to store affiliation data: %s", e)
 
@@ -608,7 +594,49 @@ def getAuthorships(work):
 
     orcidresult = asyncio.run(getORCIDData(orcidlist, utchecklist))
 
-    for entry in orcidresult:
+    for result in orcidresult:
+        entry=result[0]
+        author=result[1]
+        affiliations = []
+        for affiliation in entry["activities-summary"]["employments"][
+                "affiliation-group"
+            ]:
+                orgname = (
+                    affiliation["summaries"][0]["employment-summary"][
+                        "organization"
+                    ]["name"]
+                    or ""
+                )
+                orgcountry = (
+                    affiliation["summaries"][0]["employment-summary"][
+                        "organization"
+                    ]["address"]["country"]
+                    or ""
+                )
+                if orgname in TWENTENAMES:
+                    affiliations.append(
+                        {
+                            "name": "University of Twente",
+                            "ror": "https://ror.org/006hf6230",
+                            "type": "education",
+                            "country_code": "NL",
+                        }
+                    )
+                    if author not in utchecklist:
+                        utchecklist.append(author)
+                else:
+                    affiliations.append(
+                        {
+                            "name": orgname,
+                            "country_code": orgcountry,
+                            "data_source": "ORCID",
+                        }
+                    )
+        entry={
+            "author": author,
+            "affiliations": affiliations,
+            "utchecklist": utchecklist,
+        }
         utchecklist += entry["utchecklist"]
         utchecklist = list(set(utchecklist))
         if len(entry["affiliations"]) > 0:
@@ -618,24 +646,22 @@ def getAuthorships(work):
                     .affiliations.filter(name=affiliation["name"])
                     .exists()
                 ):
-                    with transaction.atomic():
-                        tempaffl, created = Organization.objects.get_or_create(
-                            name=affiliation["name"],
-                            country_code=affiliation.get("country_code", ""),
-                            data_source="ORCID",
-                        )
-                        if created:
-                            tempaffl.save()
-                        entry["author"].affiliations.add(tempaffl)
+                    tempaffl, created = Organization.objects.get_or_create(
+                        name=affiliation["name"],
+                        country_code=affiliation.get("country_code", ""),
+                        data_source="ORCID",
+                    )
+                    if created:
+                        tempaffl.save()
+                    entry["author"].affiliations.add(tempaffl)
 
     if utchecklist:
         utdata = asyncio.run(getUTPeoplePageData(utchecklist))
         for match in utdata:
             if not match["match"]:
                 continue
-            with transaction.atomic():
-                match["author"].is_ut = True
-                match["author"].save(update_fields=["is_ut"])
+            match["author"].is_ut = True
+            match["author"].save(update_fields=["is_ut"])
             try:
                 if len(match["departments"]) == 0:
                     current_faculty = ""
@@ -645,25 +671,24 @@ def getAuthorships(work):
                     current_faculty = match["departments"][0]['faculty_abbr']
                     current_group = match['departments'][0]['department']
                     if len(match["departments"]) == 1:
-                        employment_data = {'faculty':match["departments"]['faculty_abbr'],'group':match['departments']['department']}
+                        employment_data = {'faculty':match["departments"][0]['faculty_abbr'],'group':match['departments'][0]['department']}
                     else:
                         empllist=[]
                         for entry in match["departments"]:
                             empllist.append({'faculty':entry['faculty_abbr'],'group':entry['department']})
                         employment_data = {'employment':empllist}
 
-                with transaction.atomic():
-                    newutdata, created = UTData.objects.get_or_create(
-                        employee=match["author"],
-                        email=match["email"],
-                        avatar=match["avatar"],
-                        current_position=match["job_title"],
-                        current_group=current_group,
-                        current_faculty=current_faculty,
-                        employment_data=employment_data
-                    )
-                    if created:
-                        newutdata.save()
+                newutdata, created = UTData.objects.get_or_create(
+                    employee=match["author"],
+                    email=match["email"],
+                    avatar=match["avatar"],
+                    current_position=match["job_title"],
+                    current_group=current_group,
+                    current_faculty=current_faculty,
+                    employment_data=employment_data
+                )
+                if created:
+                    newutdata.save()
 
 
             except Exception as e:
@@ -893,7 +918,6 @@ def getOADealData(journal):
 
             break
 
-
 async def getUTPeoplePageData(authors):
     logger.debug("getting UTPeoplePageData for %s authors.", len(authors))
 
@@ -977,46 +1001,8 @@ async def getORCIDData(authors, utchecklist):
             if response.status_code != 200:
                 raise Exception(f"ORCID API response code {response.status_code}")
             else:
-                result = response.json()
-                for affiliation in result["activities-summary"]["employments"][
-                    "affiliation-group"
-                ]:
-                    orgname = (
-                        affiliation["summaries"][0]["employment-summary"][
-                            "organization"
-                        ]["name"]
-                        or ""
-                    )
-                    orgcountry = (
-                        affiliation["summaries"][0]["employment-summary"][
-                            "organization"
-                        ]["address"]["country"]
-                        or ""
-                    )
-                    if orgname in TWENTENAMES:
-                        affiliations.append(
-                            {
-                                "name": "University of Twente",
-                                "ror": "https://ror.org/006hf6230",
-                                "type": "education",
-                                "country_code": "NL",
-                            }
-                        )
-                        if author not in utchecklist:
-                            utchecklist.append(author)
-                    else:
-                        affiliations.append(
-                            {
-                                "name": orgname,
-                                "country_code": orgcountry,
-                                "data_source": "ORCID",
-                            }
-                        )
-                return {
-                    "author": author,
-                    "affiliations": affiliations,
-                    "utchecklist": utchecklist,
-                }
+                return [response.json(), author]
+
 
         except Exception as e:
             logger.error(

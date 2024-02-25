@@ -61,12 +61,10 @@ def processMongoPaper(dataset):
     crossrefdates = calc_crossref_dates(data_crossref)
     [year, month, day]=str(data['publication_date']).split('-')
     openalex_date=date(int(year), int(month), int(day))
-
     dates = [date for date in [crossrefdates['published_print'], crossrefdates['published_online'], crossrefdates['published'], crossrefdates['issued']] if date is not None]
     dates.append(openalex_date)
     earliestdate = min(dates)
     tavernedate = earliestdate + relativedelta(months=+6)
-
     apc_data = getAPCData(data)
     prim_loc=""
     prim_pdf=""
@@ -74,7 +72,6 @@ def processMongoPaper(dataset):
         if isinstance(data['primary_location'],dict):
             prim_loc=data['primary_location']['landing_page_url'] if 'landing_page_url' in data['primary_location'].keys() else ""
             prim_pdf=data['primary_location']['pdf_url'] if data['primary_location']['pdf_url'] is not None else ""
-
     fulldict = {
         'openalex_url':data['id'],
         'doi':data['doi'],
@@ -110,28 +107,17 @@ def processMongoPaper(dataset):
     }
     if fulldict['primary_link'] is None:
         fulldict['primary_link'] = ""
-    
     work=Paper(**fulldict)
-    
-    with transaction.atomic():
-        work.journal = getJournals(data)
-
-    with transaction.atomic():
-        work.save()
-
-
+    work.journal = getJournals(data)
+    work.save()
     locationdata = add_locations(data)
     if locationdata:
         for location in locationdata:
-            with transaction.atomic():
-                work.locations.add(location)
-
+            work.locations.add(location)
     keywords=add_keywords(data['keywords'])
     if keywords:
         for keyword in keywords:
-            with transaction.atomic():
-                work.keywords.add(keyword)
-
+            work.keywords.add(keyword)
     authorships=get_authorships_data(data['authorships'])
     for authorship in authorships:
         if isinstance(authorship['author']):
@@ -142,11 +128,8 @@ def processMongoPaper(dataset):
                 })
 
     work.ut_keyword_suggestion=calculateUTkeyword(data, work, authorships)
-
-    with transaction.atomic():
-        work.is_in_pure = determineIsInPure(work)
-    with transaction.atomic():
-        work.save()
+    work.is_in_pure = determineIsInPure(work)
+    work.save()
 
 def check_data(data, source):
     cleaneddata={}
@@ -248,7 +231,6 @@ def getJournals(work):
                 if work["primary_location"]["source"]["type"] is not None
                 else "",
             }
-
             with transaction.atomic():
                 journal, created = Journal.objects.get_or_create(**journal_data)
                 if created:

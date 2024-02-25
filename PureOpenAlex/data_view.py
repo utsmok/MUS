@@ -25,7 +25,7 @@ def generateMainPage(user):
     """
     facultynamelist = ["EEMCS", "BMS", "ET", "ITC", "TNW", "marked", "Other groups"]
     total = {
-        "articles": 0,
+        "articles": 1,
         "oa": 0,
         "numoa": 0,
         "inpure": 0,
@@ -50,11 +50,14 @@ def generateMainPage(user):
                 "inpurematch_percent": stats["articlesinpurematch_percent"],
             }
         )
+
+
     total["oa"] = round(total["numoa"] / total["articles"] * 100, 2)
     total["inpure_percent"] = round(total["inpure"] / total["articles"] * 100, 2)
     total["inpurematch_percent"] = round(
         total["inpurematch"] / total["articles"] * 100, 2
     )
+    total['articles'] += -1
     return total, faculties
 
 

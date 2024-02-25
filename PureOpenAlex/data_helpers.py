@@ -139,8 +139,10 @@ def convertToEuro(amount, currency, publishdate):
 
 def determineIsInPure(paper):
     for location in paper.locations.all():
-        if "twente" in location.pdf_url.lower():
+        if 'ris.utwente.nl' in location.landing_page_url.lower() or 'research.utwente.nl' in location.landing_page_url.lower():
             return True
+        if "twente" in location.pdf_url.lower():
+            return True  
     return False
 
 def processDOI(doi):
