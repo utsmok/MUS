@@ -23,7 +23,6 @@ from .models import (
     DealData,
     Location,
     Source,
-    Keyword,
 )
 from django.db import transaction
 from habanero import Crossref
@@ -121,13 +120,7 @@ def processPaperData(work):
         f"         getAuthorships: {time.strftime('%M:%S',time.gmtime(time.time()-start_time))} s"
     )
 
-    start_time = time.time()
-    keywords = getKeywords(work)
 
-    logger.debug("Got Keywords for doi %s", work["doi"])
-    timelist.append(
-        f"            getKeywords: {time.strftime('%M:%S',time.gmtime(time.time()-start_time))} s"
-    )
 
 
     license = ""
@@ -256,8 +249,6 @@ def processPaperData(work):
             },
         )
 
-    for keyword in keywords:
-        paper.keywords.add(keyword)
 
     paper.ut_keyword_suggestion = calculateUTkeyword(work, paper, authorships)
 
@@ -725,31 +716,6 @@ def getConcepts(work):
             conceptlist.append(tempconcept)
     return conceptlist'''
 
-
-def getKeywords(work):
-    """
-    Generate a list of keywords for a given work.
-
-    Parameters:
-    - work (dict): The work object containing keyword data.
-
-    Returns:
-    - keywords (list): A list of dictionaries representing keywords.
-    Each dictionary contains the following keys:
-    - 'keyword' (str): The keyword string.
-    - 'score' (float): The relevance of the keyword.
-    """
-    keywords = []
-    for keyword in work["keywords"]:
-        with transaction.atomic():
-            tempKeyword, created = Keyword.objects.get_or_create(
-                keyword=keyword["keyword"], score=keyword["score"]
-            )
-            if created:
-                tempKeyword.data_source = "OpenAlex"
-                tempKeyword.save()
-            keywords.append(tempKeyword)
-    return keywords
 
 
 def getOpenAccessData():

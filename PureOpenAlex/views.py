@@ -7,7 +7,7 @@ from django.db import transaction
 from django.core.cache.backends.base import DEFAULT_TIMEOUT
 from django.db.models import Q
 from django.core.exceptions import ObjectDoesNotExist
-from .data_add import addPaper
+from .data_add import addPaper, addOpenAlexWorksFromMongo
 from .data_repair import removeDuplicates
 from .data_view import generateMainPage, getPapers, getAuthorPapers, open_alex_autocomplete, get_pure_entries
 from django.conf import settings
@@ -80,8 +80,11 @@ def searchpaper(request):
 @login_required
 def delete_duplicates(request):
     logger.info("[url] /delete_duplicates [user] %s", request.user.username)
-    removeDuplicates()
-    message = "Succesfully removed duplicates."
+    #removeDuplicates()
+    #message = "Succesfully removed duplicates."
+    
+    addOpenAlexWorksFromMongo()
+    message='added oa works from mongo'
     return JsonResponse({"status": "success", "message": message})
 
 @login_required

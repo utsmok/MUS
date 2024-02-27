@@ -6,9 +6,8 @@ from io import BytesIO
 import requests
 import logging
 import threading
-import pandas as pd
 import os
-from .models import UTData, DealData, AFASData
+from .models import UTData, DealData
 from django.db import transaction
 
 
@@ -128,9 +127,9 @@ def convertToEuro(amount, currency, publishdate):
     """
     folder = 'ecb_data'
     zipname = f"ecb_{date.today():%Y%m%d}.zip"
-    filename =os.path.join(folder, zipname)
-
-    if not op.isfile(os.path.join(folder, filename)):
+    filename = os.path.join(os.getcwd(),folder, zipname)
+    exists = op.isfile(os.path.join(folder, filename))
+    if not exists:
         urllib.request.urlretrieve(ECB_URL, filename)
 
     c = CurrencyConverter(filename)
@@ -237,7 +236,7 @@ def addAvatars():
             with transaction.atomic():
                 utdata.avatar.save(fn,image,save=True)
 
-def addEEMCSAuthorsFromCSV():
+'''def addEEMCSAuthorsFromCSV():
     import csv
     import regex
     import ast
@@ -364,3 +363,4 @@ def addEEMCSAuthorsFromCSV():
 
     with transaction.atomic():
         AFASData.objects.bulk_create([AFASData(**data) for data in tcsauthorslist])
+'''

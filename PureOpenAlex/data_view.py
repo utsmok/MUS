@@ -5,7 +5,6 @@ from .models import (
     Journal,
     Paper,
     Authorship,
-    Keyword,
     viewPaper,
     DealData,
 
@@ -252,11 +251,6 @@ def getPapers(name, filter="all", user=None):
             queryset=Location.objects.filter(papers__in=filterpapers).select_related("source"),
             to_attr="preloaded_locations",
         )
-        keyword_prefetch = Prefetch(
-            "keywords",
-            queryset=Keyword.objects.filter(papers__in=filterpapers),
-            to_attr="keywords_prefetch",
-        )
         journal_prefetch = Prefetch(
             "journal",
             queryset=Journal.objects.filter(papers__in=filterpapers).select_related(),
@@ -271,7 +265,6 @@ def getPapers(name, filter="all", user=None):
         return [
             authorships_prefetch,
             location_prefetch,
-            keyword_prefetch,
             journal_prefetch,
             authors_and_affiliation_prefetch,
         ]

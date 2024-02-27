@@ -1,14 +1,18 @@
 
 from django.conf import settings
-from .models import  Keyword, Location, Source, DealData, Author, Paper,  Organization, Journal
+from .models import Location, Source, DealData, UTData, Author, Paper,  Organization, Journal, viewPaper
 from django.db import transaction
 from nameparser import HumanName
-from datetime import date, datetime
+from datetime import date
 from dateutil.relativedelta import relativedelta
 from pymongo import MongoClient
+import logging
+import pyalex
+from rich import print
 from .data_helpers import (
-    determineIsInPure,
-    convertToEuro,)
+    convertToEuro,
+    invertAbstract,
+    TWENTENAMES,)
 FACULTIES = ['ITC', 'EEMCS', 'ET', 'TNW', 'BMS', 'Science and Technology Faculty', 'Behavioural, Management and Social Sciences', 'Engineering Technology', 'Geo-Information Science and Earth Observation', 'Electrical Engineering, Mathematics and Computer Science']
 OA_WORK_COLUMNS = ['_id','id','doi','title','display_name','publication_year','publication_date','ids','language','primary_location','type','type_crossref','indexed_in','open_access','authorships','countries_distinct_count','institutions_distinct_count','corresponding_author_ids','corresponding_institution_ids','apc_list','apc_paid','has_fulltext','fulltext_origin','cited_by_count','cited_by_percentile_year','biblio','is_retracted','is_paratext','keywords','concepts','mesh','locations_count','locations','best_oa_location','sustainable_development_goals','grants','referenced_works_count','referenced_works','related_works','ngrams_url','abstract_inverted_index','cited_by_api_url','counts_by_year','updated_date','created_date','topics','primary_topic']
 CR_WORK_COLUMNS = ['_id','indexed','reference-count','publisher','content-domain','published-print','abstract','DOI','type','created','page','source','is-referenced-by-count','title','prefix','author','member','container-title','link','deposited','score','resource','subtitle','issued','references-count','URL','published','issue','volume','journal-issue','ISSN','issn-type','subject','short-container-title','language','isbn-type','ISBN']
@@ -41,15 +45,425 @@ TCSGROUPS = [
     "Human Media Interaction",
 ]
 MONGOURL = getattr(settings, "MONGOURL")
+logger = logging.getLogger(__name__)
+APIEMAIL = getattr(settings, "APIEMAIL", "no@email.com")
+pyalex.config.email = APIEMAIL
 
 client=MongoClient(MONGOURL)
 db=client['mus']
+mongo_dealdata=db['api_responses_journals_dealdata_scraped']
+mongo_oa_authors=db['api_responses_authors_openalex']
+mongo_orcid=db['api_responses_orcid']
+mongo_oa_ut_authors=db['api_responses_UT_authors_openalex']
+mongo_peoplepage=db['api_responses_UT_authors_peoplepage']
 
-def processMongoPaper(dataset):
-    # TODO
+@transaction.atomic
+def processMongoPaper(dataset, user=None):
+    '''
+    Input: dataset with openalex & crossref work data
+    Processes the input to create a Paper object in the db including all related other objects
+
+    order of operations:
+    prep_openalex_data
+    prep_crossref_data
+    merge crossref dates into openalex data
+    get license data
+    make paper object
+    retrieve and/or create:
+        - authorships
+            - authors
+                - utdata
+                - affiliations
+                    -organizations
+        - locations
+            - sources
+                |
+                \/
+            - journal
+                    - dealdata
+    add authorships, locations, journal to paper
+    calculate/determine:
+        - taverne date
+        - ut keyword suggestion
+        - is_in_pure
+        - has_pure_oai_match
+
+    finally, if user is not None, add viewPaper(paper, user)
+    '''
+    def prep_openalex_data(data):
+        print("\n============================== P R E P  O P E N A L X ==============================\n")
+        cleandata = {
+            'paper':{
+                'openalex_url':data.get('id'),
+                'title':data.get('title'),
+                'doi':data.get('doi'),
+                'year':data.get('publication_year'),
+                'citations':data.get('cited_by_count'),
+                'openaccess':data.get('open_access').get('oa_status'),
+                'is_oa':data.get('open_access').get('is_oa'),
+                'primary_link':data.get('primary_location').get('landing_page_url') if data.get('primary_location').get('landing_page_url') else "",
+                'pdf_link_primary':data.get('primary_location').get('pdf_url') if data.get('primary_location').get('pdf_url') else "",
+                'itemtype':data.get('type_crossref'),
+                'date':data.get('publication_date'),
+                'language':data.get('language'),
+                'abstract':invertAbstract(data.get('abstract_inverted_index')),
+                'volume': data.get('biblio').get('volume'),
+                'issue': data.get('biblio').get('issue'),
+                'keywords':data.get('keywords'),
+                'topics':data.get('topics'),
+            },
+            'locations':data.get('locations'),
+            'authorships':data.get('authorships'),
+            'pages':{
+                'first': data.get('biblio').get('first_page'), 
+                'last': data.get('biblio').get('last_page')
+                },
+            'primary_location':data.get('primary_location'),
+            'best_oa_location':data.get('best_oa_location'),
+        }
+        if data.get('apc_list'):
+            cleandata['paper'].update({'apc_listed_value':data.get('apc_list').get('value'),
+            'apc_listed_currency':data.get('apc_list').get('currency'),
+            'apc_listed_value_usd':data.get('apc_list').get('value_usd'),
+            'apc_listed_value_eur': convertToEuro(data.get('apc_list').get('value'), data.get('apc_list').get('currency'), date.fromisoformat(data.get('publication_date'))),
+            }) if data.get('apc_list').get('currency') != 'EUR' else data.get('apc_list').get('value')
+        if data.get('apc_paid'):
+            cleandata['paper'].update({
+            'apc_paid_value':data.get('apc_paid').get('value'),
+            'apc_paid_currency':data.get('apc_paid').get('currency'),
+            'apc_paid_value_usd':data.get('apc_paid').get('value_usd'),
+            'apc_paid_value_eur': convertToEuro(data.get('apc_paid').get('value'), data.get('apc_paid').get('currency'), date.fromisoformat(data.get('publication_date'))),
+            }) if data.get('apc_paid').get('currency') != 'EUR' else data.get('apc_paid').get('value')
+        return cleandata
+    
+    def prep_crossref_data(data):
+        print("\n============================== P R E P  C R O S S R E F ==============================\n")
+        if data:
+            published = None
+            published_online = None
+            published_print = None
+            issued = None
+            if data.get('published'):
+                published = date.fromisoformat("-".join([f"{i:02}" for i in data.get('published')['date-parts'][0]]))
+            if data.get('issued'):
+                issued = date.fromisoformat("-".join([f"{i:02}" for i in data.get('issued')['date-parts'][0]]))
+            if data.get('published_online'):
+                published_online = date.fromisoformat("-".join([f"{i:02}" for i in data.get('published_online')['date-parts'][0]]))
+            if data.get('published_print'):
+                published_print = date.fromisoformat("-".join([f"{i:02}" for i in data.get('published_print')['date-parts'][0]]))
+            return {
+                'dates': {
+                    'published':published ,
+                    'published_online':published_online,
+                    'published_print':published_print,
+                    'issued':issued,
+                },
+                'relation':data.get('relation'),
+                'page':data.get('page'),
+            }
+        else: 
+            return {}
+
+    def get_license_data(data):
+        print("\n============================== L I C E N S E ==============================\n")
+        value=None
+        print('licenses:')
+        if data.get('locations'):
+            for loc in data.get('locations'):
+                print(loc.get('license'))
+        else:
+            print('no locations?')
+        if data.get('primary_location'):
+            value = data.get('primary_location').get('license')
+        else:
+            if data.get('locations'):
+                for loc in data.get('locations'):
+                    if loc.get('license'):
+                        value = loc.get('license')
+        return value if value else ''
+    def calc_taverne_date(oa_work, cr_work):
+        print("\n============================== T A V E R N E ==============================\n")
+        dates={}
+        dates=[date.fromisoformat(oa_work['date'])]
+        try:
+            if cr_work.get('dates'):
+                dates.append([value for value in cr_work.get('dates').values()])
+                return min(dates)+relativedelta(months=+6)
+            else:
+                return dates[0]+relativedelta(months=+6)
+        except Exception as e:
+            print('error in calc_taverne_date',e)
+            return None
+    def get_pages_count(oa_work, cr_work):
+        print("\n============================== P A G E S ==============================\n")
+
+        first_page = oa_work.get('pages').get('first')
+        last_page = oa_work.get('pages').get('last')
+        print("first_page, last_page",first_page, last_page)
+        pages=''
+        pagescount = None
+        if cr_work:
+            if cr_work.get('page') and cr_work.get('page') != '':
+                pages=cr_work.get('page')
+                print("from crossref")
+        elif first_page and last_page:
+            pages=f'{first_page}-{last_page}'
+            print("first and last page, so using fp-lp")
+        elif first_page:
+            pages=first_page
+        else:
+            pages=''
+        if first_page and last_page:
+            pagescount = int(last_page) - int(first_page) + 1
+            print('lastpage - firstpage for pagecount')
+        else:
+            pagescount = None
+        if not pages:
+            pages = ''
+        print("pages, pagescount",pages, pagescount)
+        return pagescount, pages
+
+
+    #def calc_ut_keyword_suggestion(oa_work, cr_work):
+    #    return None
+    print("\n============================== N E W   I T E M ==============================")
+    print("============================== N E W   I T E M ==============================")
+    print("============================== N E W   I T E M ==============================\n")
+
+    oa_work = prep_openalex_data(dataset['works_openalex'])
+    cr_work = prep_crossref_data(dataset['crossref'])
+
+    oa_work['paper'].update(cr_work.get('dates', {}))
+    oa_work['paper']['license'] = get_license_data(oa_work)
+    oa_work['paper']['pagescount'], oa_work['paper']['pages'] = get_pages_count(oa_work, cr_work)
+    paper, created = Paper.objects.get_or_create(**oa_work['paper'])
+    if created:
+        paper.save()
+    paper = add_authorships(oa_work,paper)
+    paper = add_locations(oa_work,paper)
+
+    paper.taverne_date=calc_taverne_date(oa_work['paper'], cr_work.get('dates', {}))
+    #paper.ut_keyword_suggestion=calc_ut_keyword_suggestion(oa_work, cr_work)
+    # TODO: fix determine_is_in_pure
+    paper.is_in_pure = determine_is_in_pure(oa_work['paper'])
+
+    if user:
+        viewPaper.objects.get_or_create(user=user, displayed_paper=paper)
+    
+@transaction.atomic
+def add_authorships(data, paper):
+    print("\n============================== A U T H O R S ==============================\n")
+
+    authorships = data.get('authorships')
+    for authorship in authorships:
+        author = authorship.get('author')
+        is_ut=False
+        oa_authordata = mongo_oa_authors.find_one({"id":author.get('id')})
+        affiliations=[]
+        if oa_authordata:
+            affils = oa_authordata.get('affiliations')
+        else:
+            affils = authorship.get('institutions')
+
+        for org in affils:
+            if not org:
+                continue
+            if org.get('institution'):
+                org = org.get('institution')
+            orgdata = {
+                'name':org.get('display_name'),
+                'openalex_url':org.get('id'),
+                'ror':org.get('ror'),
+                'type':org.get('type'),
+                'country_code':org.get('country_code'),
+                'data_source':'openalex'
+            }
+            if not is_ut:
+                if orgdata['ror'] == 'https://ror.org/006hf6230':
+                    is_ut=True
+                elif orgdata['name'] in TWENTENAMES:
+                    is_ut=True
+            if org.get('years'):
+                years = org.get('years')
+            else:
+                years = {}
+            org, created = Organization.objects.get_or_create(**orgdata)
+            if created:
+                org.save()
+            affiliations.append([org, years])
+
+        hname = HumanName(author.get('display_name'))
+        objectdict = {
+            'author':{
+                'name': author.get('display_name'),
+                'orcid': author.get('orcid'),
+                'openalex_url': author.get('id'),
+                'first_name': hname.first,
+                'last_name': hname.last,
+                'middle_name': hname.middle,
+                'initials': hname.initials(),
+                'is_ut': is_ut
+            },
+            'authorship':{
+                'paper':paper,
+                'position':authorship.get('author_position'),
+                'corresponding':authorship.get('is_corresponding'),
+            }
+        }
+        if oa_authordata:
+            objectdict['author'].update({
+                'scopus_id':oa_authordata.get('ids').get('scopus'),
+                'known_as': list(oa_authordata.get('display_name_alternatives'))
+                })
+
+
+        authorobject, created = Author.objects.get_or_create(**objectdict['author'])
+        if created:
+            authorobject.save()
+
+        for aff in affiliations:
+            authorobject.affils.add(aff[0],through_defaults={'years':aff[1]})       
+        
+        paper.authors.add(authorobject, through_defaults={'position':objectdict.get('authorship').get('position'), 'corresponding':objectdict.get('authorship').get('corresponding')})
+        
+        
+        peoplepage_data = mongo_peoplepage.find_one({"id":author.get('id')})
+        if peoplepage_data:
+            utdata = {
+                'avatar': peoplepage_data.get('avatar_url'),
+                'current_position': peoplepage_data.get('position'),
+                'current_group': peoplepage_data.get('grouplist')[0].get('group'),
+                'current_faculty': peoplepage_data.get('grouplist')[0].get('faculty'),
+                'employee': authorobject,
+                'email': peoplepage_data.get('email'),
+                'employment_data': peoplepage_data.get('grouplist'),
+            }
+            ut, created = UTData.objects.get_or_create(**utdata)
+            if created:
+                ut.save()
+            authorobject.is_ut = True
+            authorobject.save()
+            
+    return paper
+@transaction.atomic
+def add_locations(data, paper):
+    print("\n============================== L O C A T I O N S ==============================\n")
+    def get_deal_data(openalex_id):
+        dealdatacontents = mongo_dealdata.find_one({"id":openalex_id})
+        if dealdatacontents:
+            dealdata = {
+                'deal_status':dealdatacontents.get('APCDeal'),
+                'publisher': dealdatacontents.get('publisher'),
+                'jb_url': dealdatacontents.get('journal_browser_url'),
+                'oa_type': dealdatacontents.get('oa_type'),
+            }
+            return dealdata, dealdatacontents.get('keywords'), dealdatacontents.get('publisher')
+        else:
+            return None, None, None
+    primary_location = ""
+    best_oa_location = ""
+    if data.get('primary_location'):
+        primary_location = data.get('primary_location').get('landing_page_url')
+        if not primary_location:
+            primary_location = data.get('primary_location').get('pdf_url')
+    if data.get('best_oa_location'):
+        best_oa_location = data.get('best_oa_location').get('landing_page_url')
+        if not best_oa_location:
+            best_oa_location = data.get('best_oa_location').get('pdf_url')
+    print('primary:',data.get('primary_location'))
+    print('best_oa:',data.get('best_oa_location'))
+    for location in data['locations']:
+        if location['source']:
+            source, sourcedict = get_source(location['source'])
+        else:
+            print('no source for this location:')
+            print(location)
+            source = None
+            sourcedict = None
+        
+        if location.get('landing_page_url') == primary_location or location.get('pdf_url') == primary_location:
+            is_primary=True
+        else:
+            is_primary=False
+        if location.get('landing_page_url') == best_oa_location or location.get('pdf_url') == best_oa_location:
+            is_best_oa=True
+        else:
+            is_best_oa=False
+        
+        cleandata={
+            'is_oa':location.get('is_oa'),
+            'is_accepted':location.get('is_accepted'),
+            'is_published':location.get('is_published'),
+            'license':location.get('license') if location.get('license') else '',
+            'landing_page_url':location.get('landing_page_url') if location.get('landing_page_url') else '',
+            'pdf_url':location.get('pdf_url') if location.get('pdf_url') else '',
+            'is_primary':is_primary,
+            'is_best_oa':is_best_oa,
+            'source':source
+        }
+        location, created = Location.objects.get_or_create(**cleandata)
+        if created:
+            location.save()
+        paper.locations.add(location)
+        if is_primary and sourcedict:
+            journaldata=sourcedict
+            journaldata['name']=sourcedict.get('display_name')
+            del journaldata['display_name']
+            dealdata, keywords, publisher = get_deal_data(journaldata['openalex_url'])
+            journaldata['keywords']=keywords
+            journaldata['publisher']=publisher if publisher else ""
+            journal, created = Journal.objects.get_or_create(**journaldata)
+            if created:
+                journal.save()
+            if dealdata and not journal.dealdata:
+                deal, created = DealData.objects.get_or_create(**dealdata)
+                if created:
+                    deal.save()
+                journal.dealdata=deal
+            paper.journal=journal
+    return paper
+
+@transaction.atomic
+def get_source(data):
+    print("\n============================== S O U R C E ==============================\n")
+
+    issn=data.get('issn_l')
+    issnlist=data.get('issn')
+    issn_l=""
+    if isinstance(issnlist, list):
+        for nissn in issnlist:
+            if nissn != issn:
+                issn_l = nissn
+                break
+    # TODO: fix host_org
+    sourcedict = {
+        'openalex_url':data.get('id'),
+        'display_name':data.get('display_name'),
+        'host_org':data.get('host_org_lineage_names')[0] if data.get('host_org_lineage_names') else '',
+        'type':data.get('type'),
+        'is_in_doaj':data.get('is_in_doaj'),
+        'e_issn':issn,
+        'issn':issn_l,
+    }
+    source, created = Source.objects.get_or_create(**sourcedict)
+    if created:
+        source.save()
+
+    return source, sourcedict
+def determine_is_in_pure(data):
+    locs = data.get('locations')
+    twentecheckstrs={'twente','ris.utwente.nl','research.utwente.nl'}
+    if locs:
+        for loc in locs:
+            if str(loc.get('landing_page_url')).lower() in twentecheckstrs or str(loc.get('pdf_url')).lower() in twentecheckstrs:
+                return True
+    return False
+
+
+'''
+def oldprocessMongoPaper(dataset):
     # check authorships
     # check affiliations
-    # run tests using dummy database
 
     data=check_data(dataset['openalex_work']['data'], 'openalex_work')
     if 'data' in dataset['crossref_work'].keys():
@@ -76,7 +490,6 @@ def processMongoPaper(dataset):
         'openalex_url':data['id'],
         'doi':data['doi'],
         'title':data['title'],
-        'type':data['type'],
         'itemtype':data['type_crossref'],
         'language':data['language'],
         'citations':data['cited_by_count'],
@@ -114,6 +527,7 @@ def processMongoPaper(dataset):
     if locationdata:
         for location in locationdata:
             work.locations.add(location)
+
     keywords=add_keywords(data['keywords'])
     if keywords:
         for keyword in keywords:
@@ -169,7 +583,7 @@ def add_abstract(inverted_abstract):
     return text
 
 def add_keywords(keyworddata):
-    keywords=[Keyword(name=x['keyword'], score=x['score'], source='OpenAlex') for x in keyworddata]
+    keywords=[Keyword(keyword=x['keyword'], score=x['score'], data_source='OpenAlex') for x in keyworddata]
     with transaction.atomic():
         keywords=Keyword.objects.bulk_create(keywords)
     return keywords
@@ -242,7 +656,6 @@ def getJournals(work):
 
 def add_locations(data):
     locations=[]
-    oa_deals=[]
     is_best_oa=False
     is_primary=False
     for location in data['locations']:
@@ -273,7 +686,7 @@ def add_locations(data):
                         'display_name':sourced['display_name'],
                         'issn':issn,
                         'e_issn':eissn,
-                        'host_org':sourced['host_organization_name'] if sourced['host_organization_name']!='' else '',
+                        'host_org':sourced['host_organization_name'] if sourced['host_organization_name']!='' and sourced['host_organization_name'] is not None else '',
                         'type':sourced['type'],
                         'is_in_doaj':sourced['is_in_doaj'],
                     }
@@ -297,7 +710,7 @@ def add_locations(data):
         with transaction.atomic():
             loc.save()
         locations.append(loc)
-    return locations,oa_deals
+    return locations
 
 def get_organizations_data(orgdata):
     organizations=[]
@@ -688,3 +1101,4 @@ def getAPCData(work):
         paid_value_usd,
         paid_value_eur,
     ]
+    '''

@@ -31,68 +31,43 @@ client=MongoClient('mongodb://smops:bazending@192.168.2.153:27017/')
 db=client['mus']
 
 def addOpenAlexWorksFromMongo():
-    '''
-    for each document in collection 'api_responses_works_openalex':
-    [1] Check if it is already in the SQL database:
-    if ResearchOutput.objects.filter(openalex_url=document['id']).exists() == False:
-    [2] if not,retrieve the full dict for this item from relevant collections
-        and add them to dict 'dataset'
-    [3] add dataset to list
-    [B] For each item, call add_openalex_work(dataset)
-
-    Example dataset contents:
-
-    dataset = {
-        'openalex_work':{
-            'data':dict(mongodbdata),
-            'source':dict(mongoDBitemdata)
-        }
-        'crossref_work':{
-            'data':dict(mongodbdata),
-            'source':dict(mongoDBitemdata)
-        }
-    }
-    '''
-
     datasets=[]
-    ignorelist={}
-
     openalex_works=db['api_responses_works_openalex']
     crossref_info=db['api_responses_crossref']
     i=0
     j=0
-    h=0
-    all_openalex_urls=set(Paper.objects.values_list('openalex_url',flat=True))
     for document in openalex_works.find():
-        if document['id'] not in all_openalex_urls and document['id'] not in ignorelist.keys():
-            crossrefdoc=None
-            try:
-                doi=document['doi'].replace('https://doi.org/','')
-                crossrefdoc=crossref_info.find_one({'DOI':doi})
-            except Exception:
-                doi=None
-            dataset={
-                'openalex_work':{'data':document,'source':{'database':'mus','collection':'api_responses_works_openalex','mongo_id':str(document['_id'])}},
-                'crossref_work':{} if crossrefdoc is None else {'data':crossrefdoc, 'source':{'database':'mus','collection':'api_responses_crossref','mongo_id':str(crossrefdoc['_id'])}},
-            }
-            datasets.append(dataset)
-            i=i+1
-            if i % 1000 == 0:
-                message=f"{i} works currently in dataset"
-        else:
-            h=h+1
-    message=f"processing {len(datasets)} new works, {h} already found in DB"
+        crossrefdoc={}
+        try:
+            doi=document['doi'].replace('https://doi.org/','')
+            crossrefdoc=crossref_info.find_one({'DOI':doi})
+        except Exception:
+            doi=None
+        dataset={
+            'works_openalex':document,
+            'crossref':crossrefdoc,
+        }
+        datasets.append(dataset)
+        i=i+1
+        if i == 5:
+            break
+        if i % 1000 == 0:
+            message=f"{i} works currently in dataset"
+            logger.debug(message)
+
+    message=f"processing {len(datasets)}  works"
+    logger.debug(message)
     added=[]
     k=0
     for dataset in datasets:
         j=j+1
-        try:
-            with transaction.atomic():
-                id=dataset['openalex_work']['data']['id']
-                processMongoPaper(dataset)
-                added.append(id)
-        except Exception:
-            ignorelist[id]=True
+        #try:
+        with transaction.atomic():
+            id=dataset['works_openalex']['id']
+            processMongoPaper(dataset)
+            added.append(id)
+        #except Exception:
+            #ignorelist[id]=True
         if len(added)>=100:
             k=k+len(added)
             message=f"{k} works added (+{len(added)})"

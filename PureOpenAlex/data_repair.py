@@ -4,7 +4,6 @@ from .models import (
     Organization,
     Author,
     Paper,
-    AFASData,
 )
 from django.db import transaction
 from .data_helpers import TWENTENAMES
@@ -272,7 +271,7 @@ def clean_duplicate_organizations():
                     org.name = f"{org.name}_{org.id}"
                     logger.debug("renaming %s to %s", keeper.name, org.name)
                     org.save()
-
+'''
 def matchAFASwithAuthor():
     allAFAS = AFASData.objects.filter(authors__isnull=True)
     authorlist = []
@@ -368,3 +367,4 @@ def matchAFASwithAuthor():
 
     print(str(len(results))+" openalex matches of "+str(allAFAS.count())+" missing in total")
     return results
+'''
