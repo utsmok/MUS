@@ -120,6 +120,7 @@ DATABASES = {
         "PASSWORD": str(os.getenv('POSTGRESPWD')),
     }
 }
+print(DATABASES)
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",

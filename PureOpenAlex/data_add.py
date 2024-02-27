@@ -49,7 +49,7 @@ def addOpenAlexWorksFromMongo():
         }
         datasets.append(dataset)
         i=i+1
-        if i == 5:
+        if i == 50:
             break
         if i % 1000 == 0:
             message=f"{i} works currently in dataset"
@@ -62,10 +62,12 @@ def addOpenAlexWorksFromMongo():
     for dataset in datasets:
         j=j+1
         #try:
-        with transaction.atomic():
-            id=dataset['works_openalex']['id']
-            processMongoPaper(dataset)
-            added.append(id)
+        id=dataset['works_openalex']['id']
+        processMongoPaper(dataset)
+        added.append(id)
+        #s = input("Item added: "+id+". Press Enter to continue or n to stop.")
+        #if s == "n":
+        #    break
         #except Exception:
             #ignorelist[id]=True
         if len(added)>=100:

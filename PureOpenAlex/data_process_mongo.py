@@ -2,6 +2,7 @@
 from django.conf import settings
 from .models import Location, Source, DealData, UTData, Author, Paper,  Organization, Journal, viewPaper
 from django.db import transaction
+from django.db.models import Q
 from nameparser import HumanName
 from datetime import date
 from dateutil.relativedelta import relativedelta
@@ -9,6 +10,7 @@ from pymongo import MongoClient
 import logging
 import pyalex
 from rich import print
+from typing import TypeVar
 from .data_helpers import (
     convertToEuro,
     invertAbstract,
@@ -56,7 +58,24 @@ mongo_oa_authors=db['api_responses_authors_openalex']
 mongo_orcid=db['api_responses_orcid']
 mongo_oa_ut_authors=db['api_responses_UT_authors_openalex']
 mongo_peoplepage=db['api_responses_UT_authors_peoplepage']
+mongo_oa_journals = db['api_responses_journals_openalex']
 
+from functools import wraps
+import time
+
+
+def timeit(func):
+    @wraps(func)
+    def timeit_wrapper(*args, **kwargs):
+        start_time = time.perf_counter()
+        result = func(*args, **kwargs)
+        end_time = time.perf_counter()
+        total_time = end_time - start_time
+        print(f'Function {func.__name__} took {total_time:.1f} seconds')
+        return result
+    return timeit_wrapper
+
+@timeit
 @transaction.atomic
 def processMongoPaper(dataset, user=None):
     '''
@@ -91,7 +110,7 @@ def processMongoPaper(dataset, user=None):
     finally, if user is not None, add viewPaper(paper, user)
     '''
     def prep_openalex_data(data):
-        print("\n============================== P R E P  O P E N A L X ==============================\n")
+        print("\n========================== P R E P  O P E N A L E X ==========================\n")
         cleandata = {
             'paper':{
                 'openalex_url':data.get('id'),
@@ -105,69 +124,81 @@ def processMongoPaper(dataset, user=None):
                 'pdf_link_primary':data.get('primary_location').get('pdf_url') if data.get('primary_location').get('pdf_url') else "",
                 'itemtype':data.get('type_crossref'),
                 'date':data.get('publication_date'),
-                'language':data.get('language'),
+                'language':data.get('language',""),
                 'abstract':invertAbstract(data.get('abstract_inverted_index')),
-                'volume': data.get('biblio').get('volume'),
-                'issue': data.get('biblio').get('issue'),
-                'keywords':data.get('keywords'),
+                'volume': data.get('biblio').get('volume') if data.get('biblio').get('volume') else "",
+                'issue': data.get('biblio').get('issue') if data.get('biblio').get('issue') else "",
+                'keywords':data.get('keywords', []),
                 'topics':data.get('topics'),
             },
-            'locations':data.get('locations'),
             'authorships':data.get('authorships'),
             'pages':{
-                'first': data.get('biblio').get('first_page'), 
+                'first': data.get('biblio').get('first_page'),
                 'last': data.get('biblio').get('last_page')
                 },
             'primary_location':data.get('primary_location'),
             'best_oa_location':data.get('best_oa_location'),
+            'full': data
         }
         if data.get('apc_list'):
             cleandata['paper'].update({'apc_listed_value':data.get('apc_list').get('value'),
             'apc_listed_currency':data.get('apc_list').get('currency'),
             'apc_listed_value_usd':data.get('apc_list').get('value_usd'),
-            'apc_listed_value_eur': convertToEuro(data.get('apc_list').get('value'), data.get('apc_list').get('currency'), date.fromisoformat(data.get('publication_date'))),
-            }) if data.get('apc_list').get('currency') != 'EUR' else data.get('apc_list').get('value')
+            #'apc_listed_value_eur': convertToEuro(data.get('apc_list').get('value'), data.get('apc_list').get('currency'), date.fromisoformat(data.get('publication_date'))) if data.get('apc_list').get('currency') != 'EUR' else data.get('apc_list').get('value'),
+            'apc_listed_value_eur': 0,
+            })
         if data.get('apc_paid'):
             cleandata['paper'].update({
             'apc_paid_value':data.get('apc_paid').get('value'),
             'apc_paid_currency':data.get('apc_paid').get('currency'),
             'apc_paid_value_usd':data.get('apc_paid').get('value_usd'),
-            'apc_paid_value_eur': convertToEuro(data.get('apc_paid').get('value'), data.get('apc_paid').get('currency'), date.fromisoformat(data.get('publication_date'))),
-            }) if data.get('apc_paid').get('currency') != 'EUR' else data.get('apc_paid').get('value')
+            #'apc_paid_value_eur': convertToEuro(data.get('apc_paid').get('value'), data.get('apc_paid').get('currency'), date.fromisoformat(data.get('publication_date'))) if data.get('apc_paid').get('currency') != 'EUR' else data.get('apc_paid').get('value'),
+            'apc_paid_value_eur': 0,
+            })
         return cleandata
-    
+
     def prep_crossref_data(data):
-        print("\n============================== P R E P  C R O S S R E F ==============================\n")
+        print("\n========================= P R E P  C R O S S R E F =========================\n")
         if data:
+
             published = None
             published_online = None
             published_print = None
             issued = None
-            if data.get('published'):
-                published = date.fromisoformat("-".join([f"{i:02}" for i in data.get('published')['date-parts'][0]]))
-            if data.get('issued'):
-                issued = date.fromisoformat("-".join([f"{i:02}" for i in data.get('issued')['date-parts'][0]]))
-            if data.get('published_online'):
-                published_online = date.fromisoformat("-".join([f"{i:02}" for i in data.get('published_online')['date-parts'][0]]))
-            if data.get('published_print'):
-                published_print = date.fromisoformat("-".join([f"{i:02}" for i in data.get('published_print')['date-parts'][0]]))
+            datetypekey={
+                'published':published,
+                'published_online':published_online,
+                'published_print':published_print,
+                'issued':issued
+            }
+            for datetype in ['published','published_online','published_print','issued']:
+                if data.get(datetype):
+                    if data.get(datetype).get('date-parts'):
+                        if len(data.get(datetype).get('date-parts')[0])==1:
+                            year=data.get(datetype).get('date-parts')[0][0]
+                            datetypekey[datetype]=date.fromisoformat(f"{year}-01-01")
+                        elif len(data.get(datetype).get('date-parts')[0])==3:
+                            datetypekey[datetype] = date.fromisoformat("-".join([f"{i:02}" for i in data.get('published')['date-parts'][0]]))
+
             return {
                 'dates': {
-                    'published':published ,
-                    'published_online':published_online,
-                    'published_print':published_print,
-                    'issued':issued,
+                    'published':datetypekey['published'] ,
+                    'published_online':datetypekey['published_online'],
+                    'published_print':datetypekey['published_print'],
+                    'issued':datetypekey['issued'],
                 },
                 'relation':data.get('relation'),
                 'page':data.get('page'),
+                'full':data
             }
-        else: 
+        else:
             return {}
 
     def get_license_data(data):
         print("\n============================== L I C E N S E ==============================\n")
         value=None
         print('licenses:')
+        data=data.get('full')
         if data.get('locations'):
             for loc in data.get('locations'):
                 print(loc.get('license'))
@@ -205,22 +236,22 @@ def processMongoPaper(dataset, user=None):
         if cr_work:
             if cr_work.get('page') and cr_work.get('page') != '':
                 pages=cr_work.get('page')
-                print("from crossref")
+                print(f"from crossref: {pages=}")
         elif first_page and last_page:
             pages=f'{first_page}-{last_page}'
-            print("first and last page, so using fp-lp")
+            print(f"first and last page, so using fp-lp: {pages=}")
         elif first_page:
             pages=first_page
         else:
             pages=''
         if first_page and last_page:
             pagescount = int(last_page) - int(first_page) + 1
-            print('lastpage - firstpage for pagecount')
+            print(f'lastpage - firstpage for pagecount: {pagescount=}')
         else:
             pagescount = None
         if not pages:
             pages = ''
-        print("pages, pagescount",pages, pagescount)
+        print(f"{pages=}, {pagescount=}")
         return pagescount, pages
 
 
@@ -232,50 +263,61 @@ def processMongoPaper(dataset, user=None):
 
     oa_work = prep_openalex_data(dataset['works_openalex'])
     cr_work = prep_crossref_data(dataset['crossref'])
-
+    stop = False
     oa_work['paper'].update(cr_work.get('dates', {}))
     oa_work['paper']['license'] = get_license_data(oa_work)
     oa_work['paper']['pagescount'], oa_work['paper']['pages'] = get_pages_count(oa_work, cr_work)
+    print(f' making paper using {oa_work['paper']=}')
+    #go_on=input("continue creating the paper? (y/n)")
+    #if go_on != 'y':
+    #    return
+
+
+    if Paper.objects.filter(doi=oa_work['paper']['doi']).exists():
+        print("paper already exists (itemid=",Paper.objects.get(doi=oa_work['paper']['doi']).id,")")
+        stop_q = input("continue creating the paper? (y/n)")
+        if stop_q != 'y':
+            viewfulloa = input("Do you want to view the full open alex input object? (y/n)")
+            if viewfulloa == 'y':
+                print("oa_work['full'] is:")
+                print(oa_work['full'])
+            print("stopping execution of this iteration")
+            return
+
     paper, created = Paper.objects.get_or_create(**oa_work['paper'])
     if created:
         paper.save()
-    paper = add_authorships(oa_work,paper)
-    paper = add_locations(oa_work,paper)
+    print("paper created with id ", paper.id)
+
+    paper = add_authorships(oa_work['full'],paper)
+    paper = add_locations(oa_work['full'],paper)
 
     paper.taverne_date=calc_taverne_date(oa_work['paper'], cr_work.get('dates', {}))
     #paper.ut_keyword_suggestion=calc_ut_keyword_suggestion(oa_work, cr_work)
-    # TODO: fix determine_is_in_pure
-    paper.is_in_pure = determine_is_in_pure(oa_work['paper'])
+    #paper.is_in_pure = determine_is_in_pure(oa_work['paper'])
 
     if user:
         viewPaper.objects.get_or_create(user=user, displayed_paper=paper)
-    
+
+@timeit
 @transaction.atomic
 def add_authorships(data, paper):
-    print("\n============================== A U T H O R S ==============================\n")
 
-    authorships = data.get('authorships')
-    for authorship in authorships:
-        author = authorship.get('author')
-        is_ut=False
-        oa_authordata = mongo_oa_authors.find_one({"id":author.get('id')})
+    @timeit
+    def getorgs(affils, is_ut):
         affiliations=[]
-        if oa_authordata:
-            affils = oa_authordata.get('affiliations')
-        else:
-            affils = authorship.get('institutions')
-
         for org in affils:
+            # get affiliation info into a list of dicts, check for is_ut along the way
             if not org:
                 continue
             if org.get('institution'):
-                org = org.get('institution')
+                orgsrc = org.get('institution')
             orgdata = {
-                'name':org.get('display_name'),
-                'openalex_url':org.get('id'),
-                'ror':org.get('ror'),
-                'type':org.get('type'),
-                'country_code':org.get('country_code'),
+                'name':orgsrc.get('display_name'),
+                'openalex_url':orgsrc.get('id'),
+                'ror':orgsrc.get('ror'),
+                'type':orgsrc.get('type'),
+                'country_code':orgsrc.get('country_code') if orgsrc.get('country_code') else '',
                 'data_source':'openalex'
             }
             if not is_ut:
@@ -286,47 +328,81 @@ def add_authorships(data, paper):
             if org.get('years'):
                 years = org.get('years')
             else:
-                years = {}
-            org, created = Organization.objects.get_or_create(**orgdata)
-            if created:
-                org.save()
-            affiliations.append([org, years])
+                years = []
 
-        hname = HumanName(author.get('display_name'))
-        objectdict = {
-            'author':{
-                'name': author.get('display_name'),
-                'orcid': author.get('orcid'),
-                'openalex_url': author.get('id'),
+            # if org is already in db, either
+            if Organization.objects.filter(Q(ror=orgdata['ror']) & Q(name=orgdata['name']) & Q(openalex_url=orgdata['openalex_url'])).exists():
+                found_org  = Organization.objects.filter(Q(ror=orgdata['ror']) & Q(name=orgdata['name']) & Q(openalex_url=orgdata['openalex_url'])).first()
+                if found_org.type != orgdata['type'] or found_org.country_code != orgdata['country_code']:
+                    #for now, assumed that the new data is better... might be a bad assumption
+                    if orgdata['type'] and orgdata['type'] != '':
+                        found_org.type = orgdata['type']
+                    if orgdata['country_code'] and orgdata['country_code'] != '':
+                        found_org.country_code = orgdata['country_code']
+                    found_org.save()
+                org = found_org
+
+            if not isinstance(org, Organization):
+                org, created = Organization.objects.get_or_create(**orgdata)
+                if created:
+                    org.save()
+
+            affiliations.append([org, years])
+        return affiliations
+    @timeit
+    def makefullauthor(author, authorship):
+        # author doesn't exist yet, make new one
+        is_ut=False
+        affiliations=[]
+
+        # First check if the author was found as UT author in OpenAlex; if so, get that detailed data
+        oa_ut_authordata = mongo_oa_ut_authors.find_one({"id":author.get('id')})
+
+        if oa_ut_authordata:
+            is_ut = True
+            authordata = oa_ut_authordata
+            affils = oa_ut_authordata.get('affiliations')
+        else:
+            # else try to get detailed data from the other mongo_db
+            oa_authordata = mongo_oa_authors.find_one({"id":author.get('id')})
+            if oa_authordata:
+                authordata = oa_authordata
+                affils = oa_authordata.get('affiliations')
+            else:
+                # if that fails use the data from work->authorships
+                authordata = author
+                affils = authorship.get('institutions')
+
+            if affils and affils != [] and affils != {} and affils is not None:
+                affiliations = getorgs(affils, is_ut)
+
+        # process author data
+        hname = HumanName(authordata.get('display_name'))
+        authordict = {
+                'name': authordata.get('display_name'),
+                'orcid': authordata.get('orcid'),
+                'openalex_url': authordata.get('id'),
                 'first_name': hname.first,
                 'last_name': hname.last,
                 'middle_name': hname.middle,
                 'initials': hname.initials(),
                 'is_ut': is_ut
-            },
-            'authorship':{
-                'paper':paper,
-                'position':authorship.get('author_position'),
-                'corresponding':authorship.get('is_corresponding'),
             }
-        }
-        if oa_authordata:
-            objectdict['author'].update({
-                'scopus_id':oa_authordata.get('ids').get('scopus'),
-                'known_as': list(oa_authordata.get('display_name_alternatives'))
+        if authordata.get('ids') or authordata.get('display_name_alternatives'):
+            authordict.update({
+                'scopus_id':authordata.get('ids').get('scopus'),
+                'known_as': authordata.get('display_name_alternatives')
                 })
 
-
-        authorobject, created = Author.objects.get_or_create(**objectdict['author'])
+        authorobject, created = Author.objects.get_or_create(**authordict)
         if created:
             authorobject.save()
-
         for aff in affiliations:
-            authorobject.affils.add(aff[0],through_defaults={'years':aff[1]})       
-        
-        paper.authors.add(authorobject, through_defaults={'position':objectdict.get('authorship').get('position'), 'corresponding':objectdict.get('authorship').get('corresponding')})
-        
-        
+            authorobject.affils.add(aff[0],through_defaults={'years':aff[1]})
+
+        return authorobject
+    @timeit
+    def add_peoplepagedata(author, authorobject):
         peoplepage_data = mongo_peoplepage.find_one({"id":author.get('id')})
         if peoplepage_data:
             utdata = {
@@ -343,11 +419,34 @@ def add_authorships(data, paper):
                 ut.save()
             authorobject.is_ut = True
             authorobject.save()
-            
+        else:
+            print("no ut data for ut author found, oa id: ", author.get('id'))
+    print("\n============================== A U T H O R S ==============================\n")
+    authorships = data.get('authorships')
+    for authorship in authorships:
+        author = authorship.get('author')
+        if Author.objects.filter(openalex_url=author.get('id')).exists():
+            authorobject = Author.objects.filter(openalex_url=author.get('id')).get()
+        else:
+            authorobject = makefullauthor(author, authorship)
+
+        authorshipdict = {
+                    'paper':paper,
+                    'position':authorship.get('author_position'),
+                    'corresponding':authorship.get('is_corresponding'),
+                }
+        paper.authors.add(authorobject, through_defaults={'position':authorshipdict.get('position'), 'corresponding':authorshipdict.get('corresponding')})
+
+        if authorobject.is_ut:
+            add_peoplepagedata(author, authorobject)
+
     return paper
+
+@timeit
 @transaction.atomic
 def add_locations(data, paper):
     print("\n============================== L O C A T I O N S ==============================\n")
+    @timeit
     def get_deal_data(openalex_id):
         dealdatacontents = mongo_dealdata.find_one({"id":openalex_id})
         if dealdatacontents:
@@ -376,11 +475,36 @@ def add_locations(data, paper):
         if location['source']:
             source, sourcedict = get_source(location['source'])
         else:
-            print('no source for this location:')
-            print(location)
-            source = None
-            sourcedict = None
-        
+            is_twente = False
+            if location.get('landing_page_url'):
+                if 'twente' in location.get('landing_page_url'):
+                    is_twente = True
+            if location.get('pdf_url'):
+                if 'twente' in location.get('pdf_url'):
+                    is_twente = True
+
+            if is_twente:
+                source, created = Source.objects.filter(openalex_url='https://openalex.org/P4363603077').get_or_create({
+                    'openalex_url':'https://openalex.org/P4363603077',
+                    'display_name':'University of Twente RIS',
+                    'host_org':'University of Twente',
+                    'type':'repository',
+                    'is_in_doaj':False,
+                })
+                if created:
+                    source.save()
+                sourcedict = None
+
+                print('found ut pure location')
+                paper.is_in_pure = True
+                paper.save()
+            else:
+                print('no source for this location:')
+                print(location)
+
+                source = None
+                sourcedict = None
+
         if location.get('landing_page_url') == primary_location or location.get('pdf_url') == primary_location:
             is_primary=True
         else:
@@ -389,7 +513,7 @@ def add_locations(data, paper):
             is_best_oa=True
         else:
             is_best_oa=False
-        
+
         cleandata={
             'is_oa':location.get('is_oa'),
             'is_accepted':location.get('is_accepted'),
@@ -404,11 +528,15 @@ def add_locations(data, paper):
         location, created = Location.objects.get_or_create(**cleandata)
         if created:
             location.save()
+
         paper.locations.add(location)
-        if is_primary and sourcedict:
+
+        if any([is_primary, len(data['locations'])==1]) and sourcedict:
             journaldata=sourcedict
             journaldata['name']=sourcedict.get('display_name')
             del journaldata['display_name']
+            if 'homepage_url' in journaldata:
+                del journaldata['homepage_url']
             dealdata, keywords, publisher = get_deal_data(journaldata['openalex_url'])
             journaldata['keywords']=keywords
             journaldata['publisher']=publisher if publisher else ""
@@ -420,31 +548,41 @@ def add_locations(data, paper):
                 if created:
                     deal.save()
                 journal.dealdata=deal
+                journal.save()
+
             paper.journal=journal
     return paper
 
+@timeit
 @transaction.atomic
 def get_source(data):
     print("\n============================== S O U R C E ==============================\n")
-
     issn=data.get('issn_l')
     issnlist=data.get('issn')
-    issn_l=""
+    eissn=""
     if isinstance(issnlist, list):
         for nissn in issnlist:
             if nissn != issn:
-                issn_l = nissn
+                eissn = nissn
                 break
-    # TODO: fix host_org
+
     sourcedict = {
         'openalex_url':data.get('id'),
         'display_name':data.get('display_name'),
-        'host_org':data.get('host_org_lineage_names')[0] if data.get('host_org_lineage_names') else '',
+        'host_org':data.get('host_organization_name') if data.get('host_organization_name') else '',
         'type':data.get('type'),
         'is_in_doaj':data.get('is_in_doaj'),
-        'e_issn':issn,
-        'issn':issn_l,
+        'e_issn':eissn,
+        'issn':issn,
+        'homepage_url':'',
     }
+    extradata = mongo_oa_journals.find_one({'id':data.get('id')})
+    if extradata:
+        sourcedict['homepage_url']=extradata.get('homepage_url')
+    if not sourcedict.get('homepage_url'):
+        sourcedict['homepage_url']=''
+
+    print(f"creating source using {sourcedict=}")
     source, created = Source.objects.get_or_create(**sourcedict)
     if created:
         source.save()

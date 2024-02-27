@@ -82,7 +82,15 @@ def delete_duplicates(request):
     logger.info("[url] /delete_duplicates [user] %s", request.user.username)
     #removeDuplicates()
     #message = "Succesfully removed duplicates."
-    
+    from .models import Author, Organization, DealData, Journal, UTData, Paper, Source, Location
+    print(Paper.objects.all().delete())
+    print(Author.objects.all().delete())
+    print(Organization.objects.all().delete())
+    print(DealData.objects.all().delete())
+    print(Journal.objects.all().delete())
+    print(UTData.objects.all().delete())
+    print(Source.objects.all().delete())
+    print(Location.objects.all().delete())
     addOpenAlexWorksFromMongo()
     message='added oa works from mongo'
     return JsonResponse({"status": "success", "message": message})

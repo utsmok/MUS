@@ -8,12 +8,15 @@ class Organization(models.Model):
     type = models.CharField(max_length=256, blank=True, null=False)
     data_source = models.CharField(max_length=256, blank=True, null=True)
     openalex_url = models.CharField(max_length=256, blank=True, null=True)
-    
+
     class Meta:
         indexes = [
-            models.Index(fields=["name"]),
-            models.Index(fields=["ror"]),
-            models.Index(fields=["openalex_url"]),
+            models.Index(fields=["openalex_url",
+                                "name",
+                                'country_code',
+                                'ror',
+                                'type',
+                                ]),
         ]
 
 class Author(TimeStampedModel, models.Model):
@@ -30,6 +33,16 @@ class Author(TimeStampedModel, models.Model):
     openalex_url = models.CharField(max_length=256, blank=True, null=True)
     known_as = models.JSONField(blank=True, null=True)
     scopus_id = models.CharField(max_length=256, unique=True, blank=True, null=True)
+    class Meta:
+        indexes = [
+            models.Index(fields=["openalex_url",
+                                "name",
+                                'is_ut',
+                                'scopus_id',
+                                'orcid',
+                                'known_as',
+                                ]),
+        ]
 
 class Affiliation(models.Model):
     years = models.JSONField(default=dict)
@@ -54,6 +67,14 @@ class DealData(TimeStampedModel, models.Model):
     publisher = models.CharField(max_length=512)
     jb_url = models.CharField(max_length=512)
     oa_type = models.CharField(max_length=256)
+    class Meta:
+        indexes = [
+            models.Index(fields=["deal_status",
+                                'publisher',
+                                'oa_type',
+                                'jb_url',
+                                ]),
+        ]
 
 class Journal(models.Model):
     name = models.CharField(max_length=512)
@@ -67,6 +88,15 @@ class Journal(models.Model):
     publisher = models.CharField(max_length=512, blank=True, null=False)
     openalex_url = models.CharField(max_length=256, blank=True, null=False)
     dealdata = models.ForeignKey(DealData, on_delete=models.SET_NULL, null=True)
+    class Meta:
+        indexes = [
+            models.Index(fields=["openalex_url",
+                                'name',
+                                'issn',
+                                'e_issn',
+                                'publisher',
+                                ]),
+        ]
 
 class Source(TimeStampedModel, models.Model):
     openalex_url = models.CharField(max_length=256)
@@ -77,6 +107,13 @@ class Source(TimeStampedModel, models.Model):
     host_org = models.CharField(max_length=512)
     type = models.CharField(max_length=256)
     is_in_doaj = models.BooleanField(null=True)
+    class Meta:
+        indexes = [
+            models.Index(fields=["openalex_url",
+                                'homepage_url',
+                                'display_name',
+                                ]),
+        ]
 
 class Location(TimeStampedModel, models.Model):
     is_accepted = models.BooleanField(null=True)
@@ -133,6 +170,20 @@ class Paper(TimeStampedModel, models.Model):
     taverne_date = models.DateField(blank=True, null=True)
     ut_keyword_suggestion = models.CharField(max_length=256, blank=True, null=True)
     topics = models.JSONField(blank=True, null=True)
+    class Meta:
+        indexes = [
+            models.Index(fields=["openalex_url",
+                                "doi",
+                                "title",
+                                'year',
+                                "itemtype",
+                                'is_oa',
+                                'is_in_pure',
+                                'has_pure_oai_match',
+                                'openaccess',
+                                'date'
+                                ]),
+        ]
 
 class Authorship(models.Model):
     author = models.ForeignKey(
@@ -143,6 +194,12 @@ class Authorship(models.Model):
     )
     position = models.CharField(max_length=256, blank=True, null=False)
     corresponding = models.BooleanField(null=True)
+    class Meta:
+        indexes = [
+            models.Index(fields=["author",
+                                "paper",
+                                ]),
+        ]
 
 class viewPaper(TimeStampedModel, models.Model):
     from django.conf import settings
@@ -156,19 +213,12 @@ class viewPaper(TimeStampedModel, models.Model):
         null=True,
     )
 
-class PureAuthor(TimeStampedModel, models.Model):
-    name = models.CharField(max_length=256)
-    author = models.ForeignKey(
-        Author, on_delete=models.SET_NULL, related_name="pure_authors", null=True
-    )
 
 class PureEntry(TimeStampedModel, models.Model):
     title = models.CharField(max_length=512, blank=True, null=False)
     paper = models.ForeignKey(
         Paper, on_delete=models.SET_NULL, related_name="pure_entries", null=True
     )
-    contributors = models.ManyToManyField(PureAuthor, related_name="pure_entries")
-    creators = models.ManyToManyField(PureAuthor, related_name="pure_creators")
     authors = models.ManyToManyField(Author, related_name="pure_entries")
     language = models.CharField(max_length=256, blank=True, null=False)
     date = models.CharField(max_length=256, blank=True, null=False)
