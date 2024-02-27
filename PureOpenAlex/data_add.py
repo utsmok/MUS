@@ -9,7 +9,7 @@ from .data_process_mongo import processMongoPaper
 from .data_repair import clean_duplicate_organizations
 from .data_helpers import APILOCK
 from pymongo import MongoClient
-
+import pymongo
 from django.conf import settings
 APIEMAIL = getattr(settings, "APIEMAIL", "no@email.com")
 pyalex.config.email = APIEMAIL
@@ -36,13 +36,16 @@ def addOpenAlexWorksFromMongo():
     crossref_info=db['api_responses_crossref']
     i=0
     j=0
-    for document in openalex_works.find():
+    for document in openalex_works.find().sort('year',pymongo.DESCENDING):
         crossrefdoc={}
         try:
             doi=document['doi'].replace('https://doi.org/','')
             crossrefdoc=crossref_info.find_one({'DOI':doi})
         except Exception:
             doi=None
+
+        if doi is None:
+            continue
         dataset={
             'works_openalex':document,
             'crossref':crossrefdoc,

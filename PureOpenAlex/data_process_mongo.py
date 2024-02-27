@@ -312,6 +312,9 @@ def add_authorships(data, paper):
                 continue
             if org.get('institution'):
                 orgsrc = org.get('institution')
+            else:
+                orgsrc = org
+
             orgdata = {
                 'name':orgsrc.get('display_name'),
                 'openalex_url':orgsrc.get('id'),
