@@ -202,6 +202,7 @@
 									<div class='d-inline float-end'>
 										<div><span class="all badge flex-shrink text-wrap badge-info fs-6">{{ author.name }}</span> </div>
 										<div><span class="text-warning flex-shrink text-wrap font-monospace all">{{ author.first_name }}</span><span> </span><span class="text-primary  font-monospace flex-shrink text-wrap all">{{ author.middle_name }}</span><span> </span><span class="text-success flex-shrink text-wrap font-monospace all">{{ author.last_name }}</span></div>
+										<div><span class="text-danger flex-shrink text-wrap font-monospace all">{{ author.initials }}</span><span> </span><span class="text-success flex-shrink text-wrap font-monospace all">{{ author.last_name }}</span></div>
 									</div>
 							</div>
 							<div class="row align-items-center justify-content-center text-center">
@@ -233,31 +234,31 @@
 								<div>
 								{% for affiliation in author.affiliations.all %}
 									{% if forloop.counter < 5 %}
-										{% if affiliation.data_source == "OpenAlex" %}
+										{% if affiliation.organization.data_source == "openalex" %}
 										<div class="all badge badge-info">
 											<i class="fas fa-book-open-reader"></i>
-										{% elif affiliation.data_source == "ORCID" %}
+										{% elif affiliation.organization.data_source == "ORCID" %}
 										<div class="all badge badge-warning">
 											<i class="fab fa-orcid"></i>
 										{% else %}
 										<div class="all badge badge-secondary">
 											<i class="fas fa-circle-question"></i>
 										{% endif %}
-											{{ affiliation.name }}
+											{{ affiliation.organization.name }}
 										</div>
 									{% elif forloop.counter >= 5 %}
-										{% if 'Twente' in affiliation.name %}
-											{% if affiliation.data_source == "OpenAlex" %}
+										{% if 'Twente' in affiliation.organization.name %}
+											{% if affiliation.organization.data_source == "openalex" %}
 											<div class="all badge badge-info">
 												<i class="fas fa-book-open-reader"></i>
-											{% elif affiliation.data_source == "ORCID" %}
+											{% elif affiliation.organization.data_source == "ORCID" %}
 											<div class="all badge badge-warning">
 												<i class="fab fa-orcid"></i>
 											{% else %}
 											<div class="all badge badge-secondary">
 												<i class="fas fa-circle-question"></i>
 											{% endif %}
-												{{ affiliation.name }}
+												{{ affiliation.organization.name }}
 											</div>
 										{% endif %}
 										{% if forloop.counter == 5 %}
@@ -286,19 +287,19 @@
 			<div class="card-body">
 				<div class="mb-1 row row-cols-2 row-cols-md-2 justify-content-center text-center align-items-center">
 					<div class="col-md-6 col badge badge-success fs-6">Title</div>
-					<div class="col-md-6 col" ><span class="fs-6 text-success all"> {{ article.journal_prefetch.name }}</span></div>
+					<div class="col-md-6 col" ><span class="fs-6 text-success all"> {{ article.journal.name }}</span></div>
 				</div>
 				<div class="mb-1 row row-cols-2 row-cols-md-2 justify-content-center text-center align-items-center">
 					<div class="col-md-6 col badge badge-danger fs-6"> ISSN </div>
-					<div class="col-md-6 col" ><span class="fs-6 text-danger all"> {{ article.journal_prefetch.issn }}</span></div>
+					<div class="col-md-6 col" ><span class="fs-6 text-danger all"> {{ article.journal.issn }}</span></div>
 				</div>
 				<div class="mb-1 row row-cols-2 row-cols-md-2 justify-content-center text-center align-items-center">
 					<div class="col-md-6 col badge badge-danger fs-6"> eISSN </div>
-					<div class="col-md-6 col" ><span class="fs-6 text-danger all"> {{ article.journal_prefetch.eissn }}</span></div>
+					<div class="col-md-6 col" ><span class="fs-6 text-danger all"> {{ article.journal.eissn }}</span></div>
 				</div>
 				<div class="mb-1 row row-cols-2 row-cols-md-2 justify-content-center text-center align-items-center">
 					<div class="col-md-6 col badge badge-primary fs-6"> Publisher </div>
-					<div class="col-md-6 col" ><span class="fs-6 text-primary all"> {{ article.journal_prefetch.host_org }}</span></div>
+					<div class="col-md-6 col" ><span class="fs-6 text-primary all"> {{ article.journal.host_org }}</span></div>
 				</div>
 				<div class="mb-1 row row-cols-2 row-cols-md-2 justify-content-center text-center align-items-center">
 					<div class="col-md-6 col badge badge-info fs-6"> Volume </div>
@@ -327,26 +328,25 @@
 				</div>
 				<hr class="hr hr-blurry" />
 
-				{% for deal in article.journal.dealdata_set.all %}
+				
 					<div class="row bg-secondary" style="--mdb-bg-opacity: 0.2;">
 						<div class="col col-sm-6 d-flex flex-wrap ">
-							<a href="{{ deal.jb_url }}" target="_blank"><div class=" col-12 all text-black fw-bold text-decoration-underline fs-6">{{ article.journal_prefetch.name }}</div></a>
-								<div class=" col-12 all "> {{ deal.publisher }}</div>
-								<div class=" col-12 "> ISSN: <span class="all">{{ article.journal_prefetch.issn }}</span><span class="all"> ({{ article.journal_prefetch.eissn }})</span></div>
-								<div class="col-12 fw-light" style="font-size: 0.8rem;"> {% for keyword in article.journal_prefetch.keywords.all %}<span class="all">{{ keyword.keyword }}</span> -{% endfor %}</div>
+							<a href="{{ deal.jb_url }}" target="_blank"><div class=" col-12 all text-black fw-bold text-decoration-underline fs-6">{{ article.journal.name }}</div></a>
+								<div class=" col-12 all "> {{ article.journal.dealdata.publisher }}</div>
+								<div class=" col-12 "> ISSN: <span class="all">{{ article.journal.issn }}</span><span class="all"> ({{ article.journal.eissn }})</span></div>
+								<div class="col-12 fw-light" style="font-size: 0.8rem;"> {% for keyword in article.journal.keywords %}<span class="all">{{ keyword }}</span> -{% endfor %}</div>
 						</div>
 						<div class="col h-100 text-end" >
 							<a href="{{ deal.jb_url }}" target="_blank">
-								{% if deal.oa_type == "Hybrid Open Access. Journal supports Open Access publishing on request" %}
+								{% if article.journal.dealdata.oa_type == "Hybrid Open Access. Journal supports Open Access publishing on request" %}
 									<img src="{% static 'openrequest.svg' %}" height="100" alt="hybrid"/>
-								{% elif deal.oa_type == "Full Open Access. All articles in this journal are Open Access" %}
+								{% elif article.journal.dealdata.oa_type == "Full Open Access. All articles in this journal are Open Access" %}
 									<img src="{% static 'openaccess.svg' %}" height="100" alt="gold"/>
 								{% endif %}
-								<div class="all text-decoration-underline fw-bold " style="color:#5a5e62; font-family:verdana,sans-serif">{{ deal.deal_status }}</div>
+								<div class="all text-decoration-underline fw-bold " style="color:#5a5e62; font-family:verdana,sans-serif">{{ article.journal.dealdata.deal_status }}</div>
 							</a>
 						</div>
 					</div>
-				{% endfor %}
 				<hr class="hr hr-blurry" />
 				<div class="row mb-1 row-cols-2 row-cols-md-2 justify-content-center text-center align-items-center">
 					{% if article.is_oa %}
@@ -553,9 +553,53 @@
 			</div>
 			<ul class="list-group list-group-light">
 				<li class="list-group-item">
+					<div class="fw-bold"><span class="text-success">Article</span> Topics</div>
+					<div>
+
+					{% for topic in article.topics %}
+						{% for key, value in topic.items %}
+							{% if key == 'field' %}
+								{% for key, value in value.items %}
+								{% if key == 'display_name' %}
+								<div class=" all">Field: {{ value }}</div>
+								{% endif %}
+								{% endfor %}
+							{% endif %}
+							{% if key == 'domain' %}
+								{% for key, value in value.items %}
+								{% if key == 'display_name' %}
+								<div class="ms-2 all">Domain: {{ value }}</div>
+								{% endif %}
+								{% endfor %}
+							{% endif %}
+							{% if key == 'subfield' %}
+								{% for key, value in value.items %}
+								{% if key == 'display_name' %}
+								<div class="ms-3 all">Subfield: {{ value }}</div>
+								{% endif %}
+								{% endfor %}
+							{% endif %}					
+							{% if key == 'display_name' %}
+
+								<div class="ms-5 all">Topic:{{ value }}</div>
+
+							{% endif %}
+
+						
+						{% endfor %}
+					{% endfor %}
+				</div>
+				</li>
+			</ul>
+			<ul class="list-group list-group-light">
+				<li class="list-group-item">
 					<div class="fw-bold"><span class="text-success">Article</span> Keywords</div>
-					{% for keyword in article.keywords_prefetch %}
-					<span class="all">{{ keyword.keyword }}</span>,
+					{% for keyword in article.keywords.items %}
+					{% for key, value in keyword.items %}
+					{% if key == 'display_name' %}
+					<span class="all">{{ value }}</span>,
+					{% endif %}
+					{% endfor %}
 					{% endfor %}
 				</li>
 			</ul>

@@ -1,3 +1,4 @@
+import logging
 from .models import (
     Location,
     Author,
@@ -6,12 +7,13 @@ from .models import (
     Authorship,
     viewPaper,
     DealData,
+
 )
 from django.db.models import Count, Q, Prefetch, Exists, OuterRef
 from .data_helpers import TCSGROUPS, TCSGROUPSABBR
 import regex as re
 from datetime import datetime
-from loguru import logger
+logger = logging.getLogger(__name__)
 
 
 def generateMainPage(user):
@@ -31,7 +33,7 @@ def generateMainPage(user):
     }
     faculties = []
     for faculty in facultynamelist:
-        facultyname, stats, _ = getPapers(faculty, "all", user)
+        facultyname, stats, listpapers = getPapers(faculty, "all", user)
         total["articles"] += stats["num"]
         total["numoa"] += stats["numoa"]
         total["inpure"] += stats["articlesinpure"]
@@ -47,6 +49,8 @@ def generateMainPage(user):
                 "inpurematch_percent": stats["articlesinpurematch_percent"],
             }
         )
+
+
     total["oa"] = round(total["numoa"] / total["articles"] * 100, 2)
     total["inpure_percent"] = round(total["inpure"] / total["articles"] * 100, 2)
     total["inpurematch_percent"] = round(
@@ -58,9 +62,9 @@ def generateMainPage(user):
 
 def getPapers(name, filter="all", user=None):
     if isinstance(name, int):
-        logger.info("getpaper [id] {} [user] {}", name, user.username)
+        logger.info("getpaper [id] %s [user] %s", name, user.username)
     else:
-        logger.info("getpapers [name] {} [filter] {} [user] {}", name, filter, user.username)
+        logger.info("getpapers [name] %s [filter] %s [user] %s", name, filter, user.username)
 
     facultynamelist = ["EEMCS", "BMS", "ET", "ITC", "TNW", 'eemcs', 'bms', 'et', 'itc','tnw']
     facultyname = ""
@@ -79,7 +83,7 @@ def getPapers(name, filter="all", user=None):
         return facultyname, stats, listpapers
 
     def applyFilter(listpapers, filter, value=""):
-        logger.debug("[filter] {} [value] {}", filter, value)
+        logger.debug("[filter] %s [value] %s", filter, value)
         if filter == "pure_match":
             newlist = listpapers.filter(has_pure_oai_match=True)
         if filter == "no_pure_match":
@@ -104,12 +108,10 @@ def getPapers(name, filter="all", user=None):
             # get all papers where at least one of the authors has a linked AFASData entry that has 'is_tcs'=true
             # also get all papers where at least one of the authors has a linked UTData entry where current_group is in TCSGROUPS or TCSGROUPSABBR
             tcscheck = TCSGROUPS + TCSGROUPSABBR
-            q_expressions = Q()
-            for group_abbr in TCSGROUPSABBR:
-                q_expressions |= Q(
-                    authorships__author__utdata__employment_data__contains={'group': group_abbr}
-                )
-            newlist = listpapers.filter(Q(authorships__author__utdata__current_group__in=tcscheck) | q_expressions)
+            newlist = listpapers.filter(
+                Q(authorships__author__afas_data__is_tcs=True)
+                | Q(authorships__author__utdata__current_group__in=tcscheck)
+            )
         if filter == 'author':
             author = Author.objects.get(name = name)
             newlist = listpapers.filter(
@@ -126,8 +128,10 @@ def getPapers(name, filter="all", user=None):
                 journal=journal
             ).select_related('journal')
         if filter == 'publisher':
+            publisher = DealData.objects.get(publisher = value).prefetch_related('journal')
+            journals = publisher.journal.all()
             newlist = listpapers.filter(
-                journal__publisher_icontains = value
+                journal__in=journals
             ).select_related('journal')
         if filter == 'start_date':
             start_date = value
@@ -247,6 +251,11 @@ def getPapers(name, filter="all", user=None):
             queryset=Location.objects.filter(papers__in=filterpapers).select_related("source"),
             to_attr="preloaded_locations",
         )
+        journal_prefetch = Prefetch(
+            "journal",
+            queryset=Journal.objects.filter(papers__in=filterpapers).select_related(),
+            to_attr="journal_prefetch",
+        )
         authors_and_affiliation_prefetch =Prefetch(
             'authors',
             queryset=Author.objects.filter(authorships__paper__in=filterpapers).distinct()
@@ -256,6 +265,7 @@ def getPapers(name, filter="all", user=None):
         return [
             authorships_prefetch,
             location_prefetch,
+            journal_prefetch,
             authors_and_affiliation_prefetch,
         ]
 
@@ -420,5 +430,5 @@ def open_alex_autocomplete(query, types=['works','authors'], amount=5):
     return result
 
 def getAuthorPapers(display_name, user=None):
-    logger.info("authorpapers [author] {} [user] {}", display_name, user.username)
+    logger.info("authorpapers [author] %s [user] %s", display_name, user.username)
     return getPapers(display_name, 'author', user)

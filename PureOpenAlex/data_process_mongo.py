@@ -7,14 +7,16 @@ from nameparser import HumanName
 from datetime import date
 from dateutil.relativedelta import relativedelta
 from pymongo import MongoClient
-import logging
 import pyalex
-from rich import print
-from typing import TypeVar
 from .data_helpers import (
     convertToEuro,
     invertAbstract,
     TWENTENAMES,)
+from functools import wraps
+import time
+from loguru import logger
+import re
+
 FACULTIES = ['ITC', 'EEMCS', 'ET', 'TNW', 'BMS', 'Science and Technology Faculty', 'Behavioural, Management and Social Sciences', 'Engineering Technology', 'Geo-Information Science and Earth Observation', 'Electrical Engineering, Mathematics and Computer Science']
 OA_WORK_COLUMNS = ['_id','id','doi','title','display_name','publication_year','publication_date','ids','language','primary_location','type','type_crossref','indexed_in','open_access','authorships','countries_distinct_count','institutions_distinct_count','corresponding_author_ids','corresponding_institution_ids','apc_list','apc_paid','has_fulltext','fulltext_origin','cited_by_count','cited_by_percentile_year','biblio','is_retracted','is_paratext','keywords','concepts','mesh','locations_count','locations','best_oa_location','sustainable_development_goals','grants','referenced_works_count','referenced_works','related_works','ngrams_url','abstract_inverted_index','cited_by_api_url','counts_by_year','updated_date','created_date','topics','primary_topic']
 CR_WORK_COLUMNS = ['_id','indexed','reference-count','publisher','content-domain','published-print','abstract','DOI','type','created','page','source','is-referenced-by-count','title','prefix','author','member','container-title','link','deposited','score','resource','subtitle','issued','references-count','URL','published','issue','volume','journal-issue','ISSN','issn-type','subject','short-container-title','language','isbn-type','ISBN']
@@ -47,7 +49,6 @@ TCSGROUPS = [
     "Human Media Interaction",
 ]
 MONGOURL = getattr(settings, "MONGOURL")
-logger = logging.getLogger(__name__)
 APIEMAIL = getattr(settings, "APIEMAIL", "no@email.com")
 pyalex.config.email = APIEMAIL
 
@@ -60,10 +61,6 @@ mongo_oa_ut_authors=db['api_responses_UT_authors_openalex']
 mongo_peoplepage=db['api_responses_UT_authors_peoplepage']
 mongo_oa_journals = db['api_responses_journals_openalex']
 
-from functools import wraps
-import time
-
-
 def timeit(func):
     @wraps(func)
     def timeit_wrapper(*args, **kwargs):
@@ -71,12 +68,11 @@ def timeit(func):
         result = func(*args, **kwargs)
         end_time = time.perf_counter()
         total_time = end_time - start_time
-        print(f'Function {func.__name__} took {total_time:.1f} seconds')
+        logger.debug('Function {name} took {time} seconds', name=func.__name__, time=f'{total_time:.1f}')
         return result
     return timeit_wrapper
 
 @timeit
-@transaction.atomic
 def processMongoPaper(dataset, user=None):
     '''
     Input: dataset with openalex & crossref work data
@@ -110,21 +106,20 @@ def processMongoPaper(dataset, user=None):
     finally, if user is not None, add viewPaper(paper, user)
     '''
     def prep_openalex_data(data):
-        print("\n========================== P R E P  O P E N A L E X ==========================\n")
         cleandata = {
             'paper':{
                 'openalex_url':data.get('id'),
-                'title':data.get('title'),
-                'doi':data.get('doi'),
+                'title':data.get('title') if data.get('title') else "",
+                'doi':data.get('doi') if data.get('doi') else "",
                 'year':data.get('publication_year'),
-                'citations':data.get('cited_by_count'),
+                'citations':int(data.get('cited_by_count')) if data.get('cited_by_count') else 0,
                 'openaccess':data.get('open_access').get('oa_status'),
-                'is_oa':data.get('open_access').get('is_oa'),
+                'is_oa':data.get('open_access').get('is_oa') ,
                 'primary_link':data.get('primary_location').get('landing_page_url') if data.get('primary_location').get('landing_page_url') else "",
                 'pdf_link_primary':data.get('primary_location').get('pdf_url') if data.get('primary_location').get('pdf_url') else "",
-                'itemtype':data.get('type_crossref'),
-                'date':data.get('publication_date'),
-                'language':data.get('language',""),
+                'itemtype':data.get('type_crossref') if data.get('type_crossref') else "",
+                'date':data.get('publication_date') if data.get('publication_date') else "",
+                'language':data.get('language',"") if data.get('language') else "",
                 'abstract':invertAbstract(data.get('abstract_inverted_index')),
                 'volume': data.get('biblio').get('volume') if data.get('biblio').get('volume') else "",
                 'issue': data.get('biblio').get('issue') if data.get('biblio').get('issue') else "",
@@ -158,7 +153,6 @@ def processMongoPaper(dataset, user=None):
         return cleandata
 
     def prep_crossref_data(data):
-        print("\n========================= P R E P  C R O S S R E F =========================\n")
         if data:
 
             published = None
@@ -179,7 +173,6 @@ def processMongoPaper(dataset, user=None):
                             datetypekey[datetype]=date.fromisoformat(f"{year}-01-01")
                         elif len(data.get(datetype).get('date-parts')[0])==3:
                             datetypekey[datetype] = date.fromisoformat("-".join([f"{i:02}" for i in data.get('published')['date-parts'][0]]))
-
             return {
                 'dates': {
                     'published':datetypekey['published'] ,
@@ -195,15 +188,8 @@ def processMongoPaper(dataset, user=None):
             return {}
 
     def get_license_data(data):
-        print("\n============================== L I C E N S E ==============================\n")
         value=None
-        print('licenses:')
         data=data.get('full')
-        if data.get('locations'):
-            for loc in data.get('locations'):
-                print(loc.get('license'))
-        else:
-            print('no locations?')
         if data.get('primary_location'):
             value = data.get('primary_location').get('license')
         else:
@@ -213,7 +199,6 @@ def processMongoPaper(dataset, user=None):
                         value = loc.get('license')
         return value if value else ''
     def calc_taverne_date(oa_work, cr_work):
-        print("\n============================== T A V E R N E ==============================\n")
         dates={}
         dates=[date.fromisoformat(oa_work['date'])]
         try:
@@ -223,84 +208,74 @@ def processMongoPaper(dataset, user=None):
             else:
                 return dates[0]+relativedelta(months=+6)
         except Exception as e:
-            print('error in calc_taverne_date',e)
+            logger.error('error in calc_taverne_date: {}',e)
             return None
     def get_pages_count(oa_work, cr_work):
-        print("\n============================== P A G E S ==============================\n")
 
         first_page = oa_work.get('pages').get('first')
         last_page = oa_work.get('pages').get('last')
-        print("first_page, last_page",first_page, last_page)
         pages=''
         pagescount = None
         if cr_work:
             if cr_work.get('page') and cr_work.get('page') != '':
                 pages=cr_work.get('page')
-                print(f"from crossref: {pages=}")
+                logger.debug("got pages from crossref: {pages}", pages=pages)
         elif first_page and last_page:
             pages=f'{first_page}-{last_page}'
-            print(f"first and last page, so using fp-lp: {pages=}")
+            logger.debug("first and last page from OA, so using fp-lp: {pages}", pages=pages)
         elif first_page:
             pages=first_page
         else:
             pages=''
         if first_page and last_page:
-            pagescount = int(last_page) - int(first_page) + 1
-            print(f'lastpage - firstpage for pagecount: {pagescount=}')
+            try:
+                pagescount = int(re.findall("\d+", last_page)[0]) - int(re.findall("\d+", first_page)[0]) + 1
+            except Exception as e: 
+                pagescount = None
+            logger.debug(' using lastpage - firstpage for pagecount: {pagescount}', pagescount=pagescount)
         else:
             pagescount = None
         if not pages:
             pages = ''
-        print(f"{pages=}, {pagescount=}")
+        logger.debug("pages: {pages}, pagescount: {pagescount}", pages=pages, pagescount=pagescount)
         return pagescount, pages
 
 
     #def calc_ut_keyword_suggestion(oa_work, cr_work):
     #    return None
-    print("\n============================== N E W   I T E M ==============================")
-    print("============================== N E W   I T E M ==============================")
-    print("============================== N E W   I T E M ==============================\n")
-
+    logger.info("adding new paper from mongodata with doi {doi}", doi=dataset['works_openalex']['doi'])
+    if Paper.objects.filter(doi=dataset['works_openalex']['doi']).exists():
+        logger.error("paper already exists, aborting. matching itemid: {id}",id=Paper.objects.get(doi=dataset['works_openalex']['doi']).id)
+        return
     oa_work = prep_openalex_data(dataset['works_openalex'])
     cr_work = prep_crossref_data(dataset['crossref'])
-    stop = False
     oa_work['paper'].update(cr_work.get('dates', {}))
     oa_work['paper']['license'] = get_license_data(oa_work)
     oa_work['paper']['pagescount'], oa_work['paper']['pages'] = get_pages_count(oa_work, cr_work)
-    print(f' making paper using {oa_work['paper']=}')
-    #go_on=input("continue creating the paper? (y/n)")
-    #if go_on != 'y':
-    #    return
 
+    with transaction.atomic():
+        paper, created = Paper.objects.get_or_create(**oa_work['paper'])
+        if created:
+            paper.save()
+    logger.info("paper created with id {id} ", id=paper.id)
 
-    if Paper.objects.filter(doi=oa_work['paper']['doi']).exists():
-        print("paper already exists (itemid=",Paper.objects.get(doi=oa_work['paper']['doi']).id,")")
-        stop_q = input("continue creating the paper? (y/n)")
-        if stop_q != 'y':
-            viewfulloa = input("Do you want to view the full open alex input object? (y/n)")
-            if viewfulloa == 'y':
-                print("oa_work['full'] is:")
-                print(oa_work['full'])
-            print("stopping execution of this iteration")
-            return
-
-    paper, created = Paper.objects.get_or_create(**oa_work['paper'])
-    if created:
-        paper.save()
-    print("paper created with id ", paper.id)
-
-    paper = add_authorships(oa_work['full'],paper)
-    paper = add_locations(oa_work['full'],paper)
+    with transaction.atomic():
+        paper = add_authorships(oa_work['full'],paper)
+    with transaction.atomic():
+        paper = add_locations(oa_work['full'],paper)
 
     paper.taverne_date=calc_taverne_date(oa_work['paper'], cr_work.get('dates', {}))
     #paper.ut_keyword_suggestion=calc_ut_keyword_suggestion(oa_work, cr_work)
     #paper.is_in_pure = determine_is_in_pure(oa_work['paper'])
 
     if user:
-        viewPaper.objects.get_or_create(user=user, displayed_paper=paper)
+        with transaction.atomic():
+            view, created = viewPaper.objects.get_or_create(user=user, displayed_paper=paper)
+            if created:
+                view.save()
+    logger.info("fully processed paper with doi {doi}", doi=paper.doi)
 
 @timeit
-@transaction.atomic
 def add_authorships(data, paper):
 
     @timeit
@@ -423,8 +398,7 @@ def add_authorships(data, paper):
             authorobject.is_ut = True
             authorobject.save()
         else:
-            print("no ut data for ut author found, oa id: ", author.get('id'))
-    print("\n============================== A U T H O R S ==============================\n")
+            logger.warning("no ut data for ut author found, oa id: {id} ", id=author.get('id'))
     authorships = data.get('authorships')
     for authorship in authorships:
         author = authorship.get('author')
@@ -446,9 +420,7 @@ def add_authorships(data, paper):
     return paper
 
 @timeit
-@transaction.atomic
 def add_locations(data, paper):
-    print("\n============================== L O C A T I O N S ==============================\n")
     @timeit
     def get_deal_data(openalex_id):
         dealdatacontents = mongo_dealdata.find_one({"id":openalex_id})
@@ -472,8 +444,6 @@ def add_locations(data, paper):
         best_oa_location = data.get('best_oa_location').get('landing_page_url')
         if not best_oa_location:
             best_oa_location = data.get('best_oa_location').get('pdf_url')
-    print('primary:',data.get('primary_location'))
-    print('best_oa:',data.get('best_oa_location'))
     for location in data['locations']:
         if location['source']:
             source, sourcedict = get_source(location['source'])
@@ -485,7 +455,6 @@ def add_locations(data, paper):
             if location.get('pdf_url'):
                 if 'twente' in location.get('pdf_url'):
                     is_twente = True
-
             if is_twente:
                 source, created = Source.objects.filter(openalex_url='https://openalex.org/P4363603077').get_or_create({
                     'openalex_url':'https://openalex.org/P4363603077',
@@ -497,14 +466,9 @@ def add_locations(data, paper):
                 if created:
                     source.save()
                 sourcedict = None
-
-                print('found ut pure location')
                 paper.is_in_pure = True
                 paper.save()
             else:
-                print('no source for this location:')
-                print(location)
-
                 source = None
                 sourcedict = None
 
@@ -557,9 +521,7 @@ def add_locations(data, paper):
     return paper
 
 @timeit
-@transaction.atomic
 def get_source(data):
-    print("\n============================== S O U R C E ==============================\n")
     issn=data.get('issn_l')
     issnlist=data.get('issn')
     eissn=""
@@ -585,7 +547,6 @@ def get_source(data):
     if not sourcedict.get('homepage_url'):
         sourcedict['homepage_url']=''
 
-    print(f"creating source using {sourcedict=}")
     source, created = Source.objects.get_or_create(**sourcedict)
     if created:
         source.save()

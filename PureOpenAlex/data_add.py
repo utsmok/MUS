@@ -1,7 +1,6 @@
 import pyalex
 from pyalex import Works
 from .namematcher import NameMatcher
-import logging
 from .models import PureEntry,  Paper, viewPaper
 from django.db import transaction
 from .data_process import processPaperData
@@ -9,8 +8,9 @@ from .data_process_mongo import processMongoPaper
 from .data_repair import clean_duplicate_organizations
 from .data_helpers import APILOCK
 from pymongo import MongoClient
-import pymongo
 from django.conf import settings
+from loguru import logger
+
 APIEMAIL = getattr(settings, "APIEMAIL", "no@email.com")
 pyalex.config.email = APIEMAIL
 
@@ -25,7 +25,6 @@ SCORETHRESHOLD = 0.98  # for namematching authors on UT peoplepage
 APIEMAIL = getattr(settings, "APIEMAIL", "no@email.com")
 pyalex.config.email = APIEMAIL
 name_matcher = NameMatcher()
-logger = logging.getLogger(__name__)
 
 client=MongoClient('mongodb://smops:bazending@192.168.2.153:27017/')
 db=client['mus']
@@ -36,43 +35,43 @@ def addOpenAlexWorksFromMongo():
     crossref_info=db['api_responses_crossref']
     i=0
     j=0
-    for document in openalex_works.find().sort('year',pymongo.DESCENDING):
+    filterdois = Paper.objects.all().values_list('doi', flat=True).order_by('doi')
+    for document in openalex_works.find().sort('doi'):
+        if document['doi'] in filterdois:
+            continue
         crossrefdoc={}
         try:
             doi=document['doi'].replace('https://doi.org/','')
             crossrefdoc=crossref_info.find_one({'DOI':doi})
         except Exception:
-            doi=None
+            continue
 
         if doi is None:
             continue
+
         dataset={
             'works_openalex':document,
             'crossref':crossrefdoc,
         }
         datasets.append(dataset)
         i=i+1
-        if i == 50:
-            break
+
         if i % 1000 == 0:
             message=f"{i} works currently in dataset"
-            logger.debug(message)
+            logger.info(message)
 
     message=f"processing {len(datasets)}  works"
-    logger.debug(message)
+    logger.info(message)
     added=[]
     k=0
     for dataset in datasets:
         j=j+1
-        #try:
         id=dataset['works_openalex']['id']
-        processMongoPaper(dataset)
+        try:
+            processMongoPaper(dataset)
+        except Exception as e:
+            logger.exception('exception {e} while adding work with doi {doi}',doi=id,e=e)
         added.append(id)
-        #s = input("Item added: "+id+". Press Enter to continue or n to stop.")
-        #if s == "n":
-        #    break
-        #except Exception:
-            #ignorelist[id]=True
         if len(added)>=100:
             k=k+len(added)
             message=f"{k} works added (+{len(added)})"

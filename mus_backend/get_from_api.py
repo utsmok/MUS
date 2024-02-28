@@ -13,7 +13,7 @@ import xml.etree.ElementTree as ET
 from more_itertools import batched
 from itertools import chain
 from habanero import Crossref
-from pyalex import Works, Authors, Journals, config
+from pyalex import Works, Authors, Journals
 import pyalex
 from pymongo import MongoClient
 from django.conf import settings
@@ -34,23 +34,7 @@ for year in range(start_year, end_year + 1):
     UTKEYWORD.append(f"{year} OA procedure")
 
 ITCKEYWORD=["ITC-ISI-JOURNAL-ARTICLE", "ITC-HYBRID", "ITC-GOLD"]
-def getItems(identifiers):
-    '''
-    If 1 or more items are not present in the main SQL database, use this function to add them.
-    It will choose the data source(s) to use based on the identifier.
 
-    Input:
-    identifiers: a list of identifiers to retrieve data for, preferably in canonical format (see helpers.formatIdentifier)
-
-    returns ??
-    '''
-    from .identifier import IdentifierFactory, Identifier
-    id_factory = IdentifierFactory()
-
-    results=[]
-    ids=id_factory.create(identifiers)
-    # Decide which data to pull from where
-    return results
 
 def getPureItems(years):
     def fillFromPure(year):
@@ -332,7 +316,7 @@ def getOpenAlexAuthorData():
         print(f'{len(alreadyadded)} already in DB')
         return authorids, utauthorids
 
-    MONGODB = MongoClient('mongodb://smops:bazending@192.168.2.153:27017/')
+    MONGODB = MongoClient(MONGOURL)
     db=MONGODB["mus"]
     authors_openalex = db["api_responses_authors_openalex"]
     authors, utauthors=getAuthorListFromDB()

@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 from pathlib import Path
 from dotenv import load_dotenv
 import os
+from loguru import logger
 
 dotenv_path = 'secrets.env'
 load_dotenv(dotenv_path)
@@ -37,6 +38,10 @@ if DEBUG:
     LOGLEVEL = "DEBUG"
 else:
     LOGLEVEL = "INFO"
+    
+LOGFMT = "{time:[%m %d] %H:%M:%S} | {name}>{function}() [{level}] |> {message}"
+logger.remove()
+logger.add('log_mus.log', format=LOGFMT, level=LOGLEVEL)
 
 ALLOWED_HOSTS = [
     "openalex.samuelmok.cc",
@@ -210,33 +215,3 @@ SESSION_CACHE_ALIAS = "default"
 
 CACHE_TTL = 60 * 5
 
-LOGGING = {
-    "version": 1,  # the dictConfig format version
-    "disable_existing_loggers": False,  # retain the default loggers
-    "handlers": {
-            "file": {
-                "level": LOGLEVEL,
-                "class": "logging.FileHandler",
-                "filename": "log_mus.log",
-                "formatter": "verbose",
-            },
-    },
-    "root": {
-
-        "level": "INFO",
-    },
-    "loggers": {
-        "PureOpenAlex": {
-            "level":LOGLEVEL,
-            "handlers": ["file"],
-        },
-    },
-    "formatters": {
-        "verbose": {
-            "format": "{asctime} | {module} [{levelname}] |> {message}",
-            "style": "{",
-            "datefmt": "[%m %d] %H:%M:%S",
-        },
-
-    },
-}
