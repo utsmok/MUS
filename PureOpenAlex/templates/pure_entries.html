@@ -8,7 +8,7 @@
 		<span class="text-black fs-1 fw-lighter"><em>{{ article.title }}</em></span>
 		<div>
 			{% for author in article.authors.all %}
-				{% if author.is_ut %}	
+				{% if author.is_ut %}
 					<span class='text-bolder text-primary'>
 				{% else %}
 					<span>
@@ -278,31 +278,31 @@
 									<div>
 									{% for affiliation in author.affiliations.all %}
 										{% if forloop.counter < 5 %}
-											{% if affiliation.data_source == "OpenAlex" %}
+											{% if affiliation.organization.data_source == "OpenAlex" %}
 											<div class="all badge badge-info">
 												<i class="fas fa-book-open-reader"></i>
-											{% elif affiliation.data_source == "ORCID" %}
+											{% elif affiliation.organization.data_source == "ORCID" %}
 											<div class="all badge badge-warning">
 												<i class="fab fa-orcid"></i>
 											{% else %}
 											<div class="all badge badge-secondary">
 												<i class="fas fa-circle-question"></i>
 											{% endif %}
-												{{ affiliation.name }}
+												{{ affiliation.organization.name }}
 											</div>
 										{% elif forloop.counter >= 5 %}
 											{% if 'Twente' in affiliation.name %}
-												{% if affiliation.data_source == "OpenAlex" %}
+												{% if affiliation.organization.data_source == "OpenAlex" %}
 												<div class="all badge badge-info">
 													<i class="fas fa-book-open-reader"></i>
-												{% elif affiliation.data_source == "ORCID" %}
+												{% elif affiliation.organization.data_source == "ORCID" %}
 												<div class="all badge badge-warning">
 													<i class="fab fa-orcid"></i>
 												{% else %}
 												<div class="all badge badge-secondary">
 													<i class="fas fa-circle-question"></i>
 												{% endif %}
-													{{ affiliation.name }}
+													{{ affiliation.organization.name }}
 												</div>
 											{% endif %}
 											{% if forloop.counter == 5 %}
@@ -321,10 +321,3 @@
 	</div>
 
 {% endfor %}
-<!--
-jsonfields:
- = models.JSONField(blank=True, null=True)
-
-
-
-{% endblock %}

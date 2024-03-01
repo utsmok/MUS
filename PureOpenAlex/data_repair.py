@@ -1,4 +1,3 @@
-import logging
 from .models import (
     PureEntry,
     Organization,
@@ -11,12 +10,10 @@ import pyalex
 from django.db.models import Q, Count, Window, F, Min, Max
 from django.db.models.functions import RowNumber
 from django.conf import settings
-
+from loguru import logger
+import pickle
 APIEMAIL = getattr(settings, "APIEMAIL", "no@email.com")
 pyalex.config.email = APIEMAIL
-
-
-logger = logging.getLogger(__name__)
 
 
 def matchPureEntryWithPaper():
@@ -36,46 +33,68 @@ def matchPureEntryWithPaper():
     entrylist = []
     i=0
     j=0
-    allentries = PureEntry.objects.all().only("doi","title",'researchutwente', 'risutwente', 'other_links', 'duplicate_ids')
-    paperpreload = Paper.objects.all().only("doi","title",'locations','id').prefetch_related('locations')
+    skiplist = []
+    advanced = True
+
+    allentries = PureEntry.objects.filter(Q(paper__isnull=True) & ~Q(id__in=skiplist)).only("doi","title",'researchutwente', 'risutwente', 'other_links', 'duplicate_ids')
+    paperpreload = Paper.objects.filter(has_pure_oai_match__isnull=True).only("doi","title",'locations','id').prefetch_related('locations')
+    print('matching ' + str(allentries.count()) + ' entries with ' + str(paperpreload.count()) + ' papers')
     for entry in allentries:
-        logger.debug('matching for entry %s', entry.id)
+        logger.debug('matching for entry %s with advanced = %s', entry.id, advanced)
         j=j+1
+        print(j)
         found=False
         paper = None
         if entry.paper is not None or entry.paper == "":
             found=True
-            print('entry %s already has match', entry.id)
-        if entry.doi != "":
-            paper = paperpreload.filter(doi=entry.doi).first()
-        if not paper and entry.risutwente != "":
-            paper = paperpreload.filter(locations__pdf_url__icontains=entry.risutwente).first()
-        if not paper and entry.researchutwente != "":
-            paper = paperpreload.filter(locations__pdf_url__icontains=entry.researchutwente).first()
-        if not paper and entry.risutwente != "":
-            paper = paperpreload.filter(locations__landing_page_url__icontains=entry.risutwente).first()
-        if not paper and entry.researchutwente != "":
-            paper = paperpreload.filter(locations__landing_page_url__icontains=entry.researchutwente).first()
-        if not paper:
-            paper = paperpreload.filter(title__icontains=entry.title).first()
-        if not paper and entry.duplicate_ids!={}:
-            for key, value in entry.duplicate_ids.items():
-                if not paper:
-                    if key == 'doi':
-                        for doi in value:
-                            if not paper:
-                                paper = paperpreload.filter(doi=doi).first()
-                    if key == 'risutwente' or key == 'researchutwente':
-                        for url in value:
-                            if not paper:
-                                paper = paperpreload.filter(locations__pdf_url__icontains=url).first()
-                                paper = paperpreload.filter(locations__landing_page_url__icontains=url).first()
-        if not paper and entry.other_links!={}:
-            if 'other' in entry.other_links:
-                for value in entry.other_links['other']:
+            print(f'entry {entry.id} already has match')
+        if entry.doi:
+            doi = entry.doi
+            try:
+                doichecklist = [doi, doi.lower(), doi.replace('https://doi.org/', ''),doi.replace('https://doi.org/', '').lower()]
+            except:
+                try:
+                    doichecklist = [doi, doi.lower()]
+                except:
+                    doichecklist = [doi]
+
+            paper = paperpreload.filter(doi__in=doichecklist).first()
+        if advanced:
+            if not paper and entry.risutwente:
+                paper = paperpreload.filter(locations__pdf_url__icontains=entry.risutwente).first()
+            if not paper and entry.researchutwente:
+                paper = paperpreload.filter(locations__pdf_url__icontains=entry.researchutwente).first()
+            if not paper and entry.risutwente:
+                paper = paperpreload.filter(locations__landing_page_url__icontains=entry.risutwente).first()
+            if not paper and entry.researchutwente:
+                paper = paperpreload.filter(locations__landing_page_url__icontains=entry.researchutwente).first()
+            if not paper:
+                paper = paperpreload.filter(title__icontains=entry.title).first()
+            if not paper and entry.duplicate_ids:
+                for key, value in entry.duplicate_ids.items():
                     if not paper:
-                        paper = paperpreload.filter(locations__pdf_url__icontains=value).first()
-                        paper = paperpreload.filter(locations__landing_page_url__icontains=value).first()
+                        if key == 'doi':
+                            for doi in value:
+                                if not paper:
+                                    paper = paperpreload.filter(doi=doi).first()
+                        if key == 'risutwente' or key == 'researchutwente':
+                            for url in value:
+                                if not paper:
+                                    paper = paperpreload.filter(locations__pdf_url__icontains=url).first()
+                                    paper = paperpreload.filter(locations__landing_page_url__icontains=url).first()
+            if not paper and entry.other_links:
+                if isinstance(entry.other_links, dict):
+                    if 'other' in entry.other_links:
+                        for value in entry.other_links['other']:
+                            if not paper:
+                                value = value.replace('https://ezproxy2.utwente.nl/login?url=', '')
+                                paper = paperpreload.filter(locations__pdf_url__icontains=value).first()
+                                paper = paperpreload.filter(locations__landing_page_url__icontains=value).first()
+                if isinstance(entry.other_links, str):
+                    link = entry.other_links.replace('https://ezproxy2.utwente.nl/login?url=', '')
+                    paper = paperpreload.filter(locations__pdf_url__icontains=link).first()
+                    paper = paperpreload.filter(locations__landing_page_url__icontains=link).first()
+
 
         if paper:
             entry.paper = paper
@@ -87,15 +106,22 @@ def matchPureEntryWithPaper():
             else:
                 logger.debug("found new paper for entry %s", entry.id)
         else:
+            skiplist.append(entry.id)
             logger.debug("no paper found for entry %s", entry.id) #no match or no new match
-        if j == 1000:
+
+        if j == 500:
+            with open('skiplist.pickle', 'wb') as f:
+                pickle.dump(skiplist, f)
+            print("skiplist.pickle updated -- total added this session is " + str(len(skiplist)) + " entries")
             i=update(i, paperlist, entrylist)
+            print(f"{paperlist=}")
+            print(f"{entrylist=}")
             paperlist=[]
             entrylist=[]
             j=0
 
-
     update(i, paperlist, entrylist)
+
 
 def migrate_department_data():
     from PureOpenAlex.models import UTData
@@ -146,8 +172,8 @@ def removeDuplicates():
     Currently implemented for Organizations, PureEntries and Papers.
 
     """
-
-    # TODO: remove duplicates from more fields
+    return False
+    # TODO: fix for new db structure
     # Organizations
     # Clean wrong UT entries
     organizations_to_delete = Organization.objects.filter(
@@ -225,6 +251,8 @@ def clean_duplicate_organizations():
     """
     Companion function for removeDuplicates().
     """
+    return False
+    # TODO: fix for new db structure
     duplicates = (
         Organization.objects.values("name")
         .annotate(name_count=Count("id"), min_id=Min("id"))

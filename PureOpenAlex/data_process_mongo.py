@@ -97,8 +97,9 @@ def processMongoPaper(dataset, user=None):
         - locations
             - sources
                 |
-                \/
-            - journal
+            one of which can be a:
+                |
+                journal
                     - dealdata
     add authorships, locations, journal to paper
     calculate/determine:
@@ -233,8 +234,8 @@ def processMongoPaper(dataset, user=None):
             pages=''
         if first_page and last_page:
             try:
-                pagescount = int(re.findall("\d+", last_page)[0]) - int(re.findall("\d+", first_page)[0]) + 1
-            except Exception as e: 
+                pagescount = int(re.findall(r"\d+", last_page)[0]) - int(re.findall(r"\d+", first_page)[0]) + 1
+            except Exception as e:
                 pagescount = None
             logger.debug(' using lastpage - firstpage for pagecount: {pagescount}', pagescount=pagescount)
         else:
@@ -645,18 +646,18 @@ def find_author_match(pureauthors, pureentry):
         }
         purefullnames[hname.full_name]=i
         pureinitials[hname.initials()+" "+hname.last]=i
-    
+
     for key, value in purenames.items():
         if Author.objects.filter(name__icontains=value['full']).exists():
             authorlist.append(Author.objects.filter(name__icontains=value['full']).first())
         elif Author.objects.filter(Q(initials__icontains=value['initials']) & Q(last_name__icontains=value['last'])).exists():
             authorlist.append(Author.objects.filter(Q(initials__icontains=value['initials']) & Q(last_name__icontains=value['last'])).first())
-    
+
     if authorlist:
         for author in authorlist:
             pureentry.authors.add(author)
         pureentry.save()
-    
+
     return pureentry, len(pureauthors)-len(authorlist)
 
 def add_pureentry_ids(ids, pureentry):

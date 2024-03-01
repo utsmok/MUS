@@ -8,8 +8,8 @@ from django.core.cache.backends.base import DEFAULT_TIMEOUT
 from django.db.models import Q
 from django.core.exceptions import ObjectDoesNotExist
 from .data_add import addPaper, addOpenAlexWorksFromMongo, addPureWorksFromMongo
-from .data_repair import removeDuplicates
-from .data_view import generateMainPage, getPapers, getAuthorPapers, open_alex_autocomplete, get_pure_entries
+from .data_repair import removeDuplicates, matchPureEntryWithPaper
+from .data_view import generateMainPage, getPapers, getAuthorPapers, open_alex_autocomplete, get_pure_entries, exportris
 from django.conf import settings
 from .data_helpers import processDOI
 from django.views.decorators.cache import cache_page
@@ -27,6 +27,7 @@ def home(request):
 def addarticle(request,doi):
     logger.info("addarticle [doi] %s [user] %s", doi, request.user.username)
     try:
+        # TODO: check if add to viewpaper works properly
         result = addPaper(
                 doi,
                 recheck=False,
@@ -41,6 +42,7 @@ def addarticle(request,doi):
 
 @login_required
 def searchpaper(request):
+    # TODO: fix doi search -- doesn't work properly now
     query = request.GET.get('doi', '').strip()
 
     if not query or len(query) < 3:
@@ -81,11 +83,8 @@ def searchpaper(request):
 def delete_duplicates(request):
     logger.info("[url] /delete_duplicates [user] %s", request.user.username)
     #removeDuplicates()
-    #message = "Succesfully removed duplicates."
-    from .models import PureEntry
-    PureEntry.objects.all().delete()
-    addPureWorksFromMongo()
-    message='added pure entries from mongo'
+    matchPureEntryWithPaper()
+    message = "Succesfully matched pureentries with papers."
     return JsonResponse({"status": "success", "message": message})
 
 @login_required
@@ -101,7 +100,6 @@ def single_article_pure_view(request, article_id):
     article, pure_entries = get_pure_entries(article_id, request.user)
     return render(request, "pure_entries.html", {"article": article, 'pure_entries': pure_entries})
 
-@cache_page(CACHE_TTL)
 @login_required
 def faculty(request, name="all", filter="all"):
     facultyname, stats, listpapers = getPapers(name, filter, request.user)
@@ -141,7 +139,7 @@ def author(request, name):
 @login_required
 def facultypaginator(request, name="all", filter="all", sort="year"):
     from django.core.paginator import Paginator
-
+    # TODO: fix this implementation -- add serverside filtering, searching, sorting
     logger.info("[url] /facultypage/%s [user] %s", name, request.user.username)
 
     facultyname, stats, listpapers = getPapers(name, filter, request.user)
@@ -185,8 +183,14 @@ def addmark(request, id):
     )
 
 @login_required
-@cache_page(CACHE_TTL)
+def getris(request, papers):
+    #TODO: test, add to urls, see how to send file
+    rislist = exportris(papers)
+    # turn rislist into .ris file and send it to the user
+    return None
+@login_required
 def customfilter(request):
+    # TODO: clean this up
     message = ""
     filtermapping={
         "type_journal":'type',

@@ -11,6 +11,7 @@ import regex as re
 from datetime import datetime
 from loguru import logger
 from collections import defaultdict
+import rispy
 
 def generateMainPage(user):
     """
@@ -90,7 +91,7 @@ def getPapers(name, filter="all", user=None):
         if len(filter) == 1:
             if filter[0][0] == 'all':
                 return listpapers
-        
+
         finalfilters = defaultdict(list)
         for item in filter:
             filter=item[0]
@@ -211,7 +212,7 @@ def getPapers(name, filter="all", user=None):
             datefilter = datefilter & qfilt
         for qfilt in finalfilters['authors']:
             authorfilter = authorfilter | qfilt
-        
+
         finalfilter = boolfilter & typefilter & groupfilter & facultyfilter & datefilter & authorfilter
         newlist = listpapers.filter(finalfilter)
         return newlist
@@ -316,14 +317,14 @@ def getPapers(name, filter="all", user=None):
     elif name == "marked" or name == "Marked papers":
         facultyname = "Marked papers"
         filterpapers=Paper.objects.filter(view_paper__user=user).order_by("-modified")
-        if isinstance(filter, str): 
+        if isinstance(filter, str):
             filter = [[str(filter),""]]
     else:
         filterpapers = Paper.objects.all().distinct()
         if name == "all" or name == "All items":
             facultyname = "All MUS papers"
             name = 'all'
-            if isinstance(filter, str): 
+            if isinstance(filter, str):
                 filter = [[str(filter),""]]
         else:
             if name not in facultynamelist:
@@ -331,8 +332,8 @@ def getPapers(name, filter="all", user=None):
                 name = 'other'
             else:
                 facultyname = name
-            
-            if isinstance(filter, str): 
+
+            if isinstance(filter, str):
                 filter = [[str(filter),""],['faculty',name]]
             if isinstance(filter, list):
                 if ['faculty', name] not in filter:
@@ -451,3 +452,72 @@ def open_alex_autocomplete(query, types=['works','authors'], amount=5):
 def getAuthorPapers(display_name, user=None):
     logger.info("authorpapers [author] {} [user] {}", display_name, user.username)
     return getPapers(display_name, 'author', user)
+
+
+def exportris(papers):
+    itemtypekey = {
+        'journal-article':'JOUR',
+        'posted-content':'GEN',
+        'dissertation':'THES',
+        'monograph':'SER',
+        'reference-entry':'GEN',
+        'proceedings-article':'CONF',
+        'report':'RPRT',
+        'book':'BOOK',
+        'dataset':'DATA',
+        'reference-book':'GEN',
+        'journal-issue':'JOUR',
+        'peer-review':'GEN',
+        'report-series':'SER',
+        'proceedings':'CONF',
+        'other':'GEN',
+        'book-chapter':'CHAP',
+    }
+    fullrisdata = []
+    for paper in papers:
+        risdata =[
+            ["TY",itemtypekey[paper.itemtype]],
+            ["T1",paper.title]
+        ]
+
+        for author in paper.authors:
+            risdata.append('AU',author.last_name+', '+author.first_name)
+
+        risdata.append(
+            ["PY",paper.year],
+            ["Y1",paper.year],
+            ["N2",paper.abstract],
+            ["AB",paper.abstract],
+        )
+
+        if paper.keywords != []:
+            for keyword in paper.keywords:
+                risdata.append('KW',keyword.keyword)
+
+        for location in paper.locations:
+            if location.landing_page_url and location.landing_page_url != '':
+                risdata.append('UR',location.landing_page_url)
+
+        risdata.append(
+            ["U2",paper.doi.replace('https://doi.org/', '')],
+            ["DO",paper.doi.replace('https://doi.org/', '')],
+        )
+        ["M3",paper.itemtype],
+        if paper.journal:
+            risdata.append(
+                ["VL",paper.volume],
+                ["JO",paper.journal.name],
+                ["JF",paper.journal.name],
+                ["SN",paper.journal.issn],
+            )
+            if paper.pages:
+                if '-' in paper.pages:
+                    pages = paper.pages.split('-')[0]
+                else:
+                    pages = paper.pages
+                risdata.append(["M1",pages])
+
+        risdata.append(["ER",''])
+        fullrisdata.append(risdata)
+
+    return fullrisdata

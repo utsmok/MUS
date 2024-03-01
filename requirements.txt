@@ -28,3 +28,4 @@ pillow
 pymongo
 python-dotenv
 fuzzywuzzy
+lxml

@@ -41,10 +41,7 @@
                         <div >{{total.inpure_percent}}% has Pure link in OpenAlex and {{total.inpurematch_percent}}% has a match with a Pure OAI-PHM entry</div>
                         <div>
                             <div><a href="{% url 'PureOpenAlex:faculty' 'all'%}" class="btn btn-primary">View all (with filter/sort/search but slow)</a>
-                                <a href="{% url 'PureOpenAlex:facultypage' 'all' %}" class="btn btn-success">Quickview (no filter/sort/search but fast)</a></div>
-
-                                <a href="{% url 'PureOpenAlex:papersfiltered' name='all' filter='no_pure_match' %}" class="ms-1 btn btn-danger"> Filtered: {{faculty.name}} papers from OpenAlex but not found in Pure</a>
-                                <a href="{% url 'PureOpenAlex:papersfiltered' name='all' filter='no_pure_link' %}" class="btn btn-warning">Filtered:  {{faculty.name}} papers from OpenAlex without RIS link in Locations</a>
+                                <a href="{% url 'PureOpenAlex:facultypage' 'all' %}" class="btn btn-success">Quickview (currently broken)</a></div>
                     </div>
                     </p>
                 </div>
@@ -62,10 +59,8 @@
                                 <div>{{faculty.oa}}% OA</div>
                                 <div>{{faculty.inpure_percent}}% has Pure link in OpenAlex and {{faculty.inpurematch_percent}}% has a match with a Pure OAI-PHM entry</div>
                                 <div><a href="{% url 'PureOpenAlex:faculty' faculty.name %}" class="btn btn-primary">View all (with filter/sort/search but slow)</a>
-                                    <a href="{% url 'PureOpenAlex:facultypage' faculty.name %}" class="btn btn-success">Quickview (no filter/sort/search but fast)</a></div>
+                                    <a href="{% url 'PureOpenAlex:facultypage' faculty.name %}" class="btn btn-success">Quickview (currently broken)</a></div>
 
-                                    <a href="{% url 'PureOpenAlex:papersfiltered' name=faculty.name filter='no_pure_match' %}" class="ms-1 btn btn-danger"> Filtered: {{faculty.name}} papers from OpenAlex but not found in Pure</a>
-                                    <a href="{% url 'PureOpenAlex:papersfiltered' name=faculty.name filter='no_pure_link' %}" class="btn btn-warning">Filtered:  {{faculty.name}} papers from OpenAlex without RIS link in Locations</a>
 
                             </p>
                         </div>
@@ -89,10 +84,8 @@
                                 <div>{{faculty.oa}}% OA</div>
                                 <div>{{faculty.inpure_percent}}% has Pure link in OpenAlex and {{faculty.inpurematch_percent}}% has a match with a Pure OAI-PHM entry</div>
                                 <div><a href="{% url 'PureOpenAlex:faculty' faculty.name %}" class="btn btn-primary">View all (with filter/sort/search but slow)</a>
-                                <a href="{% url 'PureOpenAlex:facultypage' faculty.name %}" class="btn btn-success">Quickview (no filter/sort/search but fast)</a></div>
+                                <a href="{% url 'PureOpenAlex:facultypage' faculty.name %}" class="btn btn-success">Quickview (currently broken)</a></div>
 
-                                <a href="{% url 'PureOpenAlex:papersfiltered' name=faculty.name filter='no_pure_match' %}" class="ms-1 btn btn-danger"> Filtered: {{faculty.name}} papers from OpenAlex but not found in Pure</a>
-                                <a href="{% url 'PureOpenAlex:papersfiltered' name=faculty.name filter='no_pure_link' %}" class="btn btn-warning">Filtered:  {{faculty.name}} papers from OpenAlex without RIS link in Locations</a>
 
                             </p>
                         </div>
