@@ -1,18 +1,16 @@
 from .models import (
     Location,
     Author,
-    Journal,
     Paper,
     Authorship,
     viewPaper,
-    DealData,
 )
 from django.db.models import Count, Q, Prefetch, Exists, OuterRef
 from .data_helpers import TCSGROUPS, TCSGROUPSABBR
 import regex as re
 from datetime import datetime
 from loguru import logger
-
+from collections import defaultdict
 
 def generateMainPage(user):
     """
@@ -78,111 +76,144 @@ def getPapers(name, filter="all", user=None):
         stats = None
         return facultyname, stats, listpapers
 
-    def applyFilter(listpapers, filter, value=""):
-        logger.debug("[filter] {} [value] {}", filter, value)
-        if filter == "pure_match":
-            newlist = listpapers.filter(has_pure_oai_match=True)
-        if filter == "no_pure_match":
-            newlist = listpapers.filter(
-                has_pure_oai_match=False
-            ) | listpapers.filter(has_pure_oai_match__isnull=True)
-        if filter == "has_pure_link":
-            newlist = listpapers.filter(is_in_pure=True)
-        if filter == "no_pure_link":
-            newlist = listpapers.filter(is_in_pure=False) | listpapers.filter(is_in_pure__isnull=True)
-        if filter == "hasUTKeyword":
-            newlist = listpapers.filter(
-            pure_entries__ut_keyword__gt=''
-            ).distinct().prefetch_related('pure_entries').order_by("title")
-        if filter == "hasUTKeywordNLA":
-            newlist = listpapers.filter(pure_entries__ut_keyword="NLA").prefetch_related('pure_entries')
-        if filter == 'openaccess':
-            newlist = listpapers.filter(is_oa=True)
-        if filter == 'apc':
-            newlist = listpapers.filter(apc_listed_value__isnull=False).exclude(apc_listed_value='')
-        if filter == 'TCS':
-            # get all papers where at least one of the authors has a linked AFASData entry that has 'is_tcs'=true
-            # also get all papers where at least one of the authors has a linked UTData entry where current_group is in TCSGROUPS or TCSGROUPSABBR
-            tcscheck = TCSGROUPS + TCSGROUPSABBR
-            q_expressions = Q()
-            for group_abbr in TCSGROUPSABBR:
-                q_expressions |= Q(
-                    authorships__author__utdata__employment_data__contains={'group': group_abbr}
-                )
-            newlist = listpapers.filter(Q(authorships__author__utdata__current_group__in=tcscheck) | q_expressions)
-        if filter == 'author':
-            author = Author.objects.get(name = name)
-            newlist = listpapers.filter(
-                authorships__author=author
-            )
-        if filter == 'group':
-            group = value
-            newlist = listpapers.filter(
-                authorships__author__utdata__current_group=group
-            )
-        if filter == 'journal':
-            journal = Journal.objects.get(name = value)
-            newlist = listpapers.filter(
-                journal=journal
-            ).select_related('journal')
-        if filter == 'publisher':
-            newlist = listpapers.filter(
-                journal__publisher_icontains = value
-            ).select_related('journal')
-        if filter == 'start_date':
-            start_date = value
-            # should be str in format YYYY-MM-DD
-            datefmt=re.compile(r"^\d{4}-\d{2}-\d{2}$")
-            if datefmt.match(start_date):
-                newlist = listpapers.filter(
-                    date__gte=start_date
-                )
-            else:
-                raise ValueError("Invalid start_date format")
+    def applyFilter(listpapers, filter):
+        '''
+        listpapers = main list of papers that need filtering
+        filter = list of filters
+                each entry is another list with:
+                    [filtername, value to use when filtering]
+                    "" is the default value
+        '''
 
-        if filter == 'end_date':
-            end_date = value
+        if len(filter) == 0:
+            return listpapers
+        if len(filter) == 1:
+            if filter[0][0] == 'all':
+                return listpapers
+        
+        finalfilters = defaultdict(list)
+        for item in filter:
+            filter=item[0]
+            value=item[1]
+            logger.debug("[filter] {} [value] {}", filter, value)
+            if filter == "pure_match" and value in ['yes', '']:
+                finalfilters['bools'].append(Q(has_pure_oai_match=True) )
+            if filter == "no_pure_match" or (filter == "pure_match" and value == 'no'):
+                finalfilters['bools'].append((Q(
+                    has_pure_oai_match=False
+                ) | Q(has_pure_oai_match__isnull=True)))
+            if filter == "has_pure_link" and value in ['yes', '']:
+                finalfilters['bools'].append(Q(is_in_pure=True))
+            if filter == "no_pure_link" or (filter == "has_pure_link" and value == 'no'):
+                finalfilters['bools'].append((Q(is_in_pure=False) | Q(is_in_pure__isnull=True)))
+            if filter == "hasUTKeyword":
+                finalfilters['bools'].append(Q(
+                pure_entries__ut_keyword__gt=''
+                ))
+            if filter == "hasUTKeywordNLA":
+                finalfilters['bools'].append(Q(pure_entries__ut_keyword="NLA"))
+            if filter == 'openaccess':
+                if value in ['yes', '', 'true', 'True', True]:
+                    finalfilters['bools'].append(Q(is_oa=True))
+                if value in ['no', 'false', 'False', False]:
+                    finalfilters['bools'].append(Q(is_oa=False))
+            if filter == 'apc':
+                finalfilters['bools'].append((Q(apc_listed_value__isnull=False) & ~Q(apc_listed_value='')))
+            if filter == 'TCS':
+                # get all papers where at least one of the authors has a linked AFASData entry that has 'is_tcs'=true
+                # also get all papers where at least one of the authors has a linked UTData entry where current_group is in TCSGROUPS or TCSGROUPSABBR
+                tcscheck = TCSGROUPS + TCSGROUPSABBR
+                q_expressions = Q()
+                for group_abbr in TCSGROUPSABBR:
+                    q_expressions |= Q(
+                        authorships__author__utdata__employment_data__contains={'group': group_abbr}
+                    )
+                finalfilters['groups'].append((Q(authorships__author__utdata__current_group__in=tcscheck) | q_expressions))
+            if filter == 'author':
+                author = Author.objects.get(name = name)
+                finalfilters['authors'].append(Q(
+                    authorships__author=author
+                ))
+            if filter == 'group':
+                group = value
+                finalfilters['groups'].append(Q(
+                    authorships__author__utdata__current_group=group
+                ))
 
-            # should be str in format YYYY-MM-DD
-            datefmt=re.compile(r"^\d{4}-\d{2}-\d{2}$")
-            if datefmt.match(end_date):
-                newlist = listpapers.filter(
-                    date__lte=end_date
-                )
-            else:
-                raise ValueError("Invalid end_date format")
-
-        if filter == 'type':
-
-            itemtype = value
-            ITEMTYPES = ['journal-article', 'proceedings-article','book', 'book-chapter']
-            if itemtype != 'other':
-                if itemtype == 'book' or itemtype == 'book-chapter':
-                    newlist = listpapers.filter(Q(itemtype='book')|Q(itemtype='book-chapter'))
+            if filter == 'start_date':
+                start_date = value
+                # should be str in format YYYY-MM-DD
+                datefmt=re.compile(r"^\d{4}-\d{2}-\d{2}$")
+                if datefmt.match(start_date):
+                    finalfilters['dates'].append(Q(
+                        date__gte=start_date
+                    ))
                 else:
-                    newlist = listpapers.filter(itemtype=itemtype)
-            else:
-                newlist = listpapers.exclude(
-                    itemtype__in=ITEMTYPES
-                )
+                    raise ValueError("Invalid start_date format")
 
-        if filter == 'faculty':
-            faculty=value
-            if faculty in facultynamelist:
-                faculty = faculty.upper()
-                newlist = listpapers.filter(
-                    authorships__author__utdata__current_faculty=faculty
-                )
-            else:
-                authors = Author.objects.filter(utdata__isnull=False).filter(~Q(utdata__current_faculty__in=facultynamelist)).select_related('utdata')
-                newlist = listpapers.filter(authorships__author__in=authors)
+            if filter == 'end_date':
+                end_date = value
 
-        if filter == 'taverne_passed':
-            date = datetime.today().strftime('%Y-%m-%d')
-            newlist = listpapers.filter(
-                taverne_date__lt=date
-            )
+                # should be str in format YYYY-MM-DD
+                datefmt=re.compile(r"^\d{4}-\d{2}-\d{2}$")
+                if datefmt.match(end_date):
+                    finalfilters['dates'].append(Q(
+                        date__lte=end_date
+                    ))
+                else:
+                    raise ValueError("Invalid end_date format")
 
+            if filter == 'type':
+                itemtype = value
+                ITEMTYPES = ['journal-article', 'proceedings', 'proceedings-article','book', 'book-chapter']
+                if itemtype != 'other':
+                    if itemtype == 'book' or itemtype == 'book-chapter':
+                        finalfilters['types'].append(Q(Q(itemtype='book')|Q(itemtype='book-chapter')))
+                    else:
+                        finalfilters['types'].append(Q(itemtype=itemtype))
+                else:
+                    finalfilters['types'].append(~Q(
+                        itemtype__in=ITEMTYPES
+                    ))
+
+            if filter == 'faculty':
+                faculty=value
+                if faculty in facultynamelist:
+                    faculty = faculty.upper()
+                    finalfilters['faculties'].append(Q(
+                        authorships__author__utdata__current_faculty=faculty
+                    ))
+                else:
+                    authors = Author.objects.filter(utdata__isnull=False).filter(~Q(utdata__current_faculty__in=facultynamelist)).select_related('utdata')
+                    finalfilters['faculties'].append(Q(authorships__author__in=authors))
+
+            if filter == 'taverne_passed':
+                date = datetime.today().strftime('%Y-%m-%d')
+                finalfilters['bools'].append(Q(
+                    taverne_date__lt=date
+                ))
+        boolfilter = Q()
+        groupfilter = Q()
+        facultyfilter= Q()
+        typefilter = Q()
+        datefilter = Q()
+        authorfilter = Q()
+
+        for qfilt in finalfilters['bools']:
+            boolfilter = boolfilter & qfilt
+        for qfilt in finalfilters['types']:
+            typefilter = typefilter | qfilt
+        for qfilt in finalfilters['groups']:
+            groupfilter = groupfilter | qfilt
+        for qfilt in finalfilters['faculties']:
+            facultyfilter = facultyfilter | qfilt
+        for qfilt in finalfilters['dates']:
+            datefilter = datefilter & qfilt
+        for qfilt in finalfilters['authors']:
+            authorfilter = authorfilter | qfilt
+        
+        finalfilter = boolfilter & typefilter & groupfilter & facultyfilter & datefilter & authorfilter
+        newlist = listpapers.filter(finalfilter)
         return newlist
 
     def aggregrateStats(listpapers):
@@ -250,7 +281,7 @@ def getPapers(name, filter="all", user=None):
         authors_and_affiliation_prefetch =Prefetch(
             'authors',
             queryset=Author.objects.filter(authorships__paper__in=filterpapers).distinct()
-            .prefetch_related('affiliations').select_related('utdata'),
+            .prefetch_related('affils').select_related('utdata'),
             to_attr="preloaded_authors",
         )
         return [
@@ -281,21 +312,31 @@ def getPapers(name, filter="all", user=None):
     elif filter == 'author':
         facultyname = name+" [Author]"
         filterpapers = Paper.objects.all()
+        filter = [[str(filter),name]]
     elif name == "marked" or name == "Marked papers":
         facultyname = "Marked papers"
         filterpapers=Paper.objects.filter(view_paper__user=user).order_by("-modified")
+        if isinstance(filter, str): 
+            filter = [[str(filter),""]]
     else:
         filterpapers = Paper.objects.all().distinct()
         if name == "all" or name == "All items":
             facultyname = "All MUS papers"
-        elif name not in facultynamelist:
-            facultyname = "Other groups"
-            if isinstance(filter, str):
-                filter = {str(filter):'','faculty':'other'}
+            name = 'all'
+            if isinstance(filter, str): 
+                filter = [[str(filter),""]]
         else:
-            if isinstance(filter, str):
-                filter = {str(filter):'','faculty':name}
-            facultyname = name
+            if name not in facultynamelist:
+                facultyname = "Other groups"
+                name = 'other'
+            else:
+                facultyname = name
+            
+            if isinstance(filter, str): 
+                filter = [[str(filter),""],['faculty',name]]
+            if isinstance(filter, list):
+                if ['faculty', name] not in filter:
+                    filter.append(['faculty',name])
     listpapers = (
         filterpapers
         .prefetch_related(*getTablePrefetches(filterpapers))
@@ -310,19 +351,7 @@ def getPapers(name, filter="all", user=None):
             )
         .order_by('-year')
     )
-    if isinstance(filter, str):
-        if filter != "all":
-            listpapers = applyFilter(listpapers,filter)
-    elif isinstance(filter, list):
-        for f in filter:
-            if isinstance(f, list):
-                if f[0]!='all':
-                    listpapers = applyFilter(listpapers, f[0], f[1])
-    elif isinstance(filter, dict):
-        for f, value in filter.items():
-            if f != 'all':
-                listpapers = applyFilter(listpapers, f, value)
-
+    listpapers = applyFilter(listpapers, filter)
     stats = getStats(listpapers)
     return facultyname, stats, listpapers
 

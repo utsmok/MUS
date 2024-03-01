@@ -7,7 +7,7 @@ from django.db import transaction
 from django.core.cache.backends.base import DEFAULT_TIMEOUT
 from django.db.models import Q
 from django.core.exceptions import ObjectDoesNotExist
-from .data_add import addPaper, addOpenAlexWorksFromMongo
+from .data_add import addPaper, addOpenAlexWorksFromMongo, addPureWorksFromMongo
 from .data_repair import removeDuplicates
 from .data_view import generateMainPage, getPapers, getAuthorPapers, open_alex_autocomplete, get_pure_entries
 from django.conf import settings
@@ -82,17 +82,10 @@ def delete_duplicates(request):
     logger.info("[url] /delete_duplicates [user] %s", request.user.username)
     #removeDuplicates()
     #message = "Succesfully removed duplicates."
-    from .models import Author, Organization, DealData, Journal, UTData, Paper, Source, Location
-    print(Paper.objects.all().delete())
-    print(Author.objects.all().delete())
-    print(Organization.objects.all().delete())
-    print(DealData.objects.all().delete())
-    print(Journal.objects.all().delete())
-    print(UTData.objects.all().delete())
-    print(Source.objects.all().delete())
-    print(Location.objects.all().delete())
-    addOpenAlexWorksFromMongo()
-    message='added oa works from mongo'
+    from .models import PureEntry
+    PureEntry.objects.all().delete()
+    addPureWorksFromMongo()
+    message='added pure entries from mongo'
     return JsonResponse({"status": "success", "message": message})
 
 @login_required
@@ -219,15 +212,29 @@ def customfilter(request):
 
         for key, value in request.POST.items():
             print(key, value)
+            usetypes = []
             if key == 'csrfmiddlewaretoken':
                 continue
             if key in filtermapping:
                 if value == 'true':
                     if filtermapping[key] != 'type' and filtermapping[key] != 'faculty':
                         filters.append([filtermapping[key],True])
+                    if filtermapping[key] == 'type':
+                        if key == 'type_journal':
+                            usetypes.append('journal-article')
+                        if key == 'type_conf':
+                            usetypes.append('proceedings-article')
+                            usetypes.append('proceedings')
+                        if key == 'type_book':
+                            usetypes.append('book')
+                            usetypes.append('book-chapter')
                     else:
                         value=key.split('_')[1]
                         filters.append([filtermapping[key],value])
+            if len(usetypes)>0:
+                for t in usetypes:
+                    filters.append(['type',t])
+
             if key == 'year_start':
                 if value != '' and value is not None:
                     if len(value)==4:
@@ -259,8 +266,6 @@ def customfilter(request):
                                 month = '0'+month
                             filters.append(['end_date',"-".join([str(request.POST['year_end']),month,'01'])])
         logger.info("customfilter [filters] %s [user] %s",filters, request.user.username)
-        print(filters)
         facultyname, stats, listpapers = getPapers('all', filters, request.user)
 
-        print('rendering page')
         return render(request, "faculty.html",{"faculty": facultyname, "stats": stats, "articles": listpapers, "filter":filters})

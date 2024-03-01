@@ -1,6 +1,6 @@
 
 from django.conf import settings
-from .models import Location, Source, DealData, UTData, Author, Paper,  Organization, Journal, viewPaper
+from .models import Location, Source, DealData, UTData, Author, Paper,  Organization, Journal, viewPaper, PureEntry
 from django.db import transaction
 from django.db.models import Q
 from nameparser import HumanName
@@ -16,7 +16,11 @@ from functools import wraps
 import time
 from loguru import logger
 import re
+from unidecode import unidecode
+from collections import defaultdict
+from rich import print
 
+TAG_RE = re.compile(r'<[^>]+>')
 FACULTIES = ['ITC', 'EEMCS', 'ET', 'TNW', 'BMS', 'Science and Technology Faculty', 'Behavioural, Management and Social Sciences', 'Engineering Technology', 'Geo-Information Science and Earth Observation', 'Electrical Engineering, Mathematics and Computer Science']
 OA_WORK_COLUMNS = ['_id','id','doi','title','display_name','publication_year','publication_date','ids','language','primary_location','type','type_crossref','indexed_in','open_access','authorships','countries_distinct_count','institutions_distinct_count','corresponding_author_ids','corresponding_institution_ids','apc_list','apc_paid','has_fulltext','fulltext_origin','cited_by_count','cited_by_percentile_year','biblio','is_retracted','is_paratext','keywords','concepts','mesh','locations_count','locations','best_oa_location','sustainable_development_goals','grants','referenced_works_count','referenced_works','related_works','ngrams_url','abstract_inverted_index','cited_by_api_url','counts_by_year','updated_date','created_date','topics','primary_topic']
 CR_WORK_COLUMNS = ['_id','indexed','reference-count','publisher','content-domain','published-print','abstract','DOI','type','created','page','source','is-referenced-by-count','title','prefix','author','member','container-title','link','deposited','score','resource','subtitle','issued','references-count','URL','published','issue','volume','journal-issue','ISSN','issn-type','subject','short-container-title','language','isbn-type','ISBN']
@@ -561,7 +565,155 @@ def determine_is_in_pure(data):
                 return True
     return False
 
+@transaction.atomic
+@timeit
+def processMongoPureEntry(puredata):
+    logger.info("creating pureentry for title {}", puredata.get('title'))
+    if isinstance(puredata.get('date'),list):
+        puredata['date'] = puredata.get('date')[0]
+    pureentrydict = {
+        'title': puredata.get('title', ''),
+        'language': puredata.get('language', ''),
+        'itemtype': puredata.get('type', ''),
+        'format': puredata.get('format', ''),
+        'abstract': TAG_RE.sub('', puredata.get('description', '')),
+        'date': puredata.get('date', ''),
+        'year': puredata.get('date', '')[0:4] if puredata.get('date') else '',
+        'source': puredata.get('source', ''),
+        'publisher': puredata.get('publisher', ''),
+        'rights': puredata.get('rights', ''),
+        'keywords': puredata.get('subject').get('subjects','') if puredata.get('subject') else '',
+        'ut_keyword': puredata.get('subject').get('ut_keywords', '') if puredata.get('subject') else '',
+    }
+    pureentry, created = PureEntry.objects.get_or_create(**pureentrydict)
+    if created:
+        pureentry.save()
 
+    pureentry = add_pureentry_journal(puredata.get('isPartOf',None), pureentry)
+    pureentry = add_pureentry_authors(puredata, pureentry)
+    pureentry = add_pureentry_ids(puredata.get('identifier', None), pureentry)
+    pureentry = match_paper(pureentry)
+    logger.info("pureentry {entryid} created for title {title}", title=puredata.get('title'), entryid=pureentry.id)
+def add_pureentry_journal(ispartof, pureentry):
+    if not ispartof:
+        return pureentry
+
+    issn = str(ispartof.split(':')[-1])
+    journal = Journal.objects.filter(Q(issn=issn) | Q(e_issn=issn)).first()
+    if journal:
+        pureentry.journal = journal
+        pureentry.save()
+        logger.info("pureentry {entryid} matched journal {issn}", entryid=pureentry.id, issn=issn)
+    return pureentry
+
+def add_pureentry_authors(puredata, pureentry):
+    creators = puredata.get('creator')
+    contributors = puredata.get('contributor')
+    fullist = []
+    if isinstance(creators, str):
+        fullist.append(creators)
+    if isinstance(contributors, str):
+        fullist.append(contributors)
+    if isinstance(creators, list):
+        for creator in creators:
+            fullist.append(creator)
+    if isinstance(contributors, list):
+        for contributor in contributors:
+            fullist.append(contributor)
+    if len(fullist) > 0:
+        pureentry, nomatchcount = find_author_match(fullist, pureentry)
+        if nomatchcount == len(fullist):
+            logger.info("No author matches found for pureentry {entryid}", entryid=pureentry.id)
+    else:
+        logger.warning("No authors found at all for pureentry {entryid}", entryid=pureentry.id)
+    return pureentry
+def find_author_match(pureauthors, pureentry):
+    purenames={}
+    purefullnames = {}
+    pureinitials = {}
+    authorlist=[]
+    i=0
+
+    for author in pureauthors:
+        if not author:
+            continue
+        hname=HumanName(unidecode(author),initials_format="{first} {middle}")
+        purenames[i] = {
+            'full': hname.full_name,
+            'initials': hname.initials(),
+            'last': hname.last
+        }
+        purefullnames[hname.full_name]=i
+        pureinitials[hname.initials()+" "+hname.last]=i
+    
+    for key, value in purenames.items():
+        if Author.objects.filter(name__icontains=value['full']).exists():
+            authorlist.append(Author.objects.filter(name__icontains=value['full']).first())
+        elif Author.objects.filter(Q(initials__icontains=value['initials']) & Q(last_name__icontains=value['last'])).exists():
+            authorlist.append(Author.objects.filter(Q(initials__icontains=value['initials']) & Q(last_name__icontains=value['last'])).first())
+    
+    if authorlist:
+        for author in authorlist:
+            pureentry.authors.add(author)
+        pureentry.save()
+    
+    return pureentry, len(pureauthors)-len(authorlist)
+
+def add_pureentry_ids(ids, pureentry):
+    if not ids:
+        return pureentry
+    duplicate_ids = defaultdict(list)
+    for idtype, value in ids.items():
+        if idtype == 'doi':
+            idtype='doi'
+        elif idtype == 'ris_page':
+            idtype='researchutwente'
+        elif idtype == 'ris_file':
+            idtype='risutwente'
+        elif idtype == 'scopus_link':
+            idtype='scopus'
+        elif idtype == 'ISBN':
+            idtype='isbn'
+        else:
+            idtype='other_links'
+
+        if isinstance(value, str):
+            if ':' in value and 'http' not in value:
+                value = value.split(':')[-1]
+            pureentry.__setattr__(idtype, value)
+        if isinstance(value, list):
+            if ':' in value and 'http' not in value[0]:
+                value[0] = value[0].split(':')[-1]
+            pureentry.__setattr__(idtype, value[0])
+            for dupeid in value[1:]:
+                if ':' in dupeid and 'http' not in dupeid:
+                    dupeid = dupeid.split(':')[-1]
+                duplicate_ids[idtype].append(dupeid)
+    if len(duplicate_ids.keys()) > 0:
+        pureentry.__setattr__('duplicate_ids', duplicate_ids)
+    pureentry.save()
+    return pureentry
+
+def match_paper(pureentry):
+    paper = None
+    if pureentry.doi:
+        paper = Paper.objects.filter(doi=pureentry.doi).first()
+    if not paper:
+        if pureentry.duplicate_ids:
+            if 'doi' in pureentry.duplicate_ids:
+                for doi in pureentry.duplicate_ids['doi']:
+                    paper = Paper.objects.filter(doi=doi).first()
+                    if paper:
+                        break
+    if not paper:
+        paper = Paper.objects.filter(Q(title=pureentry.title)).first()
+    if paper:
+        pureentry.paper = paper
+        paper.has_pure_oai_match = True
+        pureentry.save()
+        paper.save()
+        logger.info("matching paper found for pureentry {entryid}", entryid=pureentry.id)
+    return pureentry
 '''
 def oldprocessMongoPaper(dataset):
     # check authorships

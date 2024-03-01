@@ -4,12 +4,13 @@ from .namematcher import NameMatcher
 from .models import PureEntry,  Paper, viewPaper
 from django.db import transaction
 from .data_process import processPaperData
-from .data_process_mongo import processMongoPaper
+from .data_process_mongo import processMongoPaper, processMongoPureEntry
 from .data_repair import clean_duplicate_organizations
 from .data_helpers import APILOCK
 from pymongo import MongoClient
 from django.conf import settings
 from loguru import logger
+import pymongo
 
 APIEMAIL = getattr(settings, "APIEMAIL", "no@email.com")
 pyalex.config.email = APIEMAIL
@@ -78,6 +79,43 @@ def addOpenAlexWorksFromMongo():
             logger.info(message)
             added=[]
 
+def addPureWorksFromMongo():
+    datasets=[]
+    pure_works=db['api_responses_pure']
+    i=0
+    k=0
+    for document in pure_works.find().sort('date',pymongo.DESCENDING):
+        datasets.append(document)
+        i=i+1
+        if i % 1000 == 0:
+            message=f"processing batch of {len(datasets)} works"
+            logger.info(message)            
+            for dataset in datasets:
+                try:
+                    processMongoPureEntry(dataset)
+                except Exception as e:
+                    logger.exception('exception {e} while adding PureEntry', e=e)
+                    continue
+                k=k+1
+                if k%100==0:
+                    message=f"{k} works added in total"
+                    logger.info(message)
+            datasets=[]
+
+    message=f"final batch: processing {len(datasets)} works"
+    logger.info(message)            
+    for dataset in datasets:
+        try:
+            processMongoPureEntry(dataset)
+        except Exception as e:
+            logger.exception('exception {e} while adding PureEntry', e=e)
+            continue
+        k=k+1
+        if k%100==0:
+            message=f"{k} works added in total"
+            logger.info(message)
+
+# needs new implementation
 def addPaper(
     doi, recheck=False, viewpaper=False, user=None
 ):
@@ -92,6 +130,7 @@ def addPaper(
     Returns:
         bool: True if the article was successfully added, False otherwise.
     """
+    return False
     status = False
     lookup = True
     action = f"No action for {doi}"

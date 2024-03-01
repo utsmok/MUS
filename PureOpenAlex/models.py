@@ -237,3 +237,7 @@ class PureEntry(TimeStampedModel, models.Model):
     scopus = models.CharField(max_length=256, blank=True, null=True)
     other_links = models.JSONField(blank=True, null=True)
     duplicate_ids = models.JSONField(blank=True, null=True)
+    journal = models.ForeignKey(
+        Journal, on_delete=models.DO_NOTHING, related_name="pure_entries", null=True
+    )
+    keywords = models.JSONField(blank=True, null=True)
