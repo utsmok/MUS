@@ -12,6 +12,7 @@ from datetime import datetime
 from loguru import logger
 from collections import defaultdict
 import rispy
+from io import StringIO
 
 def generateMainPage(user):
     """
@@ -480,36 +481,33 @@ def exportris(papers):
             ["T1",paper.title]
         ]
 
-        for author in paper.authors:
-            risdata.append('AU',author.last_name+', '+author.first_name)
+        for author in paper.authors.all():
+            risdata.append(['AU',author.last_name+', '+author.first_name])
 
-        risdata.append(
-            ["PY",paper.year],
-            ["Y1",paper.year],
-            ["N2",paper.abstract],
-            ["AB",paper.abstract],
-        )
-
+        risdata.append(["PY",paper.year])
+        risdata.append(["Y1",paper.year])
+        risdata.append(["N2",paper.abstract])
+        risdata.append(["AB",paper.abstract])
+        
         if paper.keywords != []:
             for keyword in paper.keywords:
-                risdata.append('KW',keyword.keyword)
+                risdata.append(['KW',keyword.get('keyword')])
 
-        for location in paper.locations:
+        for location in paper.locations.all():
             if location.landing_page_url and location.landing_page_url != '':
-                risdata.append('UR',location.landing_page_url)
+                risdata.append(['UR',location.landing_page_url])
 
-        risdata.append(
-            ["U2",paper.doi.replace('https://doi.org/', '')],
-            ["DO",paper.doi.replace('https://doi.org/', '')],
-        )
-        ["M3",paper.itemtype],
+        
+        risdata.append(["U2",paper.doi.replace('https://doi.org/', '')])
+        risdata.append(["DO",paper.doi.replace('https://doi.org/', '')])
+        risdata.append(["M3",paper.itemtype])
         if paper.journal:
-            risdata.append(
-                ["VL",paper.volume],
-                ["JO",paper.journal.name],
-                ["JF",paper.journal.name],
-                ["SN",paper.journal.issn],
-            )
+            
+            risdata.append(["VL",paper.volume])
+            risdata.append(["JO",paper.journal.name])
+            risdata.append(["JF",paper.journal.name])
+            risdata.append(["SN",paper.journal.issn])
+            
             if paper.pages:
                 if '-' in paper.pages:
                     pages = paper.pages.split('-')[0]
@@ -520,4 +518,10 @@ def exportris(papers):
         risdata.append(["ER",''])
         fullrisdata.append(risdata)
 
-    return fullrisdata
+    content = StringIO()
+    with content as f:
+        for risentry in fullrisdata:
+            for item in risentry:
+                f.write(str(item[0])+'  - '+str(item[1])+'\n')
+        return content.getvalue()
+

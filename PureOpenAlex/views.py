@@ -1,5 +1,5 @@
 from django.shortcuts import render
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from .models import Paper, viewPaper
 from django.contrib.auth.decorators import login_required
 import logging
@@ -7,7 +7,7 @@ from django.db import transaction
 from django.core.cache.backends.base import DEFAULT_TIMEOUT
 from django.db.models import Q
 from django.core.exceptions import ObjectDoesNotExist
-from .data_add import addPaper, addOpenAlexWorksFromMongo, addPureWorksFromMongo
+from .data_add import addPaper, addOpenAlexWorksFromMongo, addPureWorksFromMongo, addItemsFromOpenAire
 from .data_repair import removeDuplicates, matchPureEntryWithPaper
 from .data_view import generateMainPage, getPapers, getAuthorPapers, open_alex_autocomplete, get_pure_entries, exportris
 from django.conf import settings
@@ -83,7 +83,8 @@ def searchpaper(request):
 def delete_duplicates(request):
     logger.info("[url] /delete_duplicates [user] %s", request.user.username)
     #removeDuplicates()
-    matchPureEntryWithPaper()
+    #matchPureEntryWithPaper()
+    addItemsFromOpenAire()
     message = "Succesfully matched pureentries with papers."
     return JsonResponse({"status": "success", "message": message})
 
@@ -183,11 +184,23 @@ def addmark(request, id):
     )
 
 @login_required
-def getris(request, papers):
-    #TODO: test, add to urls, see how to send file
+def getris(request):
+
+    #TODO: test, add to urls
+    '''
+    returns a ris file with data for all papers marked by the user
+    '''
+    user = request.user
+    viewpapers = viewPaper.objects.filter(user=user)
+    paperids = viewpapers.values_list('displayed_paper_id', flat=True)
+    papers = Paper.objects.filter(pk__in=paperids)
     rislist = exportris(papers)
-    # turn rislist into .ris file and send it to the user
-    return None
+    response = HttpResponse(rislist, headers={
+        "Content-Type": 'application/x-research-info-systems',
+        "Content-Disposition": 'attachment; filename="mus_ris_output.ris"',
+    })
+
+    return response
 @login_required
 def customfilter(request):
     # TODO: clean this up

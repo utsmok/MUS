@@ -179,7 +179,7 @@
 	<div class="col-sm-12">
 		<div class="card bg-secondary bg-gradient text-black border border-success" style="--mdb-bg-opacity: 0.05;" id="abstract-{{ article.id }}">
 			<div class="card-header bg-primary bg-gradient " style="--mdb-bg-opacity: 0.5;">
-				<h5 class="text-black mb-0 ps-3"><i class="fas fa-user-graduate"></i> |  Authors</h5>
+				<h5 class="text-black mb-0 ps-3"><i class="fas fa-user-graduate"></i> |  Authors TODO: fix organization preload</h5>
 			</div>
 			<div class="card-body">
 				<div class="container "
@@ -195,7 +195,7 @@
 						{% if author.id == authorship.author.id%}
 							<div class="row align-items-center justify-content-center text-center">
 									{% if author.utdata %}
-										<div class='me-auto float-start align-self-center'><img class="img-fluid rounded-pill rounded-5 shadow-5" src="{% static author.utdata.avatar.url %}" style="width: 80px; height: 80px;"></div>
+										<div class='me-auto float-start align-self-center'><img class="img-fluid rounded-pill rounded-5 shadow-5" src="{% static author.utdata.avatar.url|cut:'https://people.utwente.nl/'|cut:'/picture' %}" style="width: 80px; height: 80px;"></div>
 									{% else %}
 										<div class='me-auto  float-start align-self-center'><img class="img-fluid rounded-pill rounded-5 shadow-5" src="{% static 'author_avatars\default_avatar.png' %}" style="width: 80px; height: 80px;"></div>
 									{% endif %}

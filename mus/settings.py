@@ -20,7 +20,7 @@ load_dotenv(dotenv_path)
 
 MONGOURL = str(os.getenv('MONGOURL'))
 APIEMAIL = str(os.getenv('APIEMAIL'))
-
+OPENAIRETOKEN = str(os.getenv('OPENAIRETOKEN'))
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 

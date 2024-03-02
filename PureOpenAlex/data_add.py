@@ -11,8 +11,16 @@ from pymongo import MongoClient
 from django.conf import settings
 from loguru import logger
 import pymongo
+import httpx
+import xmltodict
+from rich import print
+from datetime import datetime, timedelta
+import xml.etree.ElementTree as ET 
+import pickle 
 
 APIEMAIL = getattr(settings, "APIEMAIL", "no@email.com")
+OPENAIRETOKEN = getattr(settings, "OPENAIRETOKEN", "")
+
 pyalex.config.email = APIEMAIL
 
 """
@@ -29,7 +37,7 @@ name_matcher = NameMatcher()
 
 client=MongoClient('mongodb://smops:bazending@192.168.2.153:27017/')
 db=client['mus']
-
+mongo_openaire_results = db['api_responses_openaire']
 def addOpenAlexWorksFromMongo():
     datasets=[]
     openalex_works=db['api_responses_works_openalex']
@@ -115,6 +123,50 @@ def addPureWorksFromMongo():
             message=f"{k} works added in total"
             logger.info(message)
 
+def addItemsFromOpenAire():
+    def get_openaire_token():
+        print('getting new token')
+        refreshurl=f'https://services.openaire.eu/uoa-user-management/api/users/getAccessToken?refreshToken={OPENAIRETOKEN}'
+        tokendata = httpx.get(refreshurl)
+        return tokendata.json()
+        
+
+    print('adding items from OpenAire')
+    tokendata=get_openaire_token()
+    time = datetime.now()
+    url = 'https://api.openaire.eu/search/researchProducts'
+    headers = {
+        'Authorization': f'Bearer {tokendata.get("access_token")}'
+    }
+
+    paperlist = Paper.objects.filter(year__gte=2019).values('doi','openalex_url')
+    for paper in paperlist:
+        if mongo_openaire_results.find_one({'id':paper['openalex_url']}):
+            print('item already in mongodb, skipping.')
+            continue
+        params = {'doi':paper['doi'].replace('https://doi.org/','')}
+        try:
+            r = httpx.get(url, params=params, headers=headers)
+        except Exception as e:
+            print('httpx error: ',e)
+        try:
+            metadata = xmltodict.parse(r.text, attr_prefix='',dict_constructor=dict,cdata_key='text', process_namespaces=True).get('response').get('results').get('result').get('metadata').get('http://namespace.openaire.eu/oaf:entity').get('http://namespace.openaire.eu/oaf:result')
+        except Exception as e:
+            print('error while trying to get metadata: ',e)
+            continue
+
+        metadata['id']=paper['openalex_url']
+        mongo_openaire_results.insert_one(metadata)
+        
+        if datetime.now()-time > timedelta(minutes=58):
+            tokendata=get_openaire_token()
+            headers = {
+                'Authorization': f'Bearer {tokendata.get("access_token")}'
+            }
+            time = datetime.now()
+
+
+    return None
 # needs new implementation
 def addPaper(
     doi, recheck=False, viewpaper=False, user=None

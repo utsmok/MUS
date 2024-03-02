@@ -12,6 +12,7 @@ from .views import (
     author,
     customfilter,
     single_article_pure_view,
+    getris
 )
 
 app_name = "PureOpenAlex"
@@ -37,4 +38,5 @@ urlpatterns = [
     path('authorarticles/<str:name>', author, name='authorarticles'),
     path('customfilter/',customfilter, name='customfilter'),
     path('pure_entries/<int:article_id>/', single_article_pure_view, name='pure_entries'),
+    path('getris/', getris, name='getris'),
 ]
