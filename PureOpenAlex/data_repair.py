@@ -15,6 +15,12 @@ import pickle
 APIEMAIL = getattr(settings, "APIEMAIL", "no@email.com")
 pyalex.config.email = APIEMAIL
 
+'''
+TODO: add fix<...> function for import classes, in order:
+    - paper
+    - author
+    - utdata
+'''
 
 def matchPureEntryWithPaper():
     """
@@ -52,10 +58,10 @@ def matchPureEntryWithPaper():
             doi = entry.doi
             try:
                 doichecklist = [doi, doi.lower(), doi.replace('https://doi.org/', ''),doi.replace('https://doi.org/', '').lower()]
-            except:
+            except Exception:
                 try:
                     doichecklist = [doi, doi.lower()]
-                except:
+                except Exception:
                     doichecklist = [doi]
 
             paper = paperpreload.filter(doi__in=doichecklist).first()

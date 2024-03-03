@@ -7,7 +7,7 @@ from django.db import transaction
 from django.core.cache.backends.base import DEFAULT_TIMEOUT
 from django.db.models import Q
 from django.core.exceptions import ObjectDoesNotExist
-from .data_add import addPaper, addOpenAlexWorksFromMongo, addPureWorksFromMongo, addItemsFromOpenAire
+from .data_add import addPaper, addOpenAlexWorksFromMongo, addPureWorksFromMongo, addOpenAireWorksFromMongo
 from .data_repair import removeDuplicates, matchPureEntryWithPaper
 from .data_view import generateMainPage, getPapers, getAuthorPapers, open_alex_autocomplete, get_pure_entries, exportris
 from django.conf import settings
@@ -84,7 +84,7 @@ def delete_duplicates(request):
     logger.info("[url] /delete_duplicates [user] %s", request.user.username)
     #removeDuplicates()
     #matchPureEntryWithPaper()
-    addItemsFromOpenAire()
+    addOpenAireWorksFromMongo()
     message = "Succesfully matched pureentries with papers."
     return JsonResponse({"status": "success", "message": message})
 
@@ -186,7 +186,7 @@ def addmark(request, id):
 @login_required
 def getris(request):
 
-    #TODO: test, add to urls
+    #TODO: test some more
     '''
     returns a ris file with data for all papers marked by the user
     '''

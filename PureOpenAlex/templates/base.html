@@ -4,6 +4,18 @@
   {% load static %}
     <title>OpenAlex Metadata Retrieval</title>
     <style>
+      .todo {
+        transition: 1s ease-in-out;
+        animation-name: todoflash;
+        animation-duration: 5s;
+        animation-iteration-count: infinite;
+      }
+      @keyframes todoflash {
+        0% {color: #cc0066; background-color:#ffcc00;}
+        33% {color: #ffcc00; background-color:#ff6666;}
+        66% {color: #ff6666; background-color:#cc0066;}
+        100% {color: #cc0066;background-color:#ffcc00; }
+      }
       .muslogo {
         position:fixed;
         top: 5px;

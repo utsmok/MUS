@@ -45,6 +45,8 @@
             <input type="search" class="form-control" id="doi" name="doi" hx-get="/search/results/" hx-trigger="keyup changed delay:1s, doi" hx-target="#search-results" hx-indicator=".htmx-indicator" hx-swap='outerHTML' />
             <label class="form-label" id="doi-label" for="doi">Type doi, title, or author name to start searching...</label>
           </div>
+          <div class='todo badge badge-danger fs-4'>TODO: add htmx to search result download btns -> display notification
+          </div>
           <form id="myForm">
             <h3>
               <span class="htmx-indicator">
@@ -59,7 +61,7 @@
             <div class="col-6 ps-1 justify-content-center align-items-center">
 
               <div>
-                <div class='text-danger text-bold fs-2'>Warning: buttons below for admin use only, remove in production!</div>
+                <div class='todo badge badge-danger fs-4'>TODO: remove buttons in production version!</div>
                 <button type='submit' id='cleanup' onclick="deleteDuplicates();" class="me-2 btn btn-warning">
                   Clean database errors (slow!)
                   <span id="cleanup_spinner" class=" ps-1 spinner-border spinner-border-sm visually-hidden" role="status"
@@ -79,6 +81,8 @@
   <div class=" container-fluid w-50 align-items-center" style="padding-top: 75px">
     <div class="mt-4 mb-2  rounded-top-3 pt-3 pb-1 ps-5 bg-primary bg-gradient text-light">
       <h5><i class="fas fa-message"></i>  |  Notifications</h5>
+      <div class='todo badge badge-danger fs-4'>TODO: replace js with htmx?? at least clean up how this thing looks</div>
+      <div class='todo badge badge-danger fs-4'>TODO: instead of 1 msg display list of msgs, with scrollbar?</div>
     </div>
     <div class="text-wrap text-black fw-bold rounded-bottom-3 pt-5 pb-5 mt-4 mb-2 ps-3 w-50 fs-5" id="notification">
     </div>

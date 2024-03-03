@@ -17,8 +17,13 @@ from pyalex import Works, Authors, Journals
 import pyalex
 from pymongo import MongoClient
 from django.conf import settings
+import httpx
+from datetime import datetime, timedelta
+from PureOpenAlex.models import Paper
+import xmltodict
 MONGOURL = getattr(settings, "MONGOURL")
 APIEMAIL = getattr(settings, "APIEMAIL", "no@email.com")
+OPENAIRETOKEN = getattr(settings, "OPENAIRETOKEN", "")
 
 MONGODB=MongoClient(MONGOURL)
 db=MONGODB["mus"]
@@ -390,6 +395,52 @@ def getOpenAlexJournalData():
         journals_openalex.insert_many(author)
     total=total+len(batch)
     print(f'added {total} journals to DB')
+
+def addItemsFromOpenAire():
+    def get_openaire_token():
+        print('getting new token')
+        refreshurl=f'https://services.openaire.eu/uoa-user-management/api/users/getAccessToken?refreshToken={OPENAIRETOKEN}'
+        tokendata = httpx.get(refreshurl)
+        return tokendata.json()
+        
+    mongo_openaire_results=db['api_responses_openaire']
+    print('adding items from OpenAire')
+    tokendata=get_openaire_token()
+    time = datetime.now()
+    url = 'https://api.openaire.eu/search/researchProducts'
+    headers = {
+        'Authorization': f'Bearer {tokendata.get("access_token")}'
+    }
+
+    paperlist = Paper.objects.filter(year__gte=2019).values('doi','openalex_url')
+    for paper in paperlist:
+        if mongo_openaire_results.find_one({'id':paper['openalex_url']}):
+            print('item already in mongodb, skipping.')
+            continue
+        params = {'doi':paper['doi'].replace('https://doi.org/','')}
+        try:
+            r = httpx.get(url, params=params, headers=headers)
+        except Exception as e:
+            print('httpx error: ',e)
+        try:
+            metadata = xmltodict.parse(r.text, attr_prefix='',dict_constructor=dict,cdata_key='text', process_namespaces=True).get('response').get('results').get('result').get('metadata').get('http://namespace.openaire.eu/oaf:entity').get('http://namespace.openaire.eu/oaf:result')
+        except Exception as e:
+            print('error while trying to get metadata: ',e)
+            continue
+
+        metadata['id']=paper['openalex_url']
+        mongo_openaire_results.insert_one(metadata)
+        
+        if datetime.now()-time > timedelta(minutes=58):
+            tokendata=get_openaire_token()
+            headers = {
+                'Authorization': f'Bearer {tokendata.get("access_token")}'
+            }
+            time = datetime.now()
+
+
+    return None
+
 
 '''def getAll():
     years=[2024, 2023, 2022, 2021, 2020, 2019, 2018, 2017, 2016, 2015, 2014, 2013, 2012, 2011, 2010]
