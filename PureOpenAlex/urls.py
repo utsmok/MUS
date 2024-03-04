@@ -2,7 +2,6 @@ from django.urls import path
 from .views import (
     home,
     single_article,
-    delete_duplicates,
     faculty,
     removemark,
     addmark,
@@ -12,7 +11,9 @@ from .views import (
     author,
     customfilter,
     single_article_pure_view,
-    getris
+    getris,
+    dbinfo,
+    filtertoolpage,
 )
 
 app_name = "PureOpenAlex"
@@ -20,7 +21,6 @@ app_name = "PureOpenAlex"
 urlpatterns = [
     path("", home, name="home"),
     path("article/<int:article_id>/", single_article, name="single_article"),
-    path("delete_duplicates/", delete_duplicates, name="delete_duplicates"),
     path("faculty/<str:name>/", faculty, name="faculty"),
     path("allpapers/", faculty, name="allpapers"),
     path("allpapers/<str:name>/<str:filter>/", faculty, name="papersfiltered"),
@@ -39,4 +39,6 @@ urlpatterns = [
     path('customfilter/',customfilter, name='customfilter'),
     path('pure_entries/<int:article_id>/', single_article_pure_view, name='pure_entries'),
     path('getris/', getris, name='getris'),
+    path('dbinfo/', dbinfo, name='dbinfo'),
+    path('filtertools/', filtertoolpage, name='filtertools'),
 ]

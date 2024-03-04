@@ -18,7 +18,7 @@
       }
       .muslogo {
         position:fixed;
-        top: 5px;
+        top: 50px;
         right: 0px;
         opacity: 0.5;
         z-index: 5;
@@ -71,18 +71,22 @@
     <link href="{% static 'ajax_datatable/css/style.css' %}" rel="stylesheet" />
     <script src = "{% static 'svg.min.js' %}"></script>
 </head>
-<body>
-    <!-- MDB --> <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mdb-ui-kit/7.1.0/mdb.umd.min.js" ></script>
+<body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}' hx-ext="debug, event-header">
+  <!-- MDB --> <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mdb-ui-kit/7.1.0/mdb.umd.min.js" ></script>
   <a href="{% url 'PureOpenAlex:home' %}"><img src="{% static 'MUSsmalllogo.svg' %}" id ='muslogoheader' class="muslogo" alt="MUS logo"></a>
   <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 
   <main>
-      <div class="container-fluid justify-content-center align-items-center h-100  overflow-hidden">
           {% block content %}
           {% endblock %}
-      </div>
   </main>
 
 </body>
+<script>
+
+    document.addEventListener('htmx:afterSettle', function() {
+        $('#facultytable').DataTable();
+    });
+</script>
 </html>
 

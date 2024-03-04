@@ -269,50 +269,6 @@
     const cleanup_spinner = document.getElementById("cleanup_spinner");
     const match_spinner = document.getElementById("match_spinner");
 
-    $(document).ready(function() {
-        $('form').on('submit', function(event) {
-        event.preventDefault();
-        var doi = $('#doi').val();
-        var people = document.querySelector('#scrape_people').checked;
-        var recheck = document.querySelector('#recheck').checked;
-        searchicon.classList.toggle("visually-hidden");
-        searchtext.classList.toggle("visually-hidden");
-        loadingspinner.classList.toggle("visually-hidden");
-        loadingtext.classList.toggle("visually-hidden");
-        let link = "{% url 'PureOpenAlex:home' %}";
-        $.ajax({
-            type: 'POST',
-            url: link,
-            data: {
-            csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val(),
-            doi: doi,
-            people: people,
-            recheck: recheck
-            },
-            success: function(response) {
-            if (response.status === 'success') {
-                $('#doi').val('');
-                searchbutton.enabled;
-                searchicon.classList.toggle("visually-hidden");
-                searchtext.classList.toggle("visually-hidden");
-                loadingspinner.classList.toggle("visually-hidden");
-                loadingtext.classList.toggle("visually-hidden");
-                notification.textContent = response.message;
-                update_table();
-            } else {
-                $('#doi').val('');
-                searchbutton.enabled;
-                searchicon.classList.toggle("visually-hidden");
-                searchtext.classList.toggle("visually-hidden");
-                loadingspinner.classList.toggle("visually-hidden");
-                loadingtext.classList.toggle("visually-hidden");
-                notification.textContent = response.message;
-
-            }
-            }
-        });
-        });
-    });
     
     function remove_mark(id){
         let link ="{% url 'PureOpenAlex:removemark' 1 %}".replace('1', id); 
@@ -344,22 +300,6 @@
                 update_table();
             } 
         }); 
-    };
-
-    function delete_duplicates(){
-    let link = "{% url 'PureOpenAlex:delete_duplicates' %}";
-    cleanup_spinner.classList.toggle("visually-hidden");
-    $.ajax({
-            type: "POST",
-            url: link,
-            data: {csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val()},
-            success: function(response) {
-                update_table();
-                cleanup_spinner.classList.toggle("visually-hidden");
-                notification.classList.add("bg-success");
-                notification.textContent = response.message;
-            }
-        });
     };
 
 </script>

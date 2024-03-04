@@ -13,7 +13,7 @@ from loguru import logger
 from collections import defaultdict
 import rispy
 from io import StringIO
-
+from rich import print
 def generateMainPage(user):
     """
     returns:
@@ -422,6 +422,9 @@ def open_alex_autocomplete(query, types=['works','authors'], amount=5):
         data=response.json()
 
         result['count']=data['meta']['count']
+        if result['count']==0:
+            print('no results (?)')
+            return None
         result['type']=[oa_type]
         if result['count']>=5:
             result['results']=data['results'][:6]
@@ -435,6 +438,8 @@ def open_alex_autocomplete(query, types=['works','authors'], amount=5):
         if value['count']>maxlen:
             maxlen=value['count']
             most_results_type=key
+    if most_results_type=='':
+        return None
     if tresults[most_results_type]['count']>=5:
         result=tresults[most_results_type]
     else:

@@ -1,36 +1,11 @@
 {% extends 'base.html' %}
-
 {% block content %}
 {% spaceless %}
-
-<div class='container pt-4 justify-content-center align-items-center'>
-    <div class='row row-cols-1 row-cols-md-2 g-4 justify-content-center align-items-center'>
-        {% for faculty in faculties|dictsort:"name" %}
-            {% if faculty.name == "Marked papers" %}
-                <div class="col-md-6">
-                    <div class="card p-1  bg-info bg-gradient text-black border border-info" style="--mdb-bg-opacity: 0.2;">
-                        <div class="card-body">
-                            <h5 class="card-title text-info">Workspace</h5>
-                            <p class="card-text">
-                                <div class='fw-bold'>{{faculty.articles}} items bookmarked</div>
-                                <div>{{faculty.oa}}% OA</div>
-                                <div >{{faculty.inpure_percent}}% has Pure link in OpenAlex and {{faculty.inpurematch_percent}}% has a match with a Pure OAI-PHM entry</div>
-                                <div><a href="{% url 'PureOpenAlex:faculty' 'marked' %}" class="btn btn-primary">Open workspace</a></div>
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            {% endif %}
-        {% endfor %}
-
-        <div class="col-md-12">
-            {% include 'filtertools.html' %}
-        </div>
-
-        <div class='todo col-md-12 text-wrap badge badge-danger fs-4'>TODO: remove/change items below, replace with stats-block -- views can be made using filters</div>
+{% include 'topbar.html' %}
+<div class="row justify-content-center align-items-center text-center">
         <h4 class="col-md-12 text-primary ps-5 mb-0">
             <hr class="hr hr-blurry" />
-            Standard views
+            Common views
             <hr class="hr hr-blurry" />
         </h4>
         <div class="col">
@@ -42,8 +17,8 @@
                         <div>{{total.oa}}% OA</div>
                         <div >{{total.inpure_percent}}% has Pure link in OpenAlex and {{total.inpurematch_percent}}% has a match with a Pure OAI-PHM entry</div>
                         <div>
-                            <div><a href="{% url 'PureOpenAlex:faculty' 'all'%}" class="btn btn-primary">View all (with filter/sort/search but slow)</a>
-                                <a href="{% url 'PureOpenAlex:facultypage' 'all' %}" class="btn btn-success">Quickview (currently broken)</a></div>
+                            <div><a href="{% url 'PureOpenAlex:faculty' 'all'%}" class="btn btn-primary">View all (slow!)</a>
+                                <a href="{% url 'PureOpenAlex:facultypage' 'all' %}" class="btn btn-success">Quickview (kinda broken)</a></div>
                     </div>
                     </p>
                 </div>
@@ -60,8 +35,8 @@
                                 <div class='fw-bold'>{{faculty.articles}} items</div>
                                 <div>{{faculty.oa}}% OA</div>
                                 <div>{{faculty.inpure_percent}}% has Pure link in OpenAlex and {{faculty.inpurematch_percent}}% has a match with a Pure OAI-PHM entry</div>
-                                <div><a href="{% url 'PureOpenAlex:faculty' faculty.name %}" class="btn btn-primary">View all (with filter/sort/search but slow)</a>
-                                    <a href="{% url 'PureOpenAlex:facultypage' faculty.name %}" class="btn btn-success">Quickview (currently broken)</a></div>
+                                <div><a href="{% url 'PureOpenAlex:faculty' faculty.name %}" class="btn btn-primary">View all (slow!)</a>
+                                    <a href="{% url 'PureOpenAlex:facultypage' faculty.name %}" class="btn btn-success">Quickview (kinda broken)</a></div>
 
 
                             </p>
@@ -85,8 +60,8 @@
                                 <div class='fw-bold'>{{faculty.articles}} items</div>
                                 <div>{{faculty.oa}}% OA</div>
                                 <div>{{faculty.inpure_percent}}% has Pure link in OpenAlex and {{faculty.inpurematch_percent}}% has a match with a Pure OAI-PHM entry</div>
-                                <div><a href="{% url 'PureOpenAlex:faculty' faculty.name %}" class="btn btn-primary">View all (with filter/sort/search but slow)</a>
-                                <a href="{% url 'PureOpenAlex:facultypage' faculty.name %}" class="btn btn-success">Quickview (currently broken)</a></div>
+                                <div><a href="{% url 'PureOpenAlex:faculty' faculty.name %}" class="btn btn-primary">View all (slow!)</a>
+                                <a href="{% url 'PureOpenAlex:facultypage' faculty.name %}" class="btn btn-success">Quickview (kinda broken)</a></div>
 
 
                             </p>
@@ -96,6 +71,7 @@
             {% endif %}
         {% endfor %}
     </div>
+</div>
 </div>
 {% endspaceless %}
 {% endblock %}

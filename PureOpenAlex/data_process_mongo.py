@@ -253,8 +253,12 @@ def processMongoPaper(dataset, user=None):
     if Paper.objects.filter(doi=dataset['works_openalex']['doi']).exists():
         logger.error("paper already exists, aborting. matching itemid: {id}",id=Paper.objects.get(doi=dataset['works_openalex']['doi']).id)
         return
+    
     oa_work = prep_openalex_data(dataset['works_openalex'])
-    cr_work = prep_crossref_data(dataset['crossref'])
+    if dataset.get('crossref'):
+        cr_work = prep_crossref_data(dataset['crossref'])
+    else:
+        cr_work = {}
     oa_work['paper'].update(cr_work.get('dates', {}))
     oa_work['paper']['license'] = get_license_data(oa_work)
     oa_work['paper']['pagescount'], oa_work['paper']['pages'] = get_pages_count(oa_work, cr_work)
@@ -273,13 +277,14 @@ def processMongoPaper(dataset, user=None):
     paper.taverne_date=calc_taverne_date(oa_work['paper'], cr_work.get('dates', {}))
     #paper.ut_keyword_suggestion=calc_ut_keyword_suggestion(oa_work, cr_work)
     #paper.is_in_pure = determine_is_in_pure(oa_work['paper'])
-
+    view = None
     if user:
         with transaction.atomic():
             view, created = viewPaper.objects.get_or_create(user=user, displayed_paper=paper)
             if created:
                 view.save()
     logger.info("fully processed paper with doi {doi}", doi=paper.doi)
+    return paper, view
 def add_authorships(data, paper):
 
     @timeit

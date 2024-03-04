@@ -1,0 +1,16 @@
+{% block content %}
+    <div class="row">
+        <span class='text-bold'>
+            <span class='text-{{ status }}'>{% if status == 'success' %}✔{% else %}✘{% endif %}</span> -- [ {{time}} ]
+        </span>
+        <span class='ms-3 text-{{ status }}'>{{ message }}</span>
+    </div>
+    {% if openalex_url %}
+        {% if status == 'success' %}
+            <span id="{{openalex_url|cut:'https://openalex.org/'}}-add-text" hx-swap-oob="true">Item added</span>
+        {% else %}
+            <span id="{{openalex_url|cut:'https://openalex.org/'}}-add-text" hx-swap-oob="true">Adding item failed</span>
+        {% endif %}
+    {% endif %}
+
+{% endblock %}

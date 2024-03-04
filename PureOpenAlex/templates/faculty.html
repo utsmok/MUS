@@ -2,6 +2,8 @@
 {% block content %}
 {% spaceless %}
 {% load static %}
+
+{% include 'topbar.html' %}
 {% if 'not found' in faculty %}
     <h2 class="col-md-12 text-center text-danger ps-5 mb-0"><hr class="hr hr-blurry" />
         {{faculty}}
@@ -10,50 +12,15 @@
     <h4 class="col-md-12 text-center text-success ps-5 mb-0"><hr class="hr hr-blurry" />
         Workspace <hr class="hr hr-blurry" />
     </h4>
-    <div class="row row-cols-2 row-cols-md-2 g-4 ">
-        <div class="container-fluid justify-content-center align-items-center  w-50" style="padding-top: 100px">
-            <div id="doi-input" class="card justify-content-center ">
-                <div class="card-header bg-warning bg-gradient " style="--mdb-bg-opacity: 0.9;">
-                    <h5 class="text-black ps-5 mb-0"><i class="far fa-keyboard"></i>  | Find or add items & authors</h5>
-                </div>
-                <div class="card-body text-dark bg-secondary bg-gradient" style="--mdb-bg-opacity: 0.4;">
-                    <div class="form-outline" data-mdb-input-init>
-                        {% csrf_token %}
-                        <input type="search" class="form-control" id="doi" name="doi" hx-get="/search/results/" hx-trigger="keyup changed delay:1s, doi" hx-target="#search-results" hx-indicator=".htmx-indicator" hx-swap='outerHTML' />
-                        <label class="form-label" id="doi-label" for="doi">Type doi, title, or author name to start searching...</label>
-                    </div>
-                    <form id="myForm">
-                        <h3>
-                            <span class="htmx-indicator">
-                                <img src="{% static 'bars.svg' %}">
-                            </span>
-                        </h3>
-                        <div id="search-results">
-                        </div>
-                    </form>
-                    <div class="ps-1 justify-content-center align-items-center">
-                    <div>
-                        <a type='button' class="btn btn-danger fs-5" href="{% url 'PureOpenAlex:removeallmarks' %}">
-                        <i class="fas fa-recycle"></i> Remove all current bookmarks
-                        </a>
-                    </div>
-                    <div>
-                        <div class='todo badge badge-danger fs-4'>TODO: change ris export btn to htmx, also send notification</div>
-                        <a type='button' class="btn btn-success fs-6" target="_blank" href="{% url 'PureOpenAlex:getris' %}">
-                        <i class="fas fa-file-export"></i> Export .ris file of all marked papers
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </div>
+    <div class = 'text-center'>
+        <a type='button' class="btn btn-danger fs-6" href="{% url 'PureOpenAlex:removeallmarks' %}">
+        <i class="fas fa-recycle"></i> Remove all current bookmarks
+        </a>
+        <a type='button' class="btn btn-success fs-6" target="_blank" href="{% url 'PureOpenAlex:getris' %}">
+        <i class="fas fa-file-export"></i> Export .ris file of all marked papers
+        </a>
     </div>
-    <div class=" container-fluid w-50 align-items-center" style="padding-top: 75px">
-        <div class="mt-4 mb-2  rounded-top-3 pt-3 pb-1 ps-5 bg-primary bg-gradient text-light">
-            <h5><i class="fas fa-message"></i>  |  Notifications</h5>
-        </div>
-        <div class="text-wrap text-black fw-bold rounded-bottom-3 pt-5 pb-5 mt-4 mb-2 ps-3 w-50 fs-5" id="notification">
-        </div>
-    </div>
+
 {% else %}
     <h4 class="col-md-12 text-center text-primary ps-5 mb-0"><hr class="hr hr-blurry" />
         <div>{{faculty}}</div>
@@ -88,10 +55,7 @@
 </form>
 {% endif %}
 <script>
-    $(document).ready(function() {
-        $('#facultytable').DataTable(
-);
-        });
+
 
     const delay = ms => new Promise(res => setTimeout(res, ms));
     const notification = document.getElementById("notification");
@@ -140,21 +104,6 @@
         });
     };
 
-    function delete_duplicates(){
-    let link = "{% url 'PureOpenAlex:delete_duplicates' %}";
-    cleanup_spinner.classList.toggle("visually-hidden");
-    $.ajax({
-            type: "POST",
-            url: link,
-            data: {csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val()},
-            success: function(response) {
-                update_table();
-                cleanup_spinner.classList.toggle("visually-hidden");
-                notification.classList.add("bg-success");
-                notification.textContent = response.message;
-            }
-        });
-    };
 </script>
 {% endspaceless %}
 {% endblock %}
