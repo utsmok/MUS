@@ -13,7 +13,9 @@ __pycache__/
 *.xml.gz
 *.dtd
 *.pickle
-
+*.csv
+*.xls
+*.xlsx
 # Distribution / packaging
 .Python
 build/

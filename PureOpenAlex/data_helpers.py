@@ -9,7 +9,7 @@ import threading
 import os
 from .models import UTData, DealData
 from django.db import transaction
-
+from loguru import logger
 
 TAGLIST = ["UT-Hybrid-D", "UT-Gold-D", "NLA", "N/A OA procedure"]
 LICENSESOA = [
@@ -85,7 +85,6 @@ TWENTENAMES = [
 ]
 ORCID_RECORD_API = "https://pub.orcid.org/v3.0/"
 APILOCK = threading.Lock()
-logger = logging.getLogger(__name__)
 
 
 def invertAbstract(inverted_abstract):
@@ -141,7 +140,7 @@ def determineIsInPure(paper):
         if 'ris.utwente.nl' in location.landing_page_url.lower() or 'research.utwente.nl' in location.landing_page_url.lower():
             return True
         if "twente" in location.pdf_url.lower():
-            return True  
+            return True
     return False
 
 def processDOI(doi):
@@ -153,9 +152,9 @@ def processDOI(doi):
             elif doi[0:16] == "https://doi.org/":
                 doi = doi
         except Exception as error:
-            logger.error("Error %s while processing DOI %s", error, doi)
+            logger.error("Error {error} while processing DOI {doi}", error=error, doi=doi)
     if doi != startdoi:
-        logger.debug("Changed DOI from %s to %s", startdoi, doi)
+        logger.debug("Changed DOI from {startdoi} to {doi}", startdoi=startdoi, doi=doi)
     return doi
 
 def calculateUTkeyword(work, paper, authorships):

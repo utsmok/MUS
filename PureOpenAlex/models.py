@@ -48,7 +48,13 @@ class Affiliation(models.Model):
     years = models.JSONField(default=dict)
     author = models.ForeignKey(Author, on_delete=models.CASCADE, related_name="affiliations")
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="affiliations")
-
+    class Meta:
+        indexes = [
+            models.Index(fields=[
+                "author",
+                'organization',
+            ]),
+        ]
 class UTData(models.Model):
     avatar = models.ImageField(
         upload_to="author_avatars/", blank=True, null=True
@@ -61,6 +67,17 @@ class UTData(models.Model):
         Author, on_delete=models.CASCADE, null=True
     )
     email = models.EmailField(max_length=256)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=[
+                "employee",
+                'current_position',
+                'current_group',
+                'current_faculty',
+            ])
+
+        ]
 
 class DealData(TimeStampedModel, models.Model):
     deal_status = models.CharField(max_length=256)
@@ -112,6 +129,9 @@ class Source(TimeStampedModel, models.Model):
             models.Index(fields=["openalex_url",
                                 'homepage_url',
                                 'display_name',
+                                'issn',
+                                'e_issn',
+                                'host_org',
                                 ]),
         ]
 
@@ -125,7 +145,14 @@ class Location(TimeStampedModel, models.Model):
     is_primary = models.BooleanField()
     is_best_oa = models.BooleanField()
     pdf_url = models.CharField(max_length=512, blank=True, null=False)
-
+    class Meta:
+        indexes = [
+            models.Index(fields=["source",
+                                'is_oa',
+                                'landing_page_url',
+                                'pdf_url',
+                                ])
+        ]
 class Paper(TimeStampedModel, models.Model):
     openalex_url = models.CharField(max_length=256)
     title = models.CharField(max_length=512)
@@ -241,3 +268,18 @@ class PureEntry(TimeStampedModel, models.Model):
         Journal, on_delete=models.DO_NOTHING, related_name="pure_entries", null=True
     )
     keywords = models.JSONField(blank=True, null=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["title",
+                                'doi',
+                                'isbn',
+                                'researchutwente',
+                                'risutwente',
+                                'scopus',
+                                'publisher',
+                                'date',
+                                'paper',
+                                'journal',
+                                ]),
+        ]

@@ -17,11 +17,28 @@ from io import StringIO
 CACHE_TTL = getattr(settings, "CACHE_TTL", DEFAULT_TIMEOUT)
 
 # TODO: Add caching
-# TODO: clean up view functions
-# TODO: fix logging
-# TODO: move logic to data_... modules
 # TODO: reimplement messaging system to frontend
 
+# TODO: Fix articlenumber / pagenumber stuff
+# TODO: Fix journals again
+# TODO: Fix available locations/pdf
+# TODO: For pure entry view fix affl/org view
+# TODO: fix avatars
+
+# TODO: run scheduled updates
+# TODO: user added suggestions and such
+# TODO: proper update bookmark count
+# TODO: fix filtertable not working more than once
+# TODO: add serverside rendering of tables
+# TODO: get from apis: worldcat, semanticscholar, scopus, opencitations, orcid, zenodo
+
+# TODO: easy/quick open or view pdf(s)
+# TODO: add funding/grant data
+# TODO: import DBLP papers
+# TODO: import data from pure report -> authors + paperlist for tcs
+
+# TODO: make and implement tests
+# TODO: implement scheduler
 
 @login_required
 def home(request):
@@ -37,13 +54,12 @@ def dbinfo(request):
 
 @login_required
 def addarticle(request,doi):
-    status, message, openalex_url = addPaper(doi, request.user)
     logger.info("addarticle [doi] {} [user] {} [status] {} [message] {}", doi, request.user.username, status, message)
+    status, message, openalex_url = addPaper(doi, request.user)
     return render(request, 'message.html', {"status": status,"message":message, 'openalex_url': openalex_url, 'time': datetime.now().strftime("%H:%M:%S")})
 
 @login_required
 def searchpaper(request):
-    # TODO: fix doi search -- doesn't work properly now
     query = request.GET.get('doi', '').strip()
 
     if not query or len(query) < 3:
@@ -71,7 +87,7 @@ def searchpaper(request):
     oa_count=0
     oa_results = open_alex_autocomplete(query)
     if oa_results:
-        oa_count=oa_results['count']        
+        oa_count=oa_results['count']
         for item in oa_results['results']:
             if item['id'] in [ paper.openalex_url for paper in papers ]:
                 oa_found_count += 1
@@ -127,12 +143,12 @@ def get_raw_data_json(request, article_id):
     article, fulljson, raw_data = get_raw_data(article_id, request.user)
     if not article:
         return JsonResponse({"message": f"Article with {article_id} not found"})
-    
+
     content = StringIO()
     with content as f:
         f.write(fulljson)
         data = content.getvalue()
-    
+
     response = HttpResponse(data, headers={
         "Content-Type": 'application/json',
         "Content-Disposition": f'attachment; filename="raw_json_{article_id}.json"',
@@ -147,7 +163,7 @@ def faculty(request, name="all", filter="all"):
 
     facultyname, stats, listpapers = getPapers(name, filter, request.user)
 
-            
+
     logger.info(
         "[url] /faculty/{} [user] {}",
         name,

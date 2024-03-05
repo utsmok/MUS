@@ -20,6 +20,9 @@ from unidecode import unidecode
 from collections import defaultdict
 from rich import print
 
+
+
+
 TAG_RE = re.compile(r'<[^>]+>')
 FACULTIES = ['ITC', 'EEMCS', 'ET', 'TNW', 'BMS', 'Science and Technology Faculty', 'Behavioural, Management and Social Sciences', 'Engineering Technology', 'Geo-Information Science and Earth Observation', 'Electrical Engineering, Mathematics and Computer Science']
 OA_WORK_COLUMNS = ['_id','id','doi','title','display_name','publication_year','publication_date','ids','language','primary_location','type','type_crossref','indexed_in','open_access','authorships','countries_distinct_count','institutions_distinct_count','corresponding_author_ids','corresponding_institution_ids','apc_list','apc_paid','has_fulltext','fulltext_origin','cited_by_count','cited_by_percentile_year','biblio','is_retracted','is_paratext','keywords','concepts','mesh','locations_count','locations','best_oa_location','sustainable_development_goals','grants','referenced_works_count','referenced_works','related_works','ngrams_url','abstract_inverted_index','cited_by_api_url','counts_by_year','updated_date','created_date','topics','primary_topic']
@@ -253,7 +256,7 @@ def processMongoPaper(dataset, user=None):
     if Paper.objects.filter(doi=dataset['works_openalex']['doi']).exists():
         logger.error("paper already exists, aborting. matching itemid: {id}",id=Paper.objects.get(doi=dataset['works_openalex']['doi']).id)
         return
-    
+
     oa_work = prep_openalex_data(dataset['works_openalex'])
     if dataset.get('crossref'):
         cr_work = prep_crossref_data(dataset['crossref'])
@@ -720,7 +723,7 @@ def processMongoOpenAireEntry(openairedata):
     updated=False
     if not paper:
         return None
-    
+
     try:
         oa_journaldata =openairedata.get('journal')
     except Exception:
@@ -735,7 +738,7 @@ def processMongoOpenAireEntry(openairedata):
                 oa_publisher = openairedata.get('publisher')
             except Exception:
                 oa_publisher = None
-        
+
             if not paper.journal:
                 print('paper does not have journal')
                 if any([Journal.objects.filter(issn=oa_issn).exists(), Journal.objects.filter(e_issn=oa_issn).exists(), Journal.objects.filter(name=oa_title).exists()]):
@@ -813,7 +816,7 @@ def processMongoOpenAireEntry(openairedata):
                                 print("no matching pure item in database... maybe add it? How could it have been missed?")
                         else:
                             print('link to ut ris not found in openaire data... ?')
-                
+
 
 
     return updated

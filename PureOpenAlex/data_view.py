@@ -317,8 +317,8 @@ def getPapers(name, filter="all", user=None):
         return getSinglePaper()
     elif filter == 'author':
         facultyname = name+" [Author]"
-        filterpapers = Paper.objects.all()
-        filter = [[str(filter),name]]
+        filterpapers = Paper.objects.filter(authors__name=name).distinct().order_by("-modified")
+        filter = [['all','']]
     elif name == "marked" or name == "Marked papers":
         facultyname = "Marked papers"
         filterpapers=Paper.objects.filter(view_paper__user=user).order_by("-modified")
@@ -469,7 +469,7 @@ def get_raw_data(article_id, user=None):
         ).first()
     if not article:
         return None, None, None
-    
+
     openalexid=article.openalex_url
     doi = article.doi
     title = article.title
@@ -508,7 +508,7 @@ def get_raw_data(article_id, user=None):
         if raw_data.get('datacite'):
             del raw_data['datacite']['_id']
         if article.has_pure_oai_match:
-            raw_data['pure']=pure_works.find_one({'identifier':{'doi':cutdoi}}) 
+            raw_data['pure']=pure_works.find_one({'identifier':{'doi':cutdoi}})
             if not raw_data.get('pure'):
                 raw_data['pure']=pure_works.find_one({'identifier':{'doi':doi}})
     if article.has_pure_oai_match and not raw_data.get('pure'):
@@ -517,7 +517,7 @@ def get_raw_data(article_id, user=None):
         raw_data['authors']={}
         openalex_ut_authors = db['api_responses_UT_authors_openalex']
         openalex_authors = db['api_responses_authors_openalex']
-        peoplepage_results = db['api_responses_UT_authors_peoplepage'] 
+        peoplepage_results = db['api_responses_UT_authors_peoplepage']
         for author_openalexid in author_openalexids:
             raw_data['authors'][author_openalexid]={}
             raw_data['authors'][author_openalexid]['openalex_author']=openalex_ut_authors.find_one({'id':author_openalexid})
@@ -532,7 +532,7 @@ def get_raw_data(article_id, user=None):
             raw_data['locations'][source_openalexid]={}
             raw_data['locations'][source_openalexid]['openalex_journal']=openalex_journals.find_one({'id':source_openalexid})
             raw_data['locations'][source_openalexid]['dealdata']=dealdata.find_one({'id':source_openalexid})
-    
+
 
 
     fulljson=json.dumps(raw_data, default=str)
@@ -572,7 +572,7 @@ def exportris(papers):
         risdata.append(["Y1",paper.year])
         risdata.append(["N2",paper.abstract])
         risdata.append(["AB",paper.abstract])
-        
+
         if paper.keywords != []:
             for keyword in paper.keywords:
                 risdata.append(['KW',keyword.get('keyword')])
@@ -581,17 +581,17 @@ def exportris(papers):
             if location.landing_page_url and location.landing_page_url != '':
                 risdata.append(['UR',location.landing_page_url])
 
-        
+
         risdata.append(["U2",paper.doi.replace('https://doi.org/', '')])
         risdata.append(["DO",paper.doi.replace('https://doi.org/', '')])
         risdata.append(["M3",paper.itemtype])
         if paper.journal:
-            
+
             risdata.append(["VL",paper.volume])
             risdata.append(["JO",paper.journal.name])
             risdata.append(["JF",paper.journal.name])
             risdata.append(["SN",paper.journal.issn])
-            
+
             if paper.pages:
                 if '-' in paper.pages:
                     pages = paper.pages.split('-')[0]
