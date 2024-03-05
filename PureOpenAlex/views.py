@@ -30,11 +30,11 @@ CACHE_TTL = getattr(settings, "CACHE_TTL", DEFAULT_TIMEOUT)
 # TODO: proper update bookmark count
 # TODO: fix filtertable not working more than once
 # TODO: add serverside rendering of tables
-# TODO: get from apis: worldcat, semanticscholar, scopus, opencitations, orcid, zenodo
+# TODO: get from apis: worldcat, semanticscholar, scopus, opencitations, orcid, zenodo, CORE/BASE
 
 # TODO: easy/quick open or view pdf(s)
 # TODO: add funding/grant data
-# TODO: import DBLP papers
+# TODO: import DBLP papers to postgres from mongo
 # TODO: import data from pure report -> authors + paperlist for tcs
 
 # TODO: make and implement tests
