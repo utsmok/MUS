@@ -12,15 +12,108 @@ from django.db.models.functions import RowNumber
 from django.conf import settings
 from loguru import logger
 import pickle
+from pymongo import MongoClient
 APIEMAIL = getattr(settings, "APIEMAIL", "no@email.com")
 pyalex.config.email = APIEMAIL
+MONGOURL = getattr(settings, "MONGOURL")
+
+client=MongoClient(MONGOURL)
+db=client['mus']
+mongo_dealdata=db['api_responses_journals_dealdata_scraped']
+mongo_oa_authors=db['api_responses_authors_openalex']
+mongo_orcid=db['api_responses_orcid']
+mongo_oa_ut_authors=db['api_responses_UT_authors_openalex']
+mongo_peoplepage=db['api_responses_UT_authors_peoplepage']
+mongo_oa_journals = db['api_responses_journals_openalex']
+mongo_openaire_works = db['api_responses_openaire']
 
 '''
-TODO: add fix<...> function for import classes, in order:
+TODO: add fix<...> function for important classes, eg:
     - paper
     - author
     - utdata
 '''
+
+def fixMissingAffils():
+    def getorgs(affils):
+        affiliations=[]
+        for org in affils:
+            # get affiliation info into a list of dicts, check for is_ut along the way
+            if not org:
+                continue
+            if org.get('institution'):
+                orgsrc = org.get('institution')
+            else:
+                orgsrc = org
+
+            orgdata = {
+                'name':orgsrc.get('display_name'),
+                'openalex_url':orgsrc.get('id'),
+                'ror':orgsrc.get('ror'),
+                'type':orgsrc.get('type'),
+                'country_code':orgsrc.get('country_code') if orgsrc.get('country_code') else '',
+                'data_source':'openalex'
+            }
+            
+            if org.get('years'):
+                years = org.get('years')
+            else:
+                years = []
+
+            # if org is already in db, either
+            if Organization.objects.filter(Q(ror=orgdata['ror']) & Q(name=orgdata['name']) & Q(openalex_url=orgdata['openalex_url'])).exists():
+                found_org  = Organization.objects.filter(Q(ror=orgdata['ror']) & Q(name=orgdata['name']) & Q(openalex_url=orgdata['openalex_url'])).first()
+                if found_org.type != orgdata['type'] or found_org.country_code != orgdata['country_code']:
+                    #for now, assumed that the new data is better... might be a bad assumption
+                    if orgdata['type'] and orgdata['type'] != '':
+                        found_org.type = orgdata['type']
+                    if orgdata['country_code'] and orgdata['country_code'] != '':
+                        found_org.country_code = orgdata['country_code']
+                    found_org.save()
+                org = found_org
+            try:
+                if not isinstance(org, Organization):
+                    org, created = Organization.objects.get_or_create(**orgdata)
+                    if created:
+                        org.save()
+            except Exception:
+                print('error adding org, skipping')
+                pass
+            affiliations.append([org, years])
+        return affiliations
+    
+    authorlist = Author.objects.filter(affils__isnull=True).distinct()
+    print(f"Adding affils for {len(authorlist)} authors")
+
+    for author in authorlist:
+        print("adding affils for author "+str(author.name))
+        raw_affildata = None
+        oa_data = mongo_oa_ut_authors.find_one({"id":author.openalex_url})
+        try:
+            raw_affildata = oa_data.get('affiliations')
+        except Exception:
+            pass
+        if not oa_data or not raw_affildata:
+            oa_data = mongo_oa_authors.find_one({"id":author.openalex_url})
+        try:
+            raw_affildata = oa_data.get('affiliations')
+        except Exception:
+            pass
+        if not oa_data or not raw_affildata:
+            print(f"Cannot find data for author {author.openalex_url} | {author.name} in MongoDB")
+        else:
+            affiliations = getorgs(raw_affildata)
+            print('processed raw data')
+            for aff in affiliations:
+                try:
+                    with transaction.atomic():
+                        author.affils.add(aff[0],through_defaults={'years':aff[1]})
+                        author.save()
+                except Exception:
+                    pass
+            print(f"added {len(affiliations)} affils to Mongo for author {author.openalex_url} | {author.name}")
+    amount = Author.objects.filter(affils__isnull=True).distinct().count()
+    print(f"{amount} authors still have no affils.")
 
 def matchPureEntryWithPaper():
     """
@@ -127,7 +220,6 @@ def matchPureEntryWithPaper():
             j=0
 
     update(i, paperlist, entrylist)
-
 
 def migrate_department_data():
     from PureOpenAlex.models import UTData

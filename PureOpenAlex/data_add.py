@@ -24,10 +24,11 @@ This script contains the functions that handle adding new papers to the Django O
 
 SCORETHRESHOLD = 0.98  # for namematching authors on UT peoplepage
 APIEMAIL = getattr(settings, "APIEMAIL", "no@email.com")
+
 pyalex.config.email = APIEMAIL
 name_matcher = NameMatcher()
 
-client=MongoClient('mongodb://smops:bazending@192.168.2.153:27017/')
+client=MongoClient(getattr(settings, 'MONGOURL', None))
 db=client['mus']
 mongo_openaire_results = db['api_responses_openaire']
 openalex_works=db['api_responses_works_openalex']

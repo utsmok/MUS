@@ -14,6 +14,10 @@ from collections import defaultdict
 import rispy
 from io import StringIO
 from rich import print
+from pymongo import MongoClient
+from django.conf import settings
+import json
+
 def generateMainPage(user):
     """
     returns:
@@ -459,6 +463,81 @@ def getAuthorPapers(display_name, user=None):
     logger.info("authorpapers [author] {} [user] {}", display_name, user.username)
     return getPapers(display_name, 'author', user)
 
+def get_raw_data(article_id, user=None):
+    article=Paper.objects.filter(pk=article_id).prefetch_related('authors').annotate(
+            marked=Exists(viewPaper.objects.filter(displayed_paper=OuterRef("pk")).select_related()),
+        ).first()
+    if not article:
+        return None, None, None
+    
+    openalexid=article.openalex_url
+    doi = article.doi
+    title = article.title
+
+    if not any([openalexid, doi, title]):
+        return None, None, None
+
+    author_openalexids = []
+    for author in article.authors.all():
+        author_openalexids.append(author.openalex_url)
+    source_openalexids = []
+    for location in article.locations.all():
+        try:
+            source_openalexids.append(location.source.openalex_url)
+        except Exception:
+            pass
+
+    raw_data={}
+    fulljson = {}
+    client=MongoClient(getattr(settings, 'MONGOURL', None))
+    db=client['mus']
+    cutdoi = doi.replace('https://doi.org/','')
+    pure_works=db['api_responses_pure']
+
+    if openalexid:
+        openalex_works=db['api_responses_works_openalex']
+        mongo_openaire_results = db['api_responses_openaire']
+
+        raw_data['openalex_work']=openalex_works.find_one({'id':openalexid})
+        raw_data['openaire']=mongo_openaire_results.find_one({'id':openalexid})
+    if doi:
+        crossref_info=db['api_responses_crossref']
+        datacite_info=db['api_responses_datacite']
+        raw_data['crossref']=crossref_info.find_one({'DOI':cutdoi})
+        raw_data['datacite']=datacite_info.find_one({'doi':cutdoi})
+        if raw_data.get('datacite'):
+            del raw_data['datacite']['_id']
+        if article.has_pure_oai_match:
+            raw_data['pure']=pure_works.find_one({'identifier':{'doi':cutdoi}}) 
+            if not raw_data.get('pure'):
+                raw_data['pure']=pure_works.find_one({'identifier':{'doi':doi}})
+    if article.has_pure_oai_match and not raw_data.get('pure'):
+        raw_data['pure']=pure_works.find_one({'title':article.pure_entries.first().title})
+    if author_openalexids != []:
+        raw_data['authors']={}
+        openalex_ut_authors = db['api_responses_UT_authors_openalex']
+        openalex_authors = db['api_responses_authors_openalex']
+        peoplepage_results = db['api_responses_UT_authors_peoplepage'] 
+        for author_openalexid in author_openalexids:
+            raw_data['authors'][author_openalexid]={}
+            raw_data['authors'][author_openalexid]['openalex_author']=openalex_ut_authors.find_one({'id':author_openalexid})
+            if not raw_data['authors'][author_openalexid]['openalex_author']:
+                raw_data['authors'][author_openalexid]['openalex_author']=openalex_authors.find_one({'id':author_openalexid})
+            raw_data['authors'][author_openalexid]['peoplepage']=peoplepage_results.find_one({'id':author_openalexid})
+    if source_openalexids != []:
+        openalex_journals = db['api_responses_journals_openalex']
+        dealdata = db['api_responses_journals_dealdata_scraped']
+        raw_data['locations']={}
+        for source_openalexid in source_openalexids:
+            raw_data['locations'][source_openalexid]={}
+            raw_data['locations'][source_openalexid]['openalex_journal']=openalex_journals.find_one({'id':source_openalexid})
+            raw_data['locations'][source_openalexid]['dealdata']=dealdata.find_one({'id':source_openalexid})
+    
+
+
+    fulljson=json.dumps(raw_data, default=str)
+
+    return article, fulljson, raw_data
 
 def exportris(papers):
     itemtypekey = {

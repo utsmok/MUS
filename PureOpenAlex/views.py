@@ -7,13 +7,13 @@ from django.core.cache.backends.base import DEFAULT_TIMEOUT
 from django.db.models import Q
 from django.core.exceptions import ObjectDoesNotExist
 from .data_add import addPaper, addOpenAireWorksFromMongo
-from .data_view import generateMainPage, getPapers, getAuthorPapers, open_alex_autocomplete, get_pure_entries, exportris
+from .data_view import generateMainPage, getPapers, getAuthorPapers, open_alex_autocomplete, get_pure_entries, exportris, get_raw_data
 from django.conf import settings
 from .data_helpers import processDOI
 from django.views.decorators.cache import cache_page
 from loguru import logger
 from datetime import datetime
-
+from io import StringIO
 CACHE_TTL = getattr(settings, "CACHE_TTL", DEFAULT_TIMEOUT)
 
 # TODO: Add caching
@@ -105,6 +105,39 @@ def single_article_pure_view(request, article_id):
     article, pure_entries = get_pure_entries(article_id, request.user)
     return render(request, "pure_entries.html", {"article": article, 'pure_entries': pure_entries})
 
+def single_article_raw_data(request, article_id):
+    '''
+    gets data from mongodb linked to this paper
+    '''
+    logger.info("[url] /rawdata/{} [user] {}", article_id, request.user.username)
+    article, fulljson, raw_data = get_raw_data(article_id, request.user)
+    if not article:
+        return render(request, "message.html", {"status": "danger", "message": f"Article with {article_id} not found"})
+    if not raw_data:
+        raw_data=[]
+    if not fulljson:
+        fulljson = {}
+    return render(request, "rawdata.html", {"article": article, 'fulljson':fulljson, 'raw_data':raw_data})
+
+def get_raw_data_json(request, article_id):
+    '''
+    same as single_article_raw_data but returns json instead of page
+    '''
+    logger.info("[url] /rawdatajson/{} [user] {}", article_id, request.user.username)
+    article, fulljson, raw_data = get_raw_data(article_id, request.user)
+    if not article:
+        return JsonResponse({"message": f"Article with {article_id} not found"})
+    
+    content = StringIO()
+    with content as f:
+        f.write(fulljson)
+        data = content.getvalue()
+    
+    response = HttpResponse(data, headers={
+        "Content-Type": 'application/json',
+        "Content-Disposition": f'attachment; filename="raw_json_{article_id}.json"',
+    })
+    return response
 @login_required
 def faculty(request, name="all", filter="all"):
     '''

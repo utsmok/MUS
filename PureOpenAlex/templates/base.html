@@ -69,7 +69,9 @@
     <!-- Ajax Datatable (django app) -->
     <script type="text/javascript" src="{% static 'ajax_datatable/js/utils.js' %}"></script>
     <link href="{% static 'ajax_datatable/css/style.css' %}" rel="stylesheet" />
+    <link href="{% static 'jquery.json-viewer.css' %}" rel="stylesheet" />
     <script src = "{% static 'svg.min.js' %}"></script>
+    <script src = "{% static 'jquery.json-viewer.js' %}"></script>
 </head>
 <body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}' hx-ext="debug, event-header">
   <!-- MDB --> <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mdb-ui-kit/7.1.0/mdb.umd.min.js" ></script>

@@ -14,6 +14,8 @@ from .views import (
     getris,
     dbinfo,
     filtertoolpage,
+    single_article_raw_data,
+    get_raw_data_json
 )
 
 app_name = "PureOpenAlex"
@@ -41,4 +43,6 @@ urlpatterns = [
     path('getris/', getris, name='getris'),
     path('dbinfo/', dbinfo, name='dbinfo'),
     path('filtertools/', filtertoolpage, name='filtertools'),
+    path('rawdata/<int:article_id>/', single_article_raw_data, name='rawdata'),
+    path('rawjson/<int:article_id>/', get_raw_data_json, name='rawjson'),
 ]

@@ -1,0 +1,201 @@
+{% extends 'base.html' %}
+{% block content %}
+{% spaceless %}
+{% include 'topbar.html' %}
+
+<div class="row  d-flex align-items-center justify-content-center text-center  text-black" style="--mdb-bg-opacity: 0.5;">
+	<div class='col-12 bg-danger bg-gradient text-black fs-3' style="--mdb-bg-opacity: 0.8;">
+		Displaying {{ raw_data|length }} raw data items related to Paper: <span class='text-white fw-bolder'>[{{ article.id }}]</span></div>
+	<div class='col-12 bg-primary bg-gradient' style="--mdb-bg-opacity: 0.5;">
+		<span class="text-black fs-1 fw-lighter"><em>{{ article.title }}</em></span>
+		<div>
+			{% for author in article.authors.all %}
+				{% if author.is_ut %}
+					<span class='text-bolder text-primary'>
+				{% else %}
+					<span>
+				{% endif %}
+					<em>{{ author.name }}</em></span>{% if not forloop.last %}, {% endif %}
+			{% endfor %}
+		</div>
+	</div>
+	<div class='col 12 bg-success bg-gradient fs-4' style="--mdb-bg-opacity: 0.5;">
+		<a href="{{ article.doi }}" class='fw-bolder link-danger' target="_blank">
+			{{ article.doi }}
+		</a>
+		|
+		<a href="{{ article.openalex_url }}" class='fw-bolder link-danger' target="_blank">
+			{{ article.openalex_url }}
+		</a>
+	</div>
+	<div class='col-12'>
+		{% if article.marked %}
+			<span class="visually-hidden d-flex badge badge-danger p-3 rounded-4 justify-content-center align-items-center" id="{{article.id}}-removespinner">
+				<span class="spinner-grow text-danger " role="status"> </span>
+				<span id="loadingtext" class=" ps-1 text-danger"> Removing... </span>
+			</span>
+			<button onclick="remove_mark('{{article.id}}');" id="{{article.id}}-removemark" class="badge badge-danger p-3 rounded-4">
+				<i class="fas fa-square-xmark"></i> Delete main paper bookmark
+			</button>
+		{% else %}
+			<span class="visually-hidden d-flex badge badge-success p-3 rounded-4 justify-content-center align-items-center" id="{{article.id}}-addspinner">
+				<span class="spinner-grow text-success " role="status"> </span>
+				<span id="loadingtext" class=" ps-1 text-success"> Adding... </span>
+			</span>
+			<button onclick="add_mark('{{article.id}}');" id="{{article.id}}-addmark" class="badge badge-success p-3 rounded-4">
+				<i class="far fa-bookmark"></i> Bookmark main paper
+			</button>
+		{% endif %}
+		<a href="{% url 'PureOpenAlex:single_article' article.id %}" target="_blank" id="{{article.id}}-single_article" class="badge badge-primary p-3 rounded-4">
+			<i class="fas fa-server"></i> View details of main Paper
+		</a>
+	</div>
+</div>
+
+<div class="row justify-content-center align-items-center text-center">
+    <div class='col-12'>
+    <a href = "{% url 'PureOpenAlex:rawjson' article.id %}" class='btn fs-5 btn-primary' target="_blank">download JSON containing all raw data for fields listed below</a>
+    </div>
+    <div class="col-6">
+        <div class="card p-1 border border-success bg-primary bg-gradient text-black" style="--mdb-bg-opacity: 0.2;">
+            <div class="card-body">
+                <div class='card-title'><h4><span class="badge badge-info rounded-pill" style="--mdb-bg-opacity: 1;"> OpenAlex work data  <span></h4></div>
+                <p class="card-text" id='openalex_work_data'>
+                    <div class='border border-2 border-primary rounded-5 bg-primary bg-gradient' style="--mdb-bg-opacity: 0.2;">
+                    <a href="{{article.openalex_url}}"><span class='badge badge-warning rounded-pill'>{{article.openalex_url}}</span></a>
+                    {% for key in raw_data.openalex_work.keys%}
+                    <span class='all font-monospace'>{{ key }}</span> {% if not forloop.last %} | {% endif %} {% endfor %}
+                    </div>
+                </p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6">
+        <div class="card p-1 border border-primary bg-info bg-gradient text-black" style="--mdb-bg-opacity: 0.2;">
+            <div class="card-body">
+                <div class='card-title'><h4><span class="badge badge-dark rounded-pill" style="--mdb-bg-opacity: 1;"> OpenAlex Author data<span></h4></div>
+                <p class="card-text">
+                    {% for name, content in raw_data.authors.items %}
+                        <span class='badge badge-danger rounded-pill'>{{content.openalex_author.display_name}}</span> <a href="{{name}}">{{name}}</a>
+                            {% for content_name, entry in content.items %}
+                            <div class='border border-2 border-warning rounded-5 bg-warning bg-gradient' style="--mdb-bg-opacity: 0.2;">
+
+                            {% if entry %}
+                                <span class='badge badge-info rounded-pill'>{{content_name}}</span>: 
+                                {% for entry_name, entry_content in entry.items %}
+                                    <span class='all font-monospace'>{{entry_name}}</span> {% if not forloop.last %} | {% endif %}
+                                {% endfor %}
+                            {% else %}
+                            <span class='badge badge-danger rounded-pill'>{{content_name}} is empty </span>
+                            {% endif %}
+                            </div>
+
+                            {% endfor %}
+                            
+                    {% endfor %}
+                </p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6">
+        <div class="card p-1 border border-warning bg-success bg-gradient text-black" style="--mdb-bg-opacity: 0.2;">
+            <div class="card-body">
+                <div class='card-title'><h4><span class="badge badge-dark rounded-pill" style="--mdb-bg-opacity: 1;"> OpenAlex Location data <span></h4></div>
+                <p class="card-text">
+
+                    {% for name, content in raw_data.locations.items %}
+                        <span class='badge badge-info rounded-pill'>{{content.openalex_journal.display_name}}</span> <a href="{{name}}">{{name}}</a>
+                            {% for content_name, entry in content.items %}
+                            <div class='border border-2 border-primary rounded-5 bg-info bg-gradient' style="--mdb-bg-opacity: 0.2;">
+                            {% if entry %}
+                                <span class='badge badge-success rounded-pill'>{{content_name}}</span>: 
+                                {% for entry_name, entry_content in entry.items %}
+                                    <span class='all font-monospace'>{{entry_name}}</span> {% if not forloop.last %} | {% endif %}
+                                {% endfor %}
+                            {% else %}
+                            <span class='badge badge-danger rounded-pill'>{{content_name}} is empty </span>
+                            {% endif %} 
+                            </div>
+
+                            {% endfor %}
+                            
+                    {% endfor %}
+
+                </p>
+            </div>
+        </div>
+    </div>
+    {% if raw_data.pure is not None %}
+    <div class="col-6">
+        <div class="card p-1 border border-info bg-warning bg-gradient text-black" style="--mdb-bg-opacity: 0.2;">
+            <div class="card-body">
+                <div class='card-title'><h4><span class="badge badge-dark rounded-pill" style="--mdb-bg-opacity: 1;"> Linked Pure item data<span></h4></div>
+                <p class="card-text">
+                    {% for key in raw_data.pure.keys %}
+                    <span class='all font-monospace'>{{key}}</span> {% if not forloop.last %} | {% endif %}
+                    {% endfor %}
+
+                </p>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="col-6">
+        <div class="card p-1 border border-warning bg-danger bg-gradient text-black" style="--mdb-bg-opacity: 0.2;">
+            <div class="card-body">
+                <div class='card-title'><h4><span class="badge badge-info rounded-pill" style="--mdb-bg-opacity: 1;"> No Pure data found. <span></h4></div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    {% if raw_data.openaire is not None %}
+    <div class="col-6">
+        <div class="card p-1 border border-primary bg-secondary bg-gradient text-black" style="--mdb-bg-opacity: 0.2;">
+            <div class="card-body">
+                <div class='card-title'><h4><span class="badge badge-dark rounded-pill" style="--mdb-bg-opacity: 1;"> OpenAire data <span></h4></div>
+                <p class="card-text">
+                    {% for key in raw_data.openaire.keys %}
+                    <span class='all font-monospace'>{{key}}</span> {% if not forloop.last %} | {% endif %}
+                    {% endfor %}
+                    </ul>
+                </p>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="col-6">
+        <div class="card p-1 border border-warning bg-danger bg-gradient text-black" style="--mdb-bg-opacity: 0.2;">
+            <div class="card-body">
+                <div class='card-title'><h4><span class="badge badge-info rounded-pill" style="--mdb-bg-opacity: 1;"> No OpenAire data found. <span></h4></div>
+
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    {% if raw_data.datacite is not None %}
+    <div class="col-6">
+        <div class="card p-1 border border-success bg-success bg-gradient text-black" style="--mdb-bg-opacity: 0.2;">
+            <div class="card-body">
+                <div class='card-title'><h4><span class="badge badge-dark rounded-pill" style="--mdb-bg-opacity: 1;"> DataCite data<span></h4></div>
+                <p class="card-text">
+                    {% for key in raw_data.datacite.keys %}
+                    <span class='all font-monospace'>{{key}}</span> {% if not forloop.last %} | {% endif %}
+                    {% endfor %}
+                </p>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="col-6">
+        <div class="card p-1 border border-warning bg-danger bg-gradient text-black" style="--mdb-bg-opacity: 0.2;">
+            <div class="card-body">
+                <div class='card-title'><h4><span class="badge badge-info rounded-pill" style="--mdb-bg-opacity: 1;"> No DataCite data found. <span></h4></div>
+
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+{% endspaceless %}
+{% endblock %}
