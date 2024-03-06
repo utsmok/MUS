@@ -34,10 +34,10 @@ ACCOUNT_ADAPTER = "accounts.adapter.NoNewUsersAccountAdapter"
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-if DEBUG:
+'''if DEBUG:
     LOGLEVEL = "DEBUG"
-else:
-    LOGLEVEL = "INFO"
+else:'''
+LOGLEVEL = "INFO"
     
 LOGFMT = "{time:[%m %d] %H:%M:%S} | {name}>{function}() [{level}] |> {message}"
 logger.remove()

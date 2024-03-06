@@ -5,7 +5,6 @@ from .views import (
     faculty,
     removemark,
     addmark,
-    facultypaginator,
     searchpaper,
     addarticle,
     author,
@@ -15,7 +14,7 @@ from .views import (
     dbinfo,
     filtertoolpage,
     single_article_raw_data,
-    get_raw_data_json
+    get_raw_data_json,
 )
 
 app_name = "PureOpenAlex"
@@ -29,12 +28,6 @@ urlpatterns = [
     path("removemark/", removemark, name="removeallmarks"),
     path("removemark/<int:id>/", removemark, name="removemark"),
     path("addmark/<int:id>/", addmark, name="addmark"),
-    path("facultypage/<str:name>/", facultypaginator, name="facultypage"),
-    path(
-        "facultypage/<str:name>/<str:filter>/<str:sort>",
-        facultypaginator,
-        name="facultypagefiltered",
-    ),
     path('search/results/', searchpaper, name='search_results_view'),
     path('addarticle/<path:doi>', addarticle, name='addarticle'),
     path('authorarticles/<str:name>', author, name='authorarticles'),

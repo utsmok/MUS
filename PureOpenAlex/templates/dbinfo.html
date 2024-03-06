@@ -18,7 +18,6 @@
                         <div >{{total.inpure_percent}}% has Pure link in OpenAlex and {{total.inpurematch_percent}}% has a match with a Pure OAI-PHM entry</div>
                         <div>
                             <div><a href="{% url 'PureOpenAlex:faculty' 'all'%}" class="btn btn-primary">View all (slow!)</a>
-                                <a href="{% url 'PureOpenAlex:facultypage' 'all' %}" class="btn btn-success">Quickview (kinda broken)</a></div>
                     </div>
                     </p>
                 </div>
@@ -36,7 +35,6 @@
                                 <div>{{faculty.oa}}% OA</div>
                                 <div>{{faculty.inpure_percent}}% has Pure link in OpenAlex and {{faculty.inpurematch_percent}}% has a match with a Pure OAI-PHM entry</div>
                                 <div><a href="{% url 'PureOpenAlex:faculty' faculty.name %}" class="btn btn-primary">View all (slow!)</a>
-                                    <a href="{% url 'PureOpenAlex:facultypage' faculty.name %}" class="btn btn-success">Quickview (kinda broken)</a></div>
 
 
                             </p>
@@ -61,7 +59,6 @@
                                 <div>{{faculty.oa}}% OA</div>
                                 <div>{{faculty.inpure_percent}}% has Pure link in OpenAlex and {{faculty.inpurematch_percent}}% has a match with a Pure OAI-PHM entry</div>
                                 <div><a href="{% url 'PureOpenAlex:faculty' faculty.name %}" class="btn btn-primary">View all (slow!)</a>
-                                <a href="{% url 'PureOpenAlex:facultypage' faculty.name %}" class="btn btn-success">Quickview (kinda broken)</a></div>
 
 
                             </p>

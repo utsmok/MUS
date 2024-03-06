@@ -4,7 +4,6 @@ import urllib.request
 from currency_converter import ECB_URL, CurrencyConverter
 from io import BytesIO
 import requests
-import logging
 import threading
 import os
 from .models import UTData, DealData

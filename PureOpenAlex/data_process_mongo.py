@@ -1,6 +1,6 @@
 
 from django.conf import settings
-from .models import Location, Source, DealData, UTData, Author, Paper,  Organization, Journal, viewPaper, PureEntry
+from .models import Location, Source, PilotPureData, DealData, UTData, Author, Paper,  Organization, Journal, viewPaper, PureEntry
 from django.db import transaction
 from django.db.models import Q
 from nameparser import HumanName
@@ -9,7 +9,6 @@ from dateutil.relativedelta import relativedelta
 from pymongo import MongoClient
 import pyalex
 from .data_helpers import (
-    convertToEuro,
     invertAbstract,
     TWENTENAMES,)
 from functools import wraps
@@ -27,7 +26,7 @@ TAG_RE = re.compile(r'<[^>]+>')
 FACULTIES = ['ITC', 'EEMCS', 'ET', 'TNW', 'BMS', 'Science and Technology Faculty', 'Behavioural, Management and Social Sciences', 'Engineering Technology', 'Geo-Information Science and Earth Observation', 'Electrical Engineering, Mathematics and Computer Science']
 OA_WORK_COLUMNS = ['_id','id','doi','title','display_name','publication_year','publication_date','ids','language','primary_location','type','type_crossref','indexed_in','open_access','authorships','countries_distinct_count','institutions_distinct_count','corresponding_author_ids','corresponding_institution_ids','apc_list','apc_paid','has_fulltext','fulltext_origin','cited_by_count','cited_by_percentile_year','biblio','is_retracted','is_paratext','keywords','concepts','mesh','locations_count','locations','best_oa_location','sustainable_development_goals','grants','referenced_works_count','referenced_works','related_works','ngrams_url','abstract_inverted_index','cited_by_api_url','counts_by_year','updated_date','created_date','topics','primary_topic']
 CR_WORK_COLUMNS = ['_id','indexed','reference-count','publisher','content-domain','published-print','abstract','DOI','type','created','page','source','is-referenced-by-count','title','prefix','author','member','container-title','link','deposited','score','resource','subtitle','issued','references-count','URL','published','issue','volume','journal-issue','ISSN','issn-type','subject','short-container-title','language','isbn-type','ISBN']
-TAGLIST = ["UT-Hybrid-D", "UT-Gold-D", "NLA", "N/A OA procedure"]
+TAGLIST = ["UT-Hybrid-D", "UT-Hybrid-D", "UT-Gold-D", "NLA", "N/A OA procedure"]
 LICENSESOA = [
     "cc-by-sa",
     "cc-by-nc-sa",
@@ -80,7 +79,7 @@ def timeit(func):
         return result
     return timeit_wrapper
 
-@timeit
+
 def processMongoPaper(dataset, user=None):
     '''
     Input: dataset with openalex & crossref work data
@@ -569,10 +568,8 @@ def determine_is_in_pure(data):
                 return True
     return False
 
-@transaction.atomic
-@timeit
 def processMongoPureEntry(puredata):
-    logger.info("creating pureentry for title {}", puredata.get('title'))
+    logger.debug("creating pureentry for title {}", puredata.get('title'))
     if isinstance(puredata.get('date'),list):
         puredata['date'] = puredata.get('date')[0]
     pureentrydict = {
@@ -597,7 +594,7 @@ def processMongoPureEntry(puredata):
     pureentry = add_pureentry_authors(puredata, pureentry)
     pureentry = add_pureentry_ids(puredata.get('identifier', None), pureentry)
     pureentry = match_paper(pureentry)
-    logger.info("pureentry {entryid} created for title {title}", title=puredata.get('title'), entryid=pureentry.id)
+    logger.debug("pureentry {entryid} created for title {title}", title=puredata.get('title'), entryid=pureentry.id)
 def add_pureentry_journal(ispartof, pureentry):
     if not ispartof:
         return pureentry
@@ -605,9 +602,10 @@ def add_pureentry_journal(ispartof, pureentry):
     issn = str(ispartof.split(':')[-1])
     journal = Journal.objects.filter(Q(issn=issn) | Q(e_issn=issn)).first()
     if journal:
-        pureentry.journal = journal
-        pureentry.save()
-        logger.info("pureentry {entryid} matched journal {issn}", entryid=pureentry.id, issn=issn)
+        with transaction.atomic():
+            pureentry.journal = journal
+            pureentry.save()
+            logger.debug("pureentry {entryid} matched journal {issn}", entryid=pureentry.id, issn=issn)
     return pureentry
 def add_pureentry_authors(puredata, pureentry):
     creators = puredata.get('creator')
@@ -626,7 +624,7 @@ def add_pureentry_authors(puredata, pureentry):
     if len(fullist) > 0:
         pureentry, nomatchcount = find_author_match(fullist, pureentry)
         if nomatchcount == len(fullist):
-            logger.info("No author matches found for pureentry {entryid}", entryid=pureentry.id)
+            logger.debug("No author matches found for pureentry {entryid}", entryid=pureentry.id)
     else:
         logger.warning("No authors found at all for pureentry {entryid}", entryid=pureentry.id)
     return pureentry
@@ -710,12 +708,60 @@ def match_paper(pureentry):
         paper = Paper.objects.filter(Q(title=pureentry.title)).first()
     if paper:
         pureentry.paper = paper
-        paper.has_pure_oai_match = True
         pureentry.save()
-        paper.save()
-        logger.info("matching paper found for pureentry {entryid}", entryid=pureentry.id)
+        with transaction.atomic():
+            paper.has_pure_oai_match = True
+            paper.save()
+        logger.debug("matching paper found for pureentry {entryid}", entryid=pureentry.id)
     return pureentry
 
+def processMongoTCSPilotEntry(entrydata):
+    UTKEYWORD=["UT-Hybrid-D", "UT-Gold-D", "NLA", "N/A OA procedure", "n/a OA procedure"]
+
+    entry = None
+    entrydict = {
+        'pureid': entrydata.get('pureid'),
+        'title': entrydata.get('title'),
+        'doi': entrydata.get('dois',''),
+        'orgs': entrydata.get('orgs'),
+        'all_authors': entrydata.get('all_authors'),
+        'ut_authors': entrydata.get('ut_authors'),
+        'other_links': entrydata.get('other_links',''),
+        'apc_paid_amount': entrydata.get('apc_paid_amount'),
+        'file_names': entrydata.get('file_names',[]),
+        'article_number': entrydata.get('article_number',''),
+        'item_type': entrydata.get('item_type'),
+        'year': entrydata.get('year'),
+        'open_access': entrydata.get('open_access'),
+        'keywords': entrydata.get('keywords',[]),
+        'import_source': entrydata.get('import_source',''),
+        'journal_title': entrydata.get('journal_title',''),
+        'issn': entrydata.get('issn',''),
+        'is_doaj': entrydata.get('is_doaj',False),
+        'publisher_journal': entrydata.get('publisher_journal',''),
+        "pure_entry_created" :entrydata.get('pure_entry_dates').get('date_created'),
+        "pure_entry_last_modified":entrydata.get('pure_entry_dates').get('last_modified'),
+        "date_earliest_published":entrydata.get('publication_dates').get('date_earliest_published') if entrydata.get('publication_dates') else None,
+        "date_published":entrydata.get('publication_dates').get('date_published') if entrydata.get('publication_dates') else None,
+        "date_eprint_first_online":entrydata.get('publication_dates').get('date_first_online') if entrydata.get('publication_dates') else None,
+        "event":entrydata.get('event',''),
+        'publisher_other':entrydata.get('publisher_other',''),
+        'ut_keyword':'',
+        'pages':entrydata.get('pages',''),
+        'pagescount':entrydata.get('pagescount'),
+    }
+    if entrydata.get('keywords'):
+        if isinstance(entrydata.get('keywords'), list):
+            for keyword in entrydata.get('keywords'):
+                if 'UT-' in keyword or 'OA procedure' in keyword or keyword in UTKEYWORD:
+                    entrydict['ut_keyword'] = keyword
+        elif isinstance(entrydata.get('keywords'), str):
+            keyword = entrydata.get('keywords')
+            if 'UT-' in keyword or 'OA procedure' in keyword or keyword in UTKEYWORD:
+                entrydict['ut_keyword'] = entrydata.get('keywords')
+
+    entry = PilotPureData.objects.create(**entrydict)
+    return entry
 @transaction.atomic
 @timeit
 def processMongoOpenAireEntry(openairedata):
@@ -790,7 +836,7 @@ def processMongoOpenAireEntry(openairedata):
                     try:
                         link = result.get('fulltext')
                         if link:
-                            linkb = link
+                            blink = link
                             link = link.lower()
                         else:
                             continue
@@ -803,7 +849,7 @@ def processMongoOpenAireEntry(openairedata):
                         paper.save()
                         updated=True
                         if 'ris.utwente.nl' in link or 'research.utwente.nl' in link:
-                            pureentry=PureEntry.objects.filter(Q(risutwente=link)|Q(researchutwente=link))
+                            pureentry=PureEntry.objects.filter(Q(risutwente=link)|Q(researchutwente=link)|Q(risutwente=blink)|Q(researchutwente=blink))
                             if pureentry.exists():
                                     print('found matching pure entry in db, linking')
                                     for entry in pureentry:

@@ -240,6 +240,37 @@ class viewPaper(TimeStampedModel, models.Model):
         null=True,
     )
 
+class PilotPureData(models.Model):
+    pureid = models.IntegerField()
+    title = models.CharField(max_length=512)
+    all_authors = models.JSONField()
+    orgs = models.JSONField()
+    doi = models.CharField(max_length=512)
+    other_links = models.URLField(max_length=512, null=True)
+    apc_paid_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+    file_names = models.JSONField()
+    article_number = models.CharField(max_length=256, blank=True)
+    item_type = models.CharField(max_length=256)
+    year = models.IntegerField()
+    open_access = models.CharField(max_length=256, blank=True)
+    keywords = models.JSONField()
+    ut_keyword = models.CharField(max_length=512, blank=True)
+    import_source = models.CharField(max_length=256, blank=True)
+    journal_title = models.CharField(max_length=512, blank=True)
+    issn = models.CharField(max_length=256)
+    is_doaj = models.BooleanField()
+    publisher_journal = models.CharField(max_length=512, blank=True)
+    ut_authors = models.JSONField()
+    date_earliest_published = models.DateField(null=True)
+    date_published = models.DateField(null=True)
+    date_eprint_first_online = models.DateField(null=True)
+    pure_entry_created = models.DateField()
+    pure_entry_last_modified = models.DateField()
+    pagescount = models.IntegerField(null=True)
+    pages = models.CharField(max_length=256, blank=True)
+    event = models.CharField(max_length=512, blank=True)
+    publisher_other = models.CharField(max_length=512, blank=True)
+
 
 class PureEntry(TimeStampedModel, models.Model):
     title = models.CharField(max_length=512, blank=True, null=False)
@@ -268,6 +299,7 @@ class PureEntry(TimeStampedModel, models.Model):
         Journal, on_delete=models.DO_NOTHING, related_name="pure_entries", null=True
     )
     keywords = models.JSONField(blank=True, null=True)
+    pilot_pure_data = models.OneToOneField(PilotPureData, on_delete=models.DO_NOTHING, related_name="pure_entries", null=True)
 
     class Meta:
         indexes = [
@@ -283,3 +315,5 @@ class PureEntry(TimeStampedModel, models.Model):
                                 'journal',
                                 ]),
         ]
+
+

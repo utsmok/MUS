@@ -1,9 +1,9 @@
 import pyalex
 from pyalex import Works
 from .namematcher import NameMatcher
-from .models import  Paper, viewPaper
+from .models import  Paper, viewPaper, PureEntry
 from django.db import transaction
-from .data_process_mongo import processMongoPaper, processMongoPureEntry, processMongoOpenAireEntry
+from .data_process_mongo import processMongoPaper, processMongoPureEntry, processMongoOpenAireEntry, processMongoTCSPilotEntry
 from pymongo import MongoClient
 from django.conf import settings
 from loguru import logger
@@ -34,6 +34,8 @@ mongo_openaire_results = db['api_responses_openaire']
 openalex_works=db['api_responses_works_openalex']
 crossref_info=db['api_responses_crossref']
 pure_works=db['api_responses_pure']
+tcs_pilot_entries=db['pure_report_start_tcs']
+
 
 def addOpenAlexWorksFromMongo():
     datasets=[]
@@ -86,11 +88,33 @@ def addPureWorksFromMongo():
     datasets=[]
     i=0
     k=0
-    for document in pure_works.find().sort('date',pymongo.DESCENDING):
+    s=0
+    pureentries = PureEntry.objects.all().only('doi','researchutwente', 'risutwente')
+    sets={}
+    sets['doi'] = set(pureentries.values_list('doi', flat=True))
+    sets['ris_file'] = set(pureentries.values_list('risutwente', flat=True))
+    sets['ris_page'] = set(pureentries.values_list('researchutwente', flat=True))
+    allapientrys = pure_works.find().sort('date',pymongo.DESCENDING)
+    for document in allapientrys:
+        stop=False
+        for checkitemstr in ['doi', 'ris_file', 'ris_page']:
+            checkitem = document.get('identifier').get(checkitemstr)
+            if checkitem:
+                if isinstance(checkitem, list):
+                    checkitem = checkitem[0]
+                if checkitem in sets[checkitemstr]:
+
+                    stop=True
+                    break
+
+        if stop:
+            s=s+1
+            continue
+        
         datasets.append(document)
         i=i+1
-        if i % 1000 == 0:
-            message=f"processing batch of {len(datasets)} works"
+        if i % 500 == 0:
+            message=f"processing batch of {len(datasets)} works, skipped {s} works"
             logger.info(message)            
             for dataset in datasets:
                 try:
@@ -156,6 +180,41 @@ def addOpenAireWorksFromMongo():
             logger.exception('exception {e} while adding OpenAire item {id}', e=e, id=dataset['id'])
             print(f'exception {e} while adding OpenAire item {dataset['id']}')
             continue
+        k=k+1
+    
+    message=f"processed {k} entries, {h} updated"
+    logger.info(message)
+    print(message)
+
+def addTCSPilotWorksFromMongo():
+    datasets=[]
+    i=0
+    k=0
+    h=0
+    for document in tcs_pilot_entries.find():
+        datasets.append(document)
+        i=i+1
+        if i % 500 == 0:
+            message=f"processing batch of {len(datasets)} TCS pure entries"
+            print(message)
+            for dataset in datasets:
+                entry = processMongoTCSPilotEntry(dataset)
+                if entry:
+                    h=h+1
+                k=k+1
+                if k%100==0:
+                    message=f"processed {k} entries, {h} updated"
+                    logger.info(message)
+                    print(message)
+            datasets=[]
+    message=f"final batch: processing {len(datasets)} works"
+    logger.info(message)            
+    print(message)
+    for dataset in datasets:
+        entry = processMongoTCSPilotEntry(dataset)
+        if entry:
+            h=h+1
+
         k=k+1
     
     message=f"processed {k} entries, {h} updated"

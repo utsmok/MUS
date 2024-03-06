@@ -11,7 +11,6 @@ import regex as re
 from datetime import datetime
 from loguru import logger
 from collections import defaultdict
-import rispy
 from io import StringIO
 from rich import print
 from pymongo import MongoClient

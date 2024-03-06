@@ -6,7 +6,7 @@ from django.db import transaction
 from django.core.cache.backends.base import DEFAULT_TIMEOUT
 from django.db.models import Q
 from django.core.exceptions import ObjectDoesNotExist
-from .data_add import addPaper, addOpenAireWorksFromMongo
+from .data_add import addPaper
 from .data_view import generateMainPage, getPapers, getAuthorPapers, open_alex_autocomplete, get_pure_entries, exportris, get_raw_data
 from django.conf import settings
 from .data_helpers import processDOI
@@ -14,10 +14,12 @@ from django.views.decorators.cache import cache_page
 from loguru import logger
 from datetime import datetime
 from io import StringIO
+
 CACHE_TTL = getattr(settings, "CACHE_TTL", DEFAULT_TIMEOUT)
 
 # TODO: Add caching
-# TODO: reimplement messaging system to frontend
+# TODO: implement messaging system to frontend -- with history?
+
 
 # TODO: Fix articlenumber / pagenumber stuff
 # TODO: Fix journals again
@@ -27,9 +29,9 @@ CACHE_TTL = getattr(settings, "CACHE_TTL", DEFAULT_TIMEOUT)
 
 # TODO: run scheduled updates
 # TODO: user added suggestions and such
-# TODO: proper update bookmark count
+# TODO: proper update bookmark count on frontend
 # TODO: fix filtertable not working more than once
-# TODO: add serverside rendering of tables
+# TODO: add serverside rendering of tables? paginate, filter, sort
 # TODO: get from apis: worldcat, semanticscholar, scopus, opencitations, orcid, zenodo, CORE/BASE
 
 # TODO: easy/quick open or view pdf(s)
@@ -38,7 +40,8 @@ CACHE_TTL = getattr(settings, "CACHE_TTL", DEFAULT_TIMEOUT)
 # TODO: import data from pure report -> authors + paperlist for tcs
 
 # TODO: make and implement tests
-# TODO: implement scheduler
+# TODO: make plots page
+
 
 @login_required
 def home(request):
@@ -54,8 +57,8 @@ def dbinfo(request):
 
 @login_required
 def addarticle(request,doi):
-    logger.info("addarticle [doi] {} [user] {} [status] {} [message] {}", doi, request.user.username, status, message)
     status, message, openalex_url = addPaper(doi, request.user)
+    logger.info("addarticle [doi] {} [user] {} [status] {} [message] {}", doi, request.user.username, status, message)
     return render(request, 'message.html', {"status": status,"message":message, 'openalex_url': openalex_url, 'time': datetime.now().strftime("%H:%M:%S")})
 
 @login_required
@@ -199,25 +202,6 @@ def author(request, name):
     {"faculty": name, "stats": stats, "articles": listpapers},)
     return response
 
-@login_required
-def facultypaginator(request, name="all", filter="all", sort="year"):
-    '''
-    Currently returns a table with all papers for a specific faculty, but only returns 1 page of the table at a time.
-    No way currently to sort, filter, search through the list -- needs serverside implementation.
-    '''
-    from django.core.paginator import Paginator
-    logger.info("[url] /facultypage/{} [user] {}", name, request.user.username)
-
-    facultyname, stats, listpapers = getPapers(name, filter, request.user)
-    paginator = Paginator(listpapers, 25)
-    page_number = request.GET.get("page")
-    page_obj = paginator.get_page(page_number)
-    response = render(
-        request,
-        "faculty_paginator.html",
-        {"faculty": facultyname, "stats": stats, "articles": page_obj},
-    )
-    return response
 
 @transaction.atomic
 @login_required
