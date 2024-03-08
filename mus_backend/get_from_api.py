@@ -402,7 +402,7 @@ def addItemsFromOpenAire():
         refreshurl=f'https://services.openaire.eu/uoa-user-management/api/users/getAccessToken?refreshToken={OPENAIRETOKEN}'
         tokendata = httpx.get(refreshurl)
         return tokendata.json()
-        
+
     mongo_openaire_results=db['api_responses_openaire']
     print('adding items from OpenAire')
     tokendata=get_openaire_token()
@@ -430,7 +430,7 @@ def addItemsFromOpenAire():
 
         metadata['id']=paper['openalex_url']
         mongo_openaire_results.insert_one(metadata)
-        
+
         if datetime.now()-time > timedelta(minutes=58):
             tokendata=get_openaire_token()
             headers = {
@@ -441,6 +441,9 @@ def addItemsFromOpenAire():
 
     return None
 
+def getScopusData():
+    mongo_scopus_data = db['api_responses_scopus']
+    from pybliometrics.scopus import AbstractRetrieval, AuthorRetrieval, AffiliationRetrieval, PlumXMetrics, SubjectClassifications, SerialTitle, SerialSearch
 
 '''def getAll():
     years=[2024, 2023, 2022, 2021, 2020, 2019, 2018, 2017, 2016, 2015, 2014, 2013, 2012, 2011, 2010]

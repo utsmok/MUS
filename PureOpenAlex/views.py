@@ -14,6 +14,8 @@ from django.views.decorators.cache import cache_page
 from loguru import logger
 from datetime import datetime
 from io import StringIO
+import plotly.express as px
+import pandas as pd
 
 CACHE_TTL = getattr(settings, "CACHE_TTL", DEFAULT_TIMEOUT)
 
@@ -349,3 +351,40 @@ def customfilter(request):
         facultyname, stats, listpapers = getPapers('all', filters, request.user)
 
         return render(request, "faculty_table.html",{"faculty": facultyname, "stats": stats, "articles": listpapers, "filter":filters})
+
+@login_required
+def chart(request):
+    filters= [['start_date','2022-01-01'],['end_date', '2025-01-01']]
+    facultyname, stats, listpapers = getPapers('all', filters, request.user)
+
+    # listpapers contains all the papers we care about
+    # Now we want to extract the data we need and put it into the dataframe
+
+    # We want to know extract the following data:
+    #     For each year between 2019 and 2024 (inclusive)
+    #          Count the amount of papers for each type of open access (green, bronze, closed, hybrid, gold)
+    #               (this data is contained in field 'openaccess' in each Paper object inside the listpapers Queryset)
+    #     Then add that to the dataframe, so each row is a year and each column is an open access type, each cell containing the count.
+
+    data = {}
+    oatypes = ['green', 'bronze', 'closed', 'hybrid', 'gold']
+    years = ['2022', '2023', '2024']
+    faculties = ['EEMCS', 'BMS', 'ITC', 'ET', 'TNW']
+    types = ['proceedings-article', 'journal-article']
+    for faculty in faculties:
+        filters= [['start_date','2022-01-01'],['end_date', '2025-01-01'],['faculty',faculty]]
+        facultyname, stats, listpapers = getPapers('all', filters, request.user)
+        data[faculty]={}
+        for year in years:
+            data[faculty][year]={}
+            yearpapers=listpapers.filter(year=year)
+            data[faculty][year]['total_count']=yearpapers.count()
+            for oatype in oatypes:
+                data[faculty][year][oatype] = yearpapers.filter(openaccess=oatype)
+            for type in types:
+                data[faculty][year][type] = yearpapers.filter(itemtype=type)
+    # Once we have the dataframe set up we'll plot a chart of the data
+    data = pd.DataFrame.from_dict(data).T
+    fig = px.bar(data, x=types, y=oatypes, facet_row=faculties, facet_col=data.index)
+    chart = fig.to_html()
+    return render(request, "chart.html", {"chart": chart})

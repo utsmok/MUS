@@ -10,6 +10,7 @@ class Organization(models.Model):
     openalex_url = models.CharField(max_length=256, blank=True, null=True)
 
     class Meta:
+        ordering = ['country_code', 'name']
         indexes = [
             models.Index(fields=["openalex_url",
                                 "name",
@@ -18,6 +19,7 @@ class Organization(models.Model):
                                 'type',
                                 ]),
         ]
+
 
 class Author(TimeStampedModel, models.Model):
     name = models.CharField(max_length=256, null=True)
@@ -34,6 +36,7 @@ class Author(TimeStampedModel, models.Model):
     known_as = models.JSONField(blank=True, null=True)
     scopus_id = models.CharField(max_length=256, unique=True, blank=True, null=True)
     class Meta:
+        ordering = ['-is_ut', 'last_name']
         indexes = [
             models.Index(fields=["openalex_url",
                                 "name",
@@ -198,6 +201,7 @@ class Paper(TimeStampedModel, models.Model):
     ut_keyword_suggestion = models.CharField(max_length=256, blank=True, null=True)
     topics = models.JSONField(blank=True, null=True)
     class Meta:
+        ordering = ['-year', 'doi']
         indexes = [
             models.Index(fields=["openalex_url",
                                 "doi",
@@ -270,7 +274,16 @@ class PilotPureData(models.Model):
     pages = models.CharField(max_length=256, blank=True)
     event = models.CharField(max_length=512, blank=True)
     publisher_other = models.CharField(max_length=512, blank=True)
-
+    class Meta:
+        ordering = ['-year', 'pureid']
+        indexes = [
+            models.Index(fields=[
+                "pureid",
+                'title',
+                'doi',
+                'year',
+            ])
+        ]
 
 class PureEntry(TimeStampedModel, models.Model):
     title = models.CharField(max_length=512, blank=True, null=False)
@@ -302,6 +315,7 @@ class PureEntry(TimeStampedModel, models.Model):
     pilot_pure_data = models.OneToOneField(PilotPureData, on_delete=models.DO_NOTHING, related_name="pure_entries", null=True)
 
     class Meta:
+        ordering = ['-year', 'doi']
         indexes = [
             models.Index(fields=["title",
                                 'doi',
