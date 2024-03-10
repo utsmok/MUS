@@ -16,6 +16,7 @@ from datetime import datetime
 from io import StringIO
 import plotly.express as px
 import pandas as pd
+import plotly.graph_objects as go
 
 CACHE_TTL = getattr(settings, "CACHE_TTL", DEFAULT_TIMEOUT)
 
@@ -366,25 +367,87 @@ def chart(request):
     #               (this data is contained in field 'openaccess' in each Paper object inside the listpapers Queryset)
     #     Then add that to the dataframe, so each row is a year and each column is an open access type, each cell containing the count.
 
-    data = {}
+    dataoa = []
+    datatypes = []
     oatypes = ['green', 'bronze', 'closed', 'hybrid', 'gold']
-    years = ['2022', '2023', '2024']
-    faculties = ['EEMCS', 'BMS', 'ITC', 'ET', 'TNW']
+    years = ['2018', '2019', '2020', '2021', '2022', '2023']
+    faculties = ['EEMCS', 'BMS', 'ET', 'ITC', 'TNW']
+    groups = ["DACS",
+    "FMT",
+    "CAES",
+    "PS",
+    "DMB",
+    "SCS",
+    "HMI",
+    'EEMCS', 'all']
     types = ['proceedings-article', 'journal-article']
-    for faculty in faculties:
-        filters= [['start_date','2022-01-01'],['end_date', '2025-01-01'],['faculty',faculty]]
+    baseline=0
+    baseline_eemcs=0
+    for faculty in groups:
+        print('working on '+faculty)
+        if faculty == 'EEMCS':
+            filters= [['start_date','2017-01-01'],['end_date', '2025-01-01'],['faculty',faculty]]
+        elif faculty == 'all':
+            filters= [['start_date','2017-01-01'],['end_date', '2025-01-01']]
+        else:
+            filters= [['start_date','2017-01-01'],['end_date', '2025-01-01'],['group',faculty]]
         facultyname, stats, listpapers = getPapers('all', filters, request.user)
-        data[faculty]={}
         for year in years:
-            data[faculty][year]={}
+            immediate=0
+            delayed=0
             yearpapers=listpapers.filter(year=year)
-            data[faculty][year]['total_count']=yearpapers.count()
             for oatype in oatypes:
-                data[faculty][year][oatype] = yearpapers.filter(openaccess=oatype)
-            for type in types:
-                data[faculty][year][type] = yearpapers.filter(itemtype=type)
-    # Once we have the dataframe set up we'll plot a chart of the data
-    data = pd.DataFrame.from_dict(data).T
-    fig = px.bar(data, x=types, y=oatypes, facet_row=faculties, facet_col=data.index)
+                count = yearpapers.filter(openaccess=oatype).count()
+                if oatype in ['gold', 'hybrid', 'bronze']:
+                    immediate += count
+                else:
+                    delayed += count
+                #dataoa.append({'faculty':faculty, 'year':year,'counttype':oatype,'count':count})
+            #for type in types:
+            #    count = yearpapers.filter(itemtype=type).count()
+            #    datatypes.append({'faculty':faculty, 'year':year,'counttype':type,'count':count})
+            if faculty == 'EEMCS':
+                baseline_eemcs += delayed*100/(immediate+delayed)
+            elif faculty == 'all':
+                baseline += delayed*100/(immediate+delayed)
+            else:
+                dataoa.append({'faculty':faculty, 'year':year,'counttype':'delayed','count':delayed*100/(immediate+delayed)})
+        if faculty == 'EEMCS':
+            baseline_eemcs /= 6
+        if faculty == 'all':
+            baseline /= 6
+
+        print('done with '+faculty)
+    dfoa = pd.DataFrame(dataoa)
+    #dftypes= pd.DataFrame(datatypes)
+    print(dfoa.info(verbose=True))
+    maxy= dfoa['count'].max()
+
+    fig = go.Figure()
+    for faculty in groups:
+        curdata=dfoa[dfoa['faculty']==faculty]
+        fig.add_trace(go.Bar(x=curdata['year'],
+                y=curdata['count'],
+                name=faculty,
+                text=faculty,
+                textposition='auto',
+                hoverinfo='text',
+                hovertext=curdata['count'].astype(str)+'% '+curdata['counttype'].astype(str)+' ['+faculty+']',
+
+                ))
+
+    fig.update_layout(barmode='group', uniformtext_minsize=8, uniformtext_mode='hide')
+    fig.update_yaxes(range=[0,100], ticksuffix="%")
+    fig.update_xaxes(type='category')
+    fig.add_hline(y=baseline_eemcs, line_dash="dot",
+                annotation_text="EEMCS baseline", 
+                annotation_position="top right",
+                line_color='magenta')
+    fig.add_hline(y=baseline, line_dash="dot",
+                annotation_text="baseline UT", 
+                annotation_position="top right",
+                line_color='red')
+
     chart = fig.to_html()
+    print('rendering chart')
     return render(request, "chart.html", {"chart": chart})
