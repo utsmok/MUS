@@ -17,6 +17,23 @@ from pymongo import MongoClient
 from django.conf import settings
 import json
 
+def getTablePrefetches(filterpapers):
+    location_prefetch = Prefetch(
+        "locations",
+        queryset=Location.objects.all().select_related('source'),
+        to_attr="pref_locations",
+    )
+    authors_prefetch =Prefetch(
+        'authors',
+        queryset=Author.objects.all().select_related('utdata'),
+        to_attr="pref_authors",
+    )
+
+    return [
+        location_prefetch,
+        authors_prefetch,
+    ]
+
 def generateMainPage(user):
     """
     returns:
@@ -295,22 +312,7 @@ def getPapers(name, filter="all", user=None):
             authors_and_affiliation_prefetch,
         ]
 
-    def getTablePrefetches(filterpapers):
-        location_prefetch = Prefetch(
-            "locations",
-            queryset=Location.objects.all().select_related('source'),
-            to_attr="pref_locations",
-        )
-        authors_prefetch =Prefetch(
-            'authors',
-            queryset=Author.objects.all().select_related('utdata'),
-            to_attr="pref_authors",
-        )
 
-        return [
-            location_prefetch,
-            authors_prefetch,
-        ]
 
     if isinstance(name, int):
         return getSinglePaper()
@@ -367,7 +369,6 @@ def get_pure_entries(article_id, user):
             'authors',
             queryset=Author.objects.filter(pure_entries__in=pure_entries).distinct()
             .prefetch_related('affiliations').select_related('utdata'),
-            to_attr="preloaded_authors",
         )
     pure_entries=pure_entries.prefetch_related(author_prefetch)
 

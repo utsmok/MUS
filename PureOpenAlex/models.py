@@ -107,7 +107,7 @@ class Journal(models.Model):
     keywords = models.JSONField(blank=True, null=True)
     publisher = models.CharField(max_length=512, blank=True, null=False)
     openalex_url = models.CharField(max_length=256, blank=True, null=False)
-    dealdata = models.ForeignKey(DealData, on_delete=models.SET_NULL, null=True)
+    dealdata = models.ForeignKey(DealData, on_delete=models.SET_NULL, blank=True, null=True)
     class Meta:
         indexes = [
             models.Index(fields=["openalex_url",
@@ -144,7 +144,7 @@ class Location(TimeStampedModel, models.Model):
     is_published = models.BooleanField(null=True)
     license = models.CharField(max_length=256, blank=True, null=False)
     landing_page_url = models.CharField(max_length=512, blank=True, null=False)
-    source = models.ForeignKey(Source, on_delete=models.SET_NULL, null=True)
+    source = models.ForeignKey(Source, on_delete=models.SET_NULL, blank=True, null=True)
     is_primary = models.BooleanField()
     is_best_oa = models.BooleanField()
     pdf_url = models.CharField(max_length=512, blank=True, null=False)
@@ -177,7 +177,7 @@ class Paper(TimeStampedModel, models.Model):
     pdf_link_primary = models.CharField(max_length=512, blank=True, null=False)
     keywords = models.JSONField(blank=True, null=True)
     journal = models.ForeignKey(
-        Journal, on_delete=models.SET_NULL, related_name="papers", null=True
+        Journal, on_delete=models.SET_NULL, related_name="papers", blank=True, null=True
     )
     authors = models.ManyToManyField(
         Author, through="Authorship", related_name="papers", db_index=True
@@ -243,6 +243,8 @@ class viewPaper(TimeStampedModel, models.Model):
         related_name="view_paper",
         null=True,
     )
+    class Meta:
+        ordering = ['-user']
 
 class PilotPureData(models.Model):
     pureid = models.IntegerField()
@@ -288,7 +290,7 @@ class PilotPureData(models.Model):
 class PureEntry(TimeStampedModel, models.Model):
     title = models.CharField(max_length=512, blank=True, null=False)
     paper = models.ForeignKey(
-        Paper, on_delete=models.SET_NULL, related_name="pure_entries", null=True
+        Paper, on_delete=models.SET_NULL, related_name="pure_entries", blank=True, null=True
     )
     authors = models.ManyToManyField(Author, related_name="pure_entries")
     language = models.CharField(max_length=256, blank=True, null=False)
@@ -309,10 +311,10 @@ class PureEntry(TimeStampedModel, models.Model):
     other_links = models.JSONField(blank=True, null=True)
     duplicate_ids = models.JSONField(blank=True, null=True)
     journal = models.ForeignKey(
-        Journal, on_delete=models.DO_NOTHING, related_name="pure_entries", null=True
+        Journal, on_delete=models.DO_NOTHING, related_name="pure_entries", blank=True, null=True
     )
     keywords = models.JSONField(blank=True, null=True)
-    pilot_pure_data = models.OneToOneField(PilotPureData, on_delete=models.DO_NOTHING, related_name="pure_entries", null=True)
+    pilot_pure_data = models.OneToOneField(PilotPureData, on_delete=models.DO_NOTHING, related_name="pure_entries", blank=True, null=True)
 
     class Meta:
         ordering = ['-year', 'doi']

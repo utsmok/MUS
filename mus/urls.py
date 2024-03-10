@@ -16,11 +16,16 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import include, path
+from ninja import NinjaAPI
+from .api import api
+
 
 urlpatterns = [
     path("", include("PureOpenAlex.urls")),
     path("admin/", admin.site.urls),
     path("accounts/", include("allauth.urls")),
     path("data-browser/", include("data_browser.urls")),
-    path("__debug__/", include("debug_toolbar.urls")),
+   # path("__debug__/", include("debug_toolbar.urls")),
+    path("api/", api.urls),
+
 ]
