@@ -334,7 +334,7 @@ class PureEntry(TimeStampedModel, models.Model):
 
 
 class DBUpdate(TimeStampedModel, models.Model):
-    details = models.JSONField() 
+    details = models.JSONField() #     result = {'unique_id (e.g. list of dois or openalex_urls)':[], 'total (count)':0}
     update_source = models.CharField(max_length=256, blank=True, null=False) #e.g. openaire, openalex, etc
     update_type = models.CharField(max_length=256, blank=True, null=False) #manual, automatic, scheduled, ...
 

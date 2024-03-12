@@ -17,6 +17,7 @@ from gzip import GzipFile
 from rich import print
 import csv
 from time import time
+from PureOpenAlex.models import DBUpdate
 
 MONGOURL = getattr(settings, "MONGOURL")
 APIEMAIL = getattr(settings, "APIEMAIL", "no@email.com")
@@ -49,6 +50,8 @@ def getdblp():
                     item_depth=2, item_callback=handle_dblp)
 
 def getfrompurereport(filename='pure_report_before_pilot_tcs'):
+    result={'pureids':[], 'total':0}
+
     start = time()
     i=0
     final = []
@@ -128,7 +131,24 @@ def getfrompurereport(filename='pure_report_before_pilot_tcs'):
     h=0
     msg=f"in {elapsed:.1f}s: Processed {i} records from Pure Report {filename}.csv"
     logger.info(msg)
-    mongo_pure_report_start_tcs.insert_many(final)
+
+    addlist=[]
+    for item in final:
+        if mongo_pure_report_start_tcs.find_one({"pureid":item['pureid']}):
+            continue
+        else:
+            addlist.append(item)
+            result['total']+=1
+            result['pureids'].append(item['pureid'])
+    if addlist:
+        mongo_pure_report_start_tcs.insert_many(addlist)
+
+    return result if result['total']>0 else None
 
 
 
+def addfromfiles():
+    result = getfrompurereport()
+    if result:
+        dbupdate=DBUpdate.objects.create(update_source="Pure TCS Report", update_type="manualmongo", details = result)
+        dbupdate.save()

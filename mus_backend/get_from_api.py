@@ -21,6 +21,7 @@ import httpx
 from datetime import datetime, timedelta
 from PureOpenAlex.models import Paper, DBUpdate
 import xmltodict
+
 MONGOURL = getattr(settings, "MONGOURL")
 APIEMAIL = getattr(settings, "APIEMAIL", "no@email.com")
 OPENAIRETOKEN = getattr(settings, "OPENAIRETOKEN", "")
@@ -203,7 +204,7 @@ def getPureItems(years):
         result['ris_files'].extend(t['ris_files'])
         result['ris_pages'].extend(t['ris_pages'])
         result['total']+=t['total']
-    return result
+    return result if result['total']>0 else None
 
 def getDataCiteItems(years):
     api_responses_datacite = db["api_responses_datacite"]
@@ -247,8 +248,8 @@ def getDataCiteItems(years):
                 api_responses_datacite.insert_one(tmp)
                 result['dois'].append(tmp['id'])
                 result['total']+=1
-            
-    return result
+
+    return result if result['total']>0 else None
 
 def getCrossrefWorks(years):
     api_responses_crossref = db["api_responses_crossref"]
@@ -269,8 +270,8 @@ def getCrossrefWorks(years):
         if addarticles:
             api_responses_crossref.insert_many(addarticles)
             result['total']+=len(addarticles)
-        
-    return result
+
+    return result if result['total']>0 else None
 
 def getOpenAlexWorksInstituteID(years):
     api_responses_openalex = db["api_responses_utasinstitute_openalex"]
@@ -294,8 +295,8 @@ def getOpenAlexWorksInstituteID(years):
                 result['openalex_url'].append(art['id'])
         if batch:
             api_responses_openalex.insert_many(batch)
-        
-    return result
+
+    return result if result['total']>0 else None
 
 def getOpenAlexWorksROR(years):
     api_responses_openalex = db["api_responses_utasinstitute_openalex"]
@@ -318,8 +319,8 @@ def getOpenAlexWorksROR(years):
                 result['openalex_url'].append(art['id'])
         if batch:
             api_responses_openalex.insert_many(batch)
-        
-    return result
+
+    return result if result['total']>0 else None
 
 def addItemsFromOpenAire():
     def get_openaire_token():
@@ -363,7 +364,7 @@ def addItemsFromOpenAire():
             time = datetime.now()
 
 
-    return result
+    return result if result['total']>0 else None
 
 def getOpenAlexAuthorData():
     '''
@@ -487,32 +488,37 @@ def getOpenAlexJournalData():
 
 def updateAll():
     years=[2024, 2023]
-    addedfromopenalex = getOpenAlexWorksROR(years) 
+    addedfromopenalex = getOpenAlexWorksROR(years)
     addedfromopenalex2 = getOpenAlexWorksInstituteID(years)
-    
-    oaupdate={'total':0, 'openalex_url':[]}
-    oaupdate['total'] = addedfromopenalex['total']+addedfromopenalex2['total']
-    oaupdate['openalex_url'] = addedfromopenalex['openalex_url'].extend(addedfromopenalex2['openalex_url'])
-    if oaupdate['total']>0:
+    if addedfromopenalex or addedfromopenalex2:
+        oaupdate={'total':0, 'openalex_url':[]}
+        if addedfromopenalex:
+            oaupdate['total'] += addedfromopenalex['total']
+            oaupdate['openalex_url'].extend(addedfromopenalex['openalex_url'])
+        if addedfromopenalex2:
+            oaupdate['total'] += addedfromopenalex2['total']
+            oaupdate['openalex_url'].extend(addedfromopenalex2['openalex_url'])
+
+    if oaupdate:
         oaupdate = DBUpdate.objects.create(update_source="OpenAlex", update_type="manualmongo", details=addedfromopenalex)
         oaupdate.save()
 
     addedfrompure = getPureItems(years)
-    if addedfrompure['total']>0:
+    if addedfrompure:
         pureupdate = DBUpdate.objects.create(update_source="Pure", update_type="manualmongo", details = addedfrompure)
         pureupdate.save()
 
     addedfromdatacite = getDataCiteItems(years)
-    if addedfromdatacite['total']>0:
+    if addedfromdatacite:
         dataciteupdate = DBUpdate.objects.create(update_source="DataCite", update_type="manualmongo", details = addedfromdatacite)
         dataciteupdate.save()
 
     addedfromcrossref = getCrossrefWorks(years)
-    if addedfromcrossref['total']>0:
+    if addedfromcrossref:
         cr = DBUpdate.objects.create(update_source="Crossref", update_type="manualmongo", details=addedfromcrossref)
         cr.save()
 
     addedfromopenaire = addItemsFromOpenAire()
-    if addedfromopenaire['total']>0:
+    if addedfromopenaire:
         oaire=DBUpdate.objects.create(update_source="OpenAire", update_type="manualmongo", details=addedfromopenaire)
         oaire.save()
