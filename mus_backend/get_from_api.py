@@ -19,7 +19,7 @@ from pymongo import MongoClient
 from django.conf import settings
 import httpx
 from datetime import datetime, timedelta
-from PureOpenAlex.models import Paper
+from PureOpenAlex.models import Paper, DBUpdate
 import xmltodict
 MONGOURL = getattr(settings, "MONGOURL")
 APIEMAIL = getattr(settings, "APIEMAIL", "no@email.com")
@@ -54,9 +54,9 @@ def getPureItems(years):
         Returns:
             total: the number of entries added
         '''
+        result={'ris_pages':[], 'ris_files':[], 'total':0}
 
         api_responses_pure = db["api_responses_pure"]
-        total=0
         base_url = "https://ris.utwente.nl/ws/oai"
         metadata_prefix = "oai_dc"
         set_name = f"publications:year{year}"
@@ -73,6 +73,8 @@ def getPureItems(years):
 
         def process_records(records, xml,total):
             articles=[]
+            result={'ris_pages':[], 'ris_files':[], 'total':0}
+
             # First turn every article into from an XML to a dict
             for record in records:
                 metadata = record.find("oai:metadata", namespace)
@@ -148,11 +150,19 @@ def getPureItems(years):
                     if isinstance(article[tag],list) and len(article[tag])==1:
                         article[tag]=article[tag][0]
 
+            # check if article is already in mongodb
+            addarticles=[]
+            for article in articles:
+                if api_responses_pure.find_one({"identifier":{'ris_page':article["identifier"]["ris_page"]}}) or \
+                    api_responses_pure.find_one({"identifier":{'ris_file':article["identifier"]["ris_file"]}}):
+                        addarticles.append(article)
+                        result['ris_files'].append(article["identifier"]["ris_file"])
+                        result['ris_pages'].append(article["identifier"]["ris_page"])
+                        result['total']+=1
             # add the articles to mongodb
-            api_responses_pure.insert_many(articles)
-            total=total+len(articles)
-            print(f"[{year}] {total} articles (+{len(articles)})")
-            return total
+            if len(addarticles)>0:
+                api_responses_pure.insert_many(addarticles)
+            return result
 
         initial_url = (
             f"{base_url}?verb=ListRecords&metadataPrefix={metadata_prefix}&set={set_name}"
@@ -161,10 +171,12 @@ def getPureItems(years):
 
         list_records = root.find("oai:ListRecords", namespace)
         try:
-            total=process_records(list_records.findall("oai:record", namespace), xml,total)
+            resultt=process_records(list_records.findall("oai:record", namespace), xml)
+            result['total']+=resultt['total']
+            result['ris_files'].extend(resultt['ris_files'])
+            result['ris_pages'].extend(resultt['ris_pages'])
         except Exception as e:
-            print(f"[{year}] {e} while processing initial batch")
-            pass
+            ...
         resumption_token = root.find("oai:ListRecords/oai:resumptionToken", namespace)
         i = 1
         while resumption_token is not None:
@@ -174,24 +186,28 @@ def getPureItems(years):
             try:
                 root, xml = fetch_records(next_url)
                 list_records = root.find("oai:ListRecords", namespace)
-                total=process_records(list_records.findall("oai:record", namespace), xml, total)
+                resultt=process_records(list_records.findall("oai:record", namespace), xml)
+                result['total']+=resultt['total']
+                result['ris_files'].extend(resultt['ris_files'])
+                result['ris_pages'].extend(resultt['ris_pages'])
             except Exception as e:
-                print(f"[{year}] {e} while processing batch {i}")
+                ...
             resumption_token = root.find("oai:ListRecords/oai:resumptionToken", namespace)
 
 
-        return total
+        return result
 
-    results=[]
-
+    result = {'ris_files':[], 'ris_pages':[], 'total':0}
     for year in years:
         t=fillFromPure(year)
-        results.append({"year":year, "articles":t})
-    return results
+        result['ris_files'].extend(t['ris_files'])
+        result['ris_pages'].extend(t['ris_pages'])
+        result['total']+=t['total']
+    return result
 
 def getDataCiteItems(years):
     api_responses_datacite = db["api_responses_datacite"]
-    total=0
+    result = {'dois':[], 'total':0}
     # the url to retrieve the api response from datacite
     # returns json, with {data:..., meta:..., links:...} as root.
     # data is a list of dicts, one per item.
@@ -225,25 +241,36 @@ def getDataCiteItems(years):
                 if isinstance(value, list):
                     if len(value)==1:
                         tmp[key]=value[0]
-            api_responses_datacite.insert_one(tmp)
-            total=total+1
-            if total%25==0:
-                print(f"{total} DataCite items added")
-
-    return total
+            if api_responses_datacite.find_one({"id":tmp['id']}):
+                continue
+            else:
+                api_responses_datacite.insert_one(tmp)
+                result['dois'].append(tmp['id'])
+                result['total']+=1
+            
+    return result
 
 def getCrossrefWorks(years):
     api_responses_crossref = db["api_responses_crossref"]
     pagesize=100
     results=cr.works(filter = {'from-pub-date':f'{years[-1]}-01-01','until-pub-date': f'{years[0]}-12-31'}, query_affiliation='twente', cursor = "*", limit = pagesize, cursor_max=100000)
-    total=0
+    result = {'dois':[], 'total':0}
     for page in results:
         articles=[]
         for article in page['message']['items']:
             articles.append(article)
-        total=total+len(articles)
-        api_responses_crossref.insert_many(articles)
-        print(f'{total} Crossref articles [+{len(articles)}]')
+        addarticles=[]
+        for article in articles:
+            if api_responses_crossref.find_one({"DOI":article['DOI']}):
+                continue
+            else:
+                addarticles.append(article)
+                result['dois'].append(article['DOI'])
+        if addarticles:
+            api_responses_crossref.insert_many(addarticles)
+            result['total']+=len(addarticles)
+        
+    return result
 
 def getOpenAlexWorksInstituteID(years):
     api_responses_openalex = db["api_responses_utasinstitute_openalex"]
@@ -254,12 +281,21 @@ def getOpenAlexWorksInstituteID(years):
                 publication_year="|".join([str(x) for x in years]),
             )
     )
-    total=0
+    result={'total':0,'openalex_url':[]}
+
     for article in batched(chain(*query.paginate(per_page=100, n_max=None)),100):
-        api_responses_openalex.insert_many(article)
-        total=total+len(article)
-        print(f'{total} OpenAlex articles')
-    print(f'{total} OpenAlex articles added filtering on institution id I94624287 (UTwente)')
+        batch=[]
+        for art in article:
+            if api_responses_openalex.find_one({"id":art['id']}):
+                continue
+            else:
+                batch.append(art)
+                result['total'] += 1
+                result['openalex_url'].append(art['id'])
+        if batch:
+            api_responses_openalex.insert_many(batch)
+        
+    return result
 
 def getOpenAlexWorksROR(years):
     api_responses_openalex = db["api_responses_utasinstitute_openalex"]
@@ -270,12 +306,64 @@ def getOpenAlexWorksROR(years):
                 publication_year="|".join([str(x) for x in years]),
             )
     )
-    total=0
+    result={'total':0,'openalex_url':[]}
     for article in batched(chain(*query.paginate(per_page=100, n_max=None)),100):
-        api_responses_openalex.insert_many(article)
-        total=total+len(article)
-        print(f'{total} OpenAlex articles')
-    print(f'{total} OpenAlex articles added filtering on https://ror.org/006hf6230 (UTwente)')
+        batch=[]
+        for art in article:
+            if api_responses_openalex.find_one({"id":art['id']}):
+                continue
+            else:
+                batch.append(art)
+                result['total'] += 1
+                result['openalex_url'].append(art['id'])
+        if batch:
+            api_responses_openalex.insert_many(batch)
+        
+    return result
+
+def addItemsFromOpenAire():
+    def get_openaire_token():
+        refreshurl=f'https://services.openaire.eu/uoa-user-management/api/users/getAccessToken?refreshToken={OPENAIRETOKEN}'
+        tokendata = httpx.get(refreshurl)
+        return tokendata.json()
+
+    result = {'openalex_url':[], 'total':0}
+    mongo_openaire_results=db['api_responses_openaire']
+    tokendata=get_openaire_token()
+    time = datetime.now()
+    url = 'https://api.openaire.eu/search/researchProducts'
+    headers = {
+        'Authorization': f'Bearer {tokendata.get("access_token")}'
+    }
+
+    paperlist = Paper.objects.filter(year__gte=2023).values('doi','openalex_url')
+    for paper in paperlist:
+        if mongo_openaire_results.find_one({'id':paper['openalex_url']}):
+            ...
+            continue
+        params = {'doi':paper['doi'].replace('https://doi.org/','')}
+        try:
+            r = httpx.get(url, params=params, headers=headers)
+        except Exception as e:
+            ...
+        try:
+            metadata = xmltodict.parse(r.text, attr_prefix='',dict_constructor=dict,cdata_key='text', process_namespaces=True).get('response').get('results').get('result').get('metadata').get('http://namespace.openaire.eu/oaf:entity').get('http://namespace.openaire.eu/oaf:result')
+        except Exception as e:
+            continue
+
+        metadata['id']=paper['openalex_url']
+        mongo_openaire_results.insert_one(metadata)
+        result['total'] += 1
+        result['openalex_url'].append(paper['openalex_url'])
+        if datetime.now()-time > timedelta(minutes=58):
+            tokendata=get_openaire_token()
+            headers = {
+                'Authorization': f'Bearer {tokendata.get("access_token")}'
+            }
+            time = datetime.now()
+
+
+    return result
 
 def getOpenAlexAuthorData():
     '''
@@ -396,61 +484,35 @@ def getOpenAlexJournalData():
     total=total+len(batch)
     print(f'added {total} journals to DB')
 
-def addItemsFromOpenAire():
-    def get_openaire_token():
-        print('getting new token')
-        refreshurl=f'https://services.openaire.eu/uoa-user-management/api/users/getAccessToken?refreshToken={OPENAIRETOKEN}'
-        tokendata = httpx.get(refreshurl)
-        return tokendata.json()
 
-    mongo_openaire_results=db['api_responses_openaire']
-    print('adding items from OpenAire')
-    tokendata=get_openaire_token()
-    time = datetime.now()
-    url = 'https://api.openaire.eu/search/researchProducts'
-    headers = {
-        'Authorization': f'Bearer {tokendata.get("access_token")}'
-    }
+def updateAll():
+    years=[2024, 2023]
+    addedfromopenalex = getOpenAlexWorksROR(years) 
+    addedfromopenalex2 = getOpenAlexWorksInstituteID(years)
+    
+    oaupdate={'total':0, 'openalex_url':[]}
+    oaupdate['total'] = addedfromopenalex['total']+addedfromopenalex2['total']
+    oaupdate['openalex_url'] = addedfromopenalex['openalex_url'].extend(addedfromopenalex2['openalex_url'])
+    if oaupdate['total']>0:
+        oaupdate = DBUpdate.objects.create(update_source="OpenAlex", update_type="manualmongo", details=addedfromopenalex)
+        oaupdate.save()
 
-    paperlist = Paper.objects.filter(year__gte=2019).values('doi','openalex_url')
-    for paper in paperlist:
-        if mongo_openaire_results.find_one({'id':paper['openalex_url']}):
-            print('item already in mongodb, skipping.')
-            continue
-        params = {'doi':paper['doi'].replace('https://doi.org/','')}
-        try:
-            r = httpx.get(url, params=params, headers=headers)
-        except Exception as e:
-            print('httpx error: ',e)
-        try:
-            metadata = xmltodict.parse(r.text, attr_prefix='',dict_constructor=dict,cdata_key='text', process_namespaces=True).get('response').get('results').get('result').get('metadata').get('http://namespace.openaire.eu/oaf:entity').get('http://namespace.openaire.eu/oaf:result')
-        except Exception as e:
-            print('error while trying to get metadata: ',e)
-            continue
+    addedfrompure = getPureItems(years)
+    if addedfrompure['total']>0:
+        pureupdate = DBUpdate.objects.create(update_source="Pure", update_type="manualmongo", details = addedfrompure)
+        pureupdate.save()
 
-        metadata['id']=paper['openalex_url']
-        mongo_openaire_results.insert_one(metadata)
+    addedfromdatacite = getDataCiteItems(years)
+    if addedfromdatacite['total']>0:
+        dataciteupdate = DBUpdate.objects.create(update_source="DataCite", update_type="manualmongo", details = addedfromdatacite)
+        dataciteupdate.save()
 
-        if datetime.now()-time > timedelta(minutes=58):
-            tokendata=get_openaire_token()
-            headers = {
-                'Authorization': f'Bearer {tokendata.get("access_token")}'
-            }
-            time = datetime.now()
+    addedfromcrossref = getCrossrefWorks(years)
+    if addedfromcrossref['total']>0:
+        cr = DBUpdate.objects.create(update_source="Crossref", update_type="manualmongo", details=addedfromcrossref)
+        cr.save()
 
-
-    return None
-
-def getScopusData():
-    mongo_scopus_data = db['api_responses_scopus']
-    from pybliometrics.scopus import AbstractRetrieval, AuthorRetrieval, AffiliationRetrieval, PlumXMetrics, SubjectClassifications, SerialTitle, SerialSearch
-
-'''def getAll():
-    years=[2024, 2023, 2022, 2021, 2020, 2019, 2018, 2017, 2016, 2015, 2014, 2013, 2012, 2011, 2010]
-    getOpenAlexWorksROR(years) #or use getOpenAlexWorksInstituteID(years)
-    getPureItems(years)
-    getDataCiteItems(years)
-    getCrossrefWorks(years)
-    ...
-
-'''
+    addedfromopenaire = addItemsFromOpenAire()
+    if addedfromopenaire['total']>0:
+        oaire=DBUpdate.objects.create(update_source="OpenAire", update_type="manualmongo", details=addedfromopenaire)
+        oaire.save()

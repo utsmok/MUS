@@ -333,3 +333,15 @@ class PureEntry(TimeStampedModel, models.Model):
         ]
 
 
+class DBUpdate(TimeStampedModel, models.Model):
+    details = models.JSONField() 
+    update_source = models.CharField(max_length=256, blank=True, null=False) #e.g. openaire, openalex, etc
+    update_type = models.CharField(max_length=256, blank=True, null=False) #manual, automatic, scheduled, ...
+
+    class Meta:
+        ordering = ['-created']
+        indexes = [
+            models.Index(fields=["update_source",
+                                'update_type',
+                                ]),
+        ]

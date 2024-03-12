@@ -77,10 +77,14 @@ def generateMainPage(user):
 
 
 def getPapers(name, filter="all", user=None):
-    if isinstance(name, int):
-        logger.info("getpaper [id] {} [user] {}", name, user.username)
+    if user==None:
+        username = "none"
     else:
-        logger.info("getpapers [name] {} [filter] {} [user] {}", name, filter, user.username)
+        username = user.username
+    if isinstance(name, int):
+        logger.info("getpaper [id] {} [user] {}", name, username)
+    else:
+        logger.info("getpapers [name] {} [filter] {} [user] {}", name, filter, username)
 
     facultynamelist = ["EEMCS", "BMS", "ET", "ITC", "TNW", 'eemcs', 'bms', 'et', 'itc','tnw']
     facultyname = ""
