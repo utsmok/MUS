@@ -158,11 +158,11 @@ class Location(TimeStampedModel, models.Model):
         ]
 class Paper(TimeStampedModel, models.Model):
     openalex_url = models.CharField(max_length=256)
-    title = models.CharField(max_length=512)
+    title = models.CharField(max_length=1024)
     doi = models.CharField(max_length=256)
     year = models.CharField(max_length=256)
     citations = models.IntegerField(blank=True, null=True)
-    primary_link = models.CharField(max_length=512)
+    primary_link = models.CharField(max_length=1024)
     itemtype = models.CharField(max_length=256)
     date = models.CharField(max_length=256)
     openaccess = models.CharField(max_length=256, blank=True, null=False)
@@ -174,7 +174,7 @@ class Paper(TimeStampedModel, models.Model):
     issue = models.CharField(max_length=256, blank=True, null=False)
     is_oa = models.BooleanField(null=True)
     license = models.CharField(max_length=256, blank=True, null=False)
-    pdf_link_primary = models.CharField(max_length=512, blank=True, null=False)
+    pdf_link_primary = models.CharField(max_length=1024, blank=True, null=False)
     keywords = models.JSONField(blank=True, null=True)
     journal = models.ForeignKey(
         Journal, on_delete=models.SET_NULL, related_name="papers", blank=True, null=True
@@ -248,7 +248,7 @@ class viewPaper(TimeStampedModel, models.Model):
 
 class PilotPureData(models.Model):
     pureid = models.IntegerField()
-    title = models.CharField(max_length=512)
+    title = models.CharField(max_length=1024)
     all_authors = models.JSONField()
     orgs = models.JSONField()
     doi = models.CharField(max_length=512)
@@ -288,7 +288,7 @@ class PilotPureData(models.Model):
         ]
 
 class PureEntry(TimeStampedModel, models.Model):
-    title = models.CharField(max_length=512, blank=True, null=False)
+    title = models.CharField(max_length=1024, blank=True, null=False)
     paper = models.ForeignKey(
         Paper, on_delete=models.SET_NULL, related_name="pure_entries", blank=True, null=True
     )

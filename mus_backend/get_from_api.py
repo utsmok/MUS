@@ -273,33 +273,9 @@ def getCrossrefWorks(years):
 
     return result if result['total']>0 else None
 
-def getOpenAlexWorksInstituteID(years):
-    api_responses_openalex = db["api_responses_utasinstitute_openalex"]
-    query = (
-            Works()
-            .filter(
-                institutions={"id":"I94624287"},
-                publication_year="|".join([str(x) for x in years]),
-            )
-    )
-    result={'total':0,'openalex_url':[]}
 
-    for article in batched(chain(*query.paginate(per_page=100, n_max=None)),100):
-        batch=[]
-        for art in article:
-            if api_responses_openalex.find_one({"id":art['id']}):
-                continue
-            else:
-                batch.append(art)
-                result['total'] += 1
-                result['openalex_url'].append(art['id'])
-        if batch:
-            api_responses_openalex.insert_many(batch)
 
-    return result if result['total']>0 else None
-
-def getOpenAlexWorksROR(years):
-    api_responses_openalex = db["api_responses_utasinstitute_openalex"]
+def getOpenAlexWorks(years):
     query = (
             Works()
             .filter(
@@ -307,20 +283,48 @@ def getOpenAlexWorksROR(years):
                 publication_year="|".join([str(x) for x in years]),
             )
     )
-    result={'total':0,'openalex_url':[]}
-    for article in batched(chain(*query.paginate(per_page=100, n_max=None)),100):
-        batch=[]
-        for art in article:
-            if api_responses_openalex.find_one({"id":art['id']}):
-                continue
-            else:
-                batch.append(art)
-                result['total'] += 1
-                result['openalex_url'].append(art['id'])
-        if batch:
-            api_responses_openalex.insert_many(batch)
+    result = retrieveOpenAlexQuery(query)
+    query = (
+            Works()
+            .filter(
+                institutions={"id":"I94624287"},
+                publication_year="|".join([str(x) for x in years]),
+            )
+    )
+    result2= retrieveOpenAlexQuery(query)
+    result['total']+=result2['total']
+    result['openalex_url'].extend(result2['openalex_url'])
+    result['new']+=result2['new']
+    result['updated']+=result2['updated']
+    result['skipped']+=result2['skipped']
+    if result['total']>0:
+        print(f"[New     items] {result['new']}\n[Updated items] {result['updated']}\n-----------------------\n[Total   edits] {result['total']}")
+        print(f"\n[Skipped] {result['skipped']}")
+        oaupdate = DBUpdate.objects.create(update_source="OpenAlex", update_type="getOpenAlexWorks", details=result)
+        oaupdate.save()
+    else:
+        print("no updates from OpenAlex.")
 
-    return result if result['total']>0 else None
+
+def retrieveOpenAlexQuery(query):
+    api_responses_openalex = db["api_responses_works_openalex"]
+    result={'total':0,'new':0,'updated':0,'skipped':0,'openalex_url':[]}
+    for article in batched(chain(*query.paginate(per_page=100, n_max=None)),100):
+        for art in article:
+            doc = api_responses_openalex.find_one_and_replace({"id":art['id']}, art, upsert=True)
+            if not doc:
+                result['total'] += 1
+                result['new'] += 1
+                result['openalex_url'].append(art['id'])
+            else:
+                if art['updated_date'] != doc['updated_date']:
+                    result['total'] += 1
+                    result['updated'] += 1
+                    result['openalex_url'].append(art['id'])
+                else:
+                    result['skipped']+=1
+
+    return result
 
 def addItemsFromOpenAire():
     def get_openaire_token():
@@ -487,21 +491,8 @@ def getOpenAlexJournalData():
 
 
 def updateAll():
-    years=[2024, 2023]
-    addedfromopenalex = getOpenAlexWorksROR(years)
-    addedfromopenalex2 = getOpenAlexWorksInstituteID(years)
-    if addedfromopenalex or addedfromopenalex2:
-        oaupdate={'total':0, 'openalex_url':[]}
-        if addedfromopenalex:
-            oaupdate['total'] += addedfromopenalex['total']
-            oaupdate['openalex_url'].extend(addedfromopenalex['openalex_url'])
-        if addedfromopenalex2:
-            oaupdate['total'] += addedfromopenalex2['total']
-            oaupdate['openalex_url'].extend(addedfromopenalex2['openalex_url'])
-
-    if oaupdate:
-        oaupdate = DBUpdate.objects.create(update_source="OpenAlex", update_type="manualmongo", details=addedfromopenalex)
-        oaupdate.save()
+    years=[2022,2023,2024,2025]
+    getOpenAlexWorks(years)
 
     addedfrompure = getPureItems(years)
     if addedfrompure:

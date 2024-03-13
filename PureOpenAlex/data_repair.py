@@ -3,6 +3,9 @@ from .models import (
     Organization,
     Author,
     Paper,
+    Journal,
+    DealData,
+    DBUpdate
 )
 from django.db import transaction
 from .data_helpers import TWENTENAMES
@@ -34,6 +37,181 @@ TODO: add fix<...> function for important classes, eg:
     - utdata
 '''
 
+@transaction.atomic
+def addJournalsToPapers():
+    '''
+    queryset: all papers in the db without a journal
+
+    subquerysets: itemtype = journal article; and the rest
+
+
+    grab the api response for each paper from mongodb
+
+        if apiresponse primary location -> source -> type == 'journal':
+                add/find that journal in postgres
+                add it to the paper
+        else:
+            for loc in apiresponse locations
+                if loc -> source -> type == 'journal':
+                    add/find that journal in postgres
+                    add it to the paper
+        if itemtype is article and still no journal:
+            warning
+    '''
+    def get_deal_data(openalex_id):
+        dealdatacontents = mongo_dealdata.find_one({"id":openalex_id})
+        if dealdatacontents:
+            dealdata = {
+                'deal_status':dealdatacontents.get('APCDeal'),
+                'publisher': dealdatacontents.get('publisher'),
+                'jb_url': dealdatacontents.get('journal_browser_url'),
+                'oa_type': dealdatacontents.get('oa_type'),
+            }
+            return dealdata, dealdatacontents.get('keywords'), dealdatacontents.get('publisher')
+        else:
+            return None, None, None
+
+    def getjournal(paper, locdata):
+            createnum=0
+            data=locdata.get('source')
+            if Journal.objects.filter(openalex_url=data.get('id')).exists():
+                journal = Journal.objects.filter(openalex_url=data.get('id')).first()
+                host_org = data.get('host_organization_lineage_names','')
+                if isinstance(host_org, list) and len(host_org) > 0:
+                    host_org = host_org[0]
+                if host_org != '' and journal.host_org != host_org:
+                    journal.host_org = host_org
+                    journal.save()
+                if not journal.dealdata:
+                    dealdata, keywords, publisher = get_deal_data(journal.openalex_url)
+                    if dealdata:
+                        deal, created = DealData.objects.get_or_create(**dealdata)
+                        if created:
+                            deal.save()
+                        journal.dealdata = deal
+                        journal.keywords = keywords
+                        journal.publisher = publisher
+                        journal.save()
+                return journal, createnum
+            issn=data.get('issn_l')
+            issnlist=data.get('issn')
+            eissn=""
+            if isinstance(issnlist, list):
+                for nissn in issnlist:
+                    if nissn != issn:
+                        eissn = nissn
+                        break
+            host_org = data.get('host_organization_lineage_names','')
+            if isinstance(host_org, list) and len(host_org) > 0:
+                host_org = host_org[0]
+            publisher = ''
+            split = str(data.get('host_organization')).split('.org/')
+            if len(split) > 1:
+                if split[1].startswith('P'):
+                    publisher = data.get('host_organization_name')
+            journaldata = {
+                'name':data.get('display_name'),
+                'e_issn':eissn,
+                'issn':issn,
+                'host_org':host_org,
+                'is_in_doaj':data.get('is_in_doaj'),
+                'is_oa':locdata.get('is_oa'),
+                'type':data.get('type'),
+                'publisher':publisher,
+                'openalex_url': data.get('id'),
+            }
+
+            dealdata, keywords, publisher = get_deal_data(journaldata['openalex_url'])
+            journaldata['keywords']=keywords
+            journaldata['publisher']=publisher if publisher else ""
+            journal, created = Journal.objects.get_or_create(**journaldata)
+            if created:
+                journal.save()
+                createnum = 1
+            if dealdata and not journal.dealdata:
+                deal, created = DealData.objects.get_or_create(**dealdata)
+                if created:
+                    deal.save()
+                journal.dealdata=deal
+                journal.save()
+            return journal, createnum
+
+    api_responses_openalex = db["api_responses_works_openalex"]
+    missingjournals = Paper.objects.filter(journal__isnull=True)
+    articles = missingjournals.filter(itemtype='journal-article')
+    others = missingjournals.exclude(itemtype='journal-article')
+    print(f"Total number of items missing journals: {missingjournals.count()}")
+    print(f"Of which articles: {articles.count()}")
+    print(f"Others: {others.count()}")
+    added=0
+    checked=0
+    numcreated=0
+    checklist = 0
+    missingarticles=0
+    otherjournal=0
+    paperlist=[]
+    for grouping in [articles, others]:
+        checklist +=1
+        if checklist == 1:
+            itype = 'article'
+        else:
+            itype = ''
+        for item in grouping:
+            checked+=1
+            created = False
+            journal = None
+            data = api_responses_openalex.find_one({'id':item.openalex_url})
+            if itype == '':
+                itype = item.itemtype
+            ident = f'[id] {item.id} [type] {itype}'
+            if not data:
+                cat = '[Warning] [Skipped]'
+                msg = 'No OpenAlex URL for paper'
+                print(f"{cat:<20} {msg:^30} {ident:>20}")
+                continue
+            if data.get('primary_location'):
+                if data.get('primary_location').get('source'):
+                    if data.get('primary_location').get('source').get('type') == 'journal':
+                        journal, created = getjournal(item, data.get('primary_location'))
+            if not journal:
+                for loc in data.get('locations'):
+                    if loc.get('source'):
+                        if loc.get('source').get('type') == 'journal':
+                            journal, created = getjournal(item, loc)
+                            if journal:
+                                cat = '[Info]'
+                                msg = 'Journal found in loc but not in primary loc.'
+                                print(f"{cat:<20} {msg:^30} {ident:>20}")
+            if journal:
+                item.journal = journal
+                item.save()
+                added+=1
+                paperlist.append(item.openalex_url)
+                if created:
+                    numcreated+=1
+                if checklist == 2:
+                    cat = '[Info]'
+                    msg = 'Journal found for non-article'
+                    print(f"{cat:<20} {msg:^30} {ident:>20}")
+                    otherjournal+=1
+            elif checklist == 1:
+                cat = '[Warning]'
+                msg = 'No journal found for article'
+                print(f"{cat:<20} {msg:^30} {ident:>20}")
+                missingarticles+=1
+
+    print(f"{added} journals added to {checked} articles.")
+    print(f'Created {numcreated} new journals.')
+    print(f'{missingarticles} articles missing journals.')
+    print(f'{otherjournal} non-article items linked with journals.')
+    detaildict={
+        'journals_added_to_papers':added,
+        'journals_added_to_non_articles':otherjournal,
+        'newly_created_journals':numcreated,
+        'changed_papers':paperlist
+    }
+    dbupd=DBUpdate.objects.create(update_source="OpenAlex", update_type="repairjournals", details = detaildict)
+    dbupd.save()
 def fixMissingAffils():
     def getorgs(affils):
         affiliations=[]
@@ -54,7 +232,7 @@ def fixMissingAffils():
                 'country_code':orgsrc.get('country_code') if orgsrc.get('country_code') else '',
                 'data_source':'openalex'
             }
-            
+
             if org.get('years'):
                 years = org.get('years')
             else:
@@ -81,7 +259,7 @@ def fixMissingAffils():
                 pass
             affiliations.append([org, years])
         return affiliations
-    
+
     authorlist = Author.objects.filter(affils__isnull=True).distinct()
     print(f"Adding affils for {len(authorlist)} authors")
 

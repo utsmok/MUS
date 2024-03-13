@@ -80,6 +80,8 @@ def timeit(func):
     return timeit_wrapper
 
 
+
+@timeit
 def processMongoPaper(dataset, user=None):
     '''
     Input: dataset with openalex & crossref work data
@@ -289,7 +291,6 @@ def processMongoPaper(dataset, user=None):
     return paper, view
 def add_authorships(data, paper):
 
-    @timeit
     def getorgs(affils, is_ut):
         affiliations=[]
         for org in affils:
@@ -338,7 +339,6 @@ def add_authorships(data, paper):
 
             affiliations.append([org, years])
         return affiliations
-    @timeit
     def makefullauthor(author, authorship):
         # author doesn't exist yet, make new one
         is_ut=False
@@ -390,7 +390,6 @@ def add_authorships(data, paper):
             authorobject.affils.add(aff[0],through_defaults={'years':aff[1]})
 
         return authorobject
-    @timeit
     def add_peoplepagedata(author, authorobject):
         peoplepage_data = mongo_peoplepage.find_one({"id":author.get('id')})
         if peoplepage_data:
@@ -430,7 +429,6 @@ def add_authorships(data, paper):
 
     return paper
 def add_locations(data, paper):
-    @timeit
     def get_deal_data(openalex_id):
         dealdatacontents = mongo_dealdata.find_one({"id":openalex_id})
         if dealdatacontents:
@@ -527,6 +525,7 @@ def add_locations(data, paper):
                 journal.save()
 
             paper.journal=journal
+            paper.save()
     return paper
 def get_source(data):
     issn=data.get('issn_l')
@@ -537,11 +536,20 @@ def get_source(data):
             if nissn != issn:
                 eissn = nissn
                 break
+    host_org = data.get('host_organization_lineage_names','')
+    if isinstance(host_org, list) and len(host_org) > 0:
+        host_org = host_org[0]
+
+    publisher = ''
+    split = str(data.get('host_organization')).split('.org/')
+    if len(split) > 1:
+        if split[1].startswith('P'):
+            publisher = data.get('host_organization_name')
 
     sourcedict = {
         'openalex_url':data.get('id'),
         'display_name':data.get('display_name'),
-        'host_org':data.get('host_organization_name') if data.get('host_organization_name') else '',
+        'host_org':host_org,
         'type':data.get('type'),
         'is_in_doaj':data.get('is_in_doaj'),
         'e_issn':eissn,
@@ -557,7 +565,7 @@ def get_source(data):
     source, created = Source.objects.get_or_create(**sourcedict)
     if created:
         source.save()
-
+    sourcedict['publisher']=publisher
     return source, sourcedict
 def determine_is_in_pure(data):
     locs = data.get('locations')

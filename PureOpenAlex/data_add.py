@@ -1,7 +1,7 @@
 import pyalex
 from pyalex import Works
 from .namematcher import NameMatcher
-from .models import  Paper, viewPaper, PureEntry
+from .models import  Paper, viewPaper, PureEntry, DBUpdate
 from django.db import transaction
 from .data_process_mongo import processMongoPaper, processMongoPureEntry, processMongoOpenAireEntry, processMongoTCSPilotEntry
 from pymongo import MongoClient
@@ -69,6 +69,7 @@ def addOpenAlexWorksFromMongo():
     message=f"processing {len(datasets)}  works"
     logger.info(message)
     added=[]
+    failed=[]
     k=0
     for dataset in datasets:
         j=j+1
@@ -76,13 +77,20 @@ def addOpenAlexWorksFromMongo():
         try:
             processMongoPaper(dataset)
         except Exception as e:
+            failed.append(id)
+            print(e)
             logger.exception('exception {e} while adding work with doi {doi}',doi=id,e=e)
+            if 'value too long' in str(e):
+                continue
+            else:
+                print(dataset)
+                break
         added.append(id)
-        if len(added)>=100:
-            k=k+len(added)
-            message=f"{k} works added (+{len(added)})"
-            logger.info(message)
-            added=[]
+
+    message=f"{len(added)} works added, {len(failed)} failed"
+    logger.info(message)
+    dbu=DBUpdate.objects.create(update_source='OpenAlex', update_type='addOpenAlexWorksFromMongo',details={'added':len(added),'failed':len(failed),'added_ids':added,'failed_ids':failed})
+    dbu.save()
 
 def addPureWorksFromMongo():
     datasets=[]
@@ -110,12 +118,12 @@ def addPureWorksFromMongo():
         if stop:
             s=s+1
             continue
-        
+
         datasets.append(document)
         i=i+1
         if i % 500 == 0:
             message=f"processing batch of {len(datasets)} works, skipped {s} works"
-            logger.info(message)            
+            logger.info(message)
             for dataset in datasets:
                 try:
                     processMongoPureEntry(dataset)
@@ -129,7 +137,7 @@ def addPureWorksFromMongo():
             datasets=[]
 
     message=f"final batch: processing {len(datasets)} works"
-    logger.info(message)            
+    logger.info(message)
     for dataset in datasets:
         try:
             processMongoPureEntry(dataset)
@@ -151,7 +159,7 @@ def addOpenAireWorksFromMongo():
         i=i+1
         if i % 500 == 0:
             message=f"processing batch of {len(datasets)} OpenAire works"
-            logger.info(message)            
+            logger.info(message)
             print(message)
             for dataset in datasets:
                 try:
@@ -169,7 +177,7 @@ def addOpenAireWorksFromMongo():
                     print(message)
             datasets=[]
     message=f"final batch: processing {len(datasets)} works"
-    logger.info(message)            
+    logger.info(message)
     print(message)
     for dataset in datasets:
         try:
@@ -181,7 +189,7 @@ def addOpenAireWorksFromMongo():
             print(f'exception {e} while adding OpenAire item {dataset['id']}')
             continue
         k=k+1
-    
+
     message=f"processed {k} entries, {h} updated"
     logger.info(message)
     print(message)
@@ -208,7 +216,7 @@ def addTCSPilotWorksFromMongo():
                     print(message)
             datasets=[]
     message=f"final batch: processing {len(datasets)} works"
-    logger.info(message)            
+    logger.info(message)
     print(message)
     for dataset in datasets:
         entry = processMongoTCSPilotEntry(dataset)
@@ -216,7 +224,7 @@ def addTCSPilotWorksFromMongo():
             h=h+1
 
         k=k+1
-    
+
     message=f"processed {k} entries, {h} updated"
     logger.info(message)
     print(message)
@@ -238,7 +246,7 @@ def addPaper(doi, user):
         status = 'success'
         message = f'Paper {doi} added to bookmarks for {user}.'
         return status, message, openalex_url
-    
+
     mongo_oa_work = openalex_works.find_one({'doi':doi})
     if mongo_oa_work:
         message = f'raw data for {doi} retrieved, but failed to insert into database.'
@@ -250,7 +258,7 @@ def addPaper(doi, user):
             message = f'Paper {doi} added to db & bookmarks for {user}.'
             openalex_url = paper.openalex_url
             return status, message, openalex_url
-    
+
     openalexresult = Works()[doi]
     message = f'No data for {doi} found in OpenAlex'
     if openalexresult:
@@ -265,5 +273,5 @@ def addPaper(doi, user):
                 status = 'success'
                 message = f'Paper {doi} added to db & bookmarks for {user}.'
                 return status, message, openalex_url
-    
+
     return status, message, openalex_url
