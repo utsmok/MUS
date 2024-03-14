@@ -16,6 +16,10 @@ from django.conf import settings
 from loguru import logger
 import pickle
 from pymongo import MongoClient
+from collections import defaultdict
+from rich import print
+from rapidfuzz import process, fuzz, utils
+
 APIEMAIL = getattr(settings, "APIEMAIL", "no@email.com")
 pyalex.config.email = APIEMAIL
 MONGOURL = getattr(settings, "MONGOURL")
@@ -29,6 +33,7 @@ mongo_oa_ut_authors=db['api_responses_UT_authors_openalex']
 mongo_peoplepage=db['api_responses_UT_authors_peoplepage']
 mongo_oa_journals = db['api_responses_journals_openalex']
 mongo_openaire_works = db['api_responses_openaire']
+mongo_pureentries = db['api_responses_pure']
 
 '''
 TODO: add fix<...> function for important classes, eg:
@@ -292,7 +297,6 @@ def fixMissingAffils():
             print(f"added {len(affiliations)} affils to Mongo for author {author.openalex_url} | {author.name}")
     amount = Author.objects.filter(affils__isnull=True).distinct().count()
     print(f"{amount} authors still have no affils.")
-
 def matchPureEntryWithPaper():
     """
     For every PureEntry, try to find a matching paper in the database and mark them as such.
@@ -575,6 +579,109 @@ def clean_duplicate_organizations():
                     org.name = f"{org.name}_{org.id}"
                     logger.debug("renaming %s to %s", keeper.name, org.name)
                     org.save()
+
+def addPureEntryAuthors():
+    allentries = PureEntry.objects.all()
+    dbauthordata = Author.objects.order_by('last_name','first_name').only('id','openalex_url','name','first_name','last_name','known_as', 'initials')
+    matchlist = []
+    idnamemapping = defaultdict(set)
+    i = 0
+    for author in dbauthordata:
+        i += 1
+        id = author.id
+        matchlist.append(author.name)
+        idnamemapping[author.name].add(id)
+        if author.known_as != {} and author.known_as is not None:
+            for name in author.known_as:
+                matchlist.append(name)
+                idnamemapping[name].add(id)
+        for name in [f'{author.first_name} {author.last_name}', f'{author.last_name}, {author.first_name}', f'{author.initials} {author.last_name}', f'{author.last_name}, {author.initials}']:
+            matchlist.append(name)
+            idnamemapping[name].add(id)
+    faillist = []
+    donelist = []
+    matched = 0
+    failed = 0
+    total = 0
+    for entry in allentries:
+        num_authors = entry.authors.count()
+
+        mongodata = mongo_pureentries.find_one({'title':entry.title})
+        if not mongodata:
+            mongodata = mongo_pureentries.find_one({'identifier':{'ris_file':entry.risutwente}})
+        if not mongodata:
+            mongodata = mongo_pureentries.find_one({'identifier':{'researchutwente':entry.researchutwente}})
+        if not mongodata:
+            mongodata = mongo_pureentries.find_one({'identifier':{'doi':entry.doi}})
+        if not mongodata:
+            logger.error(f'no mongodata found for {entry.id} - {entry.title} - {entry.doi} - {entry.researchutwente} - {entry.risutwente}')
+            faillist.append(entry.id)
+            continue
+
+        authorlist = []
+        if mongodata.get('contributor'):
+            if isinstance(mongodata.get('contributor'),list):
+                authorlist.extend(mongodata.get('contributor'))
+            if isinstance(mongodata.get('contributor'),str):
+                authorlist.append(mongodata.get('contributor'))
+        if mongodata.get('creator'):
+            if isinstance(mongodata.get('creator'),list):
+                authorlist.extend(mongodata.get('creator'))
+            if isinstance(mongodata.get('creator'),str):
+                authorlist.append(mongodata.get('creator'))
+        
+        if len(authorlist) == 0:
+            logger.error(f'no authors found for {entry.id} - {entry.doi} - {entry.researchutwente} - {entry.risutwente}')
+            faillist.append(entry.id)
+            continue
+        
+
+
+        if num_authors == len(authorlist):
+            logger.info(f'no missing authors for {entry.id}')
+            continue
+
+        total += len(authorlist) - len(authorlist)
+        logger.info(f'{num_authors - len(authorlist)} new authors found for {entry.id}')
+
+
+        for author in authorlist:
+
+            matches = process.extract(author,matchlist, processor=utils.default_process, scorer=fuzz.QRatio, score_cutoff=90)
+            if len(matches) == 0 or not matches:
+                failed += 1
+                logger.warning(f'no matches for {author}')
+            else:
+                matchname=matches[0][0]
+                authorid=idnamemapping[matchname]
+                if isinstance(authorid, set):
+                    matched += 1
+                    id = max(authorid)
+                    authorobj = Author.objects.get(id=id)
+                    if authorobj:
+                        logger.debug(f'match: {author} == {authorobj.name} ({authorobj.id}) | score {matches[0][1]}')
+                        if authorobj not in entry.authors.all():
+                            entry.authors.add(authorobj)
+                            entry.save()
+                        else:
+                            logger.info(f'{authorobj.name} already linked with entry')
+                else:
+                    failed += 1
+                    logger.error(f'failed to process matches for {author}')
+
+        donelist.append(entry.id)
+
+    details = {
+        'failed_pureentry_ids':faillist,
+        'success_pureentry_ids':donelist,
+        'new_matches':matched,
+        'failed_to_match':failed,
+        'total_checked_names':total
+    }
+    logger.info(f'Authors: new matches: {matched} | failed to match: {failed} | total checked: {total}')
+    logger.info(f'{len(faillist)} pureentries failed  | {len(donelist)} pureentries successfully checked')
+    dbu = DBUpdate.objects.create(details=details,update_source='OpenAlex', update_type='addpureentryauthors')
+    dbu.save()
 '''
 def matchAFASwithAuthor():
     allAFAS = AFASData.objects.filter(authors__isnull=True)

@@ -355,17 +355,6 @@ def customfilter(request):
 
 @login_required
 def chart(request):
-    filters= [['start_date','2022-01-01'],['end_date', '2025-01-01']]
-    facultyname, stats, listpapers = getPapers('all', filters, request.user)
-
-    # listpapers contains all the papers we care about
-    # Now we want to extract the data we need and put it into the dataframe
-
-    # We want to know extract the following data:
-    #     For each year between 2019 and 2024 (inclusive)
-    #          Count the amount of papers for each type of open access (green, bronze, closed, hybrid, gold)
-    #               (this data is contained in field 'openaccess' in each Paper object inside the listpapers Queryset)
-    #     Then add that to the dataframe, so each row is a year and each column is an open access type, each cell containing the count.
 
     dataoa = []
     datatypes = []

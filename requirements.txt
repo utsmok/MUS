@@ -31,3 +31,4 @@ fuzzywuzzy
 lxml
 plotly
 django-ninja
+rapidfuzz
