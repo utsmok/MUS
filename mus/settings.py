@@ -38,7 +38,7 @@ DEBUG = True
     LOGLEVEL = "DEBUG"
 else:'''
 LOGLEVEL = "INFO"
-    
+
 LOGFMT = "{time:[%m %d] %H:%M:%S} | {name}>{function}() [{level}] |> {message}"
 logger.remove()
 logger.add('log_mus.log', format=LOGFMT, level=LOGLEVEL)
@@ -76,6 +76,7 @@ INSTALLED_APPS = [
     "data_browser",
     "django_extensions",
     "ajax_datatable",
+    "slippers",
    # 'debug_toolbar',
 
 ]
@@ -100,6 +101,7 @@ TEMPLATES = [
         "DIRS": [],
         "APP_DIRS": True,
         "OPTIONS": {
+            "builtins": ["slippers.templatetags.slippers"],
             "context_processors": [
                 "django.template.context_processors.debug",
                 "django.template.context_processors.request",

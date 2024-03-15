@@ -1,0 +1,56 @@
+{% load replace %}
+{% load static %}
+{% load lowest %}
+{% load highest %}
+{% load concat %}
+
+{% #papercard_lb heading='Keywords' id='keywords-'|concat:article.id %}
+    <ul class="list-group list-group-light">
+        <li class="list-group-item">
+            <div class="fw-bold"><span class="text-success">Article</span> Topics</div>
+                <div>
+                    {% for topic in article.topics %}
+                        {% for key, value in topic.items %}
+                            {% if key == 'field' %}
+                                {% for key, value in value.items %}
+                                {% if key == 'display_name' %}
+                                <div class=" all">Field: {{ value }}</div>
+                                {% endif %}
+                                {% endfor %}
+                            {% endif %}
+                            {% if key == 'domain' %}
+                                {% for key, value in value.items %}
+                                {% if key == 'display_name' %}
+                                <div class="ms-2 all">Domain: {{ value }}</div>
+                                {% endif %}
+                                {% endfor %}
+                            {% endif %}
+                            {% if key == 'subfield' %}
+                                {% for key, value in value.items %}
+                                {% if key == 'display_name' %}
+                                <div class="ms-3 all">Subfield: {{ value }}</div>
+                                {% endif %}
+                                {% endfor %}
+                            {% endif %}
+                            {% if key == 'display_name' %}
+                                <div class="ms-5 all">Topic:{{ value }}</div>
+                            {% endif %}
+                        {% endfor %}
+                    {% endfor %}
+                </div>
+            </div>
+        </li>
+    </ul>
+    <ul class="list-group list-group-light">
+        <li class="list-group-item">
+            <div class="fw-bold"><span class="text-success">Article</span> Keywords</div>
+            {% for keyword in article.keywords.items %}
+            {% for key, value in keyword.items %}
+            {% if key == 'display_name' %}
+            <span class="all">{{ value }}</span>,
+            {% endif %}
+            {% endfor %}
+            {% endfor %}
+        </li>
+    </ul>
+{% /papercard_lb %}

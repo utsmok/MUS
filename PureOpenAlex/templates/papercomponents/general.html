@@ -1,0 +1,59 @@
+{% load replace %}
+{% load static %}
+{% load lowest %}
+{% load highest %}
+{% load concat %}
+
+{% #papercard_lb heading='General' id='general-'|concat:article.id %}
+        <span class="badge rounded-pill badge-notification bg-warning">crossref</span>
+        <div class="mb-1 row row-cols-2 row-cols-md-2 justify-content-center text-center align-items-center">
+            <div class="col-md-6 col badge badge-primary fs-6"> Print Published</div>
+            <div class="col-md-6 col" ><span class="fs-6 text-primary all"> {{ article.published_print }}</span></div>
+        </div>
+        <span class="badge rounded-pill badge-notification bg-warning">crossref</span>
+        <div class="mb-1 row row-cols-2 row-cols-md-2 justify-content-center text-center align-items-center">
+            <div class="col-md-6 col badge badge-primary fs-6">Published online</div>
+            <div class="col-md-6 col" ><span class="fs-6 text-primary all"> {{ article.published_online }}</span></div>
+        </div>
+        <div class="mb-1 row row-cols-2 row-cols-md-2 justify-content-center text-center align-items-center">
+            <div class="col-md-6 col badge badge-warning fs-6">Language</div>
+            <div class="col-md-6 col" ><span class="fs-6 text-black all"> {{ article.published_online }}</span></div>
+        </div>
+        <div class="mb-1 row row-cols-2 row-cols-md-2 justify-content-center text-center align-items-center">
+            <div class="col-md-6 col badge badge-warning fs-6">Title</div>
+            <div class="col-md-6 col" ><span class="fs-6 text-black all"> {{ article.title  }}</span></div>
+        </div>
+        <div class="mb-1 row row-cols-2 row-cols-md-2 justify-content-center text-center align-items-center">
+            <div class="col-md-6 col badge badge-danger fs-6">Pages</div>
+            <div class="col-md-6 col" ><span class="fs-6 text-danger all"> {{ article.pages }}</span></div>
+        </div>
+        <div class="mb-1 row row-cols-2 row-cols-md-2 justify-content-center text-center align-items-center">
+            <div class="col-md-6 col badge badge-danger fs-6">Pagecount</div>
+            <div class="col-md-6 col" ><span class="fs-6 text-danger all">{% if article.pagescount is not None %}{{ article.pagescount }} {% else %} No pagecount found. {% endif %}</span></div>
+        </div>
+
+        <h5 class="text-black fw-bold">Additional information</h5>
+
+        <div class="mb-1 row row-cols-2 row-cols-md-2 justify-content-center text-center align-items-center">
+            <div class="col-md-6 col badge badge-success fs-6">OpenAlex date</div>
+            <div class="col-md-6 col" ><span class="fs-6 text-success all">{{ article.date }}</span></div>
+        </div>
+        <span class="badge rounded-pill badge-notification bg-warning">crossref</span>
+        <div class="mb-1 row row-cols-2 row-cols-md-2 justify-content-center text-center align-items-center">
+            <div class="col-md-6 col badge badge-primary fs-6">Published</div>
+            <div class="col-md-6 col" ><span class="fs-6 text-primary all"> {{ article.published }}</span></div>
+        </div>
+        <span class="badge rounded-pill badge-notification bg-warning">crossref</span>
+        <div class="mb-1 row row-cols-2 row-cols-md-2 justify-content-center text-center align-items-center">
+            <div class="col-md-6 col badge badge-primary fs-6">Issued</div>
+            <div class="col-md-6 col" ><span class="fs-6 text-primary all"> {{ article.issued }}</span></div>
+        </div>
+        <div class="mb-1 row row-cols-2 row-cols-md-2 justify-content-center text-center align-items-center">
+            <div class="col-md-6 col badge badge-success fs-6">Item Type</div>
+            <div class="col-md-6 col" ><span class="fs-6 text-success all">{{ article.itemtype }}</span></div>
+        </div>
+        <div class="mb-1 row row-cols-2 row-cols-md-2 justify-content-center text-center align-items-center">
+            <div class="col-md-6 col badge badge-success fs-6"># of citations</div>
+            <div class="col-md-6 col" ><span class="fs-6 text-success all">{{ article.citations }}</span></div>
+        </div>
+{% /papercard_lb %}

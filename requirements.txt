@@ -32,3 +32,4 @@ lxml
 plotly
 django-ninja
 rapidfuzz
+slippers

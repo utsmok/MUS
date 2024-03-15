@@ -1,0 +1,86 @@
+{% load replace %}
+{% load static %}
+{% load lowest %}
+{% load highest %}
+{% load concat %}
+
+
+{% #papercard_ly heading='Locations' id='locations-'|concat:article.id %}
+        <ul class="list-group list-group-light">
+            {% for location in article.preloaded_locations %}
+            <li class="list-group-item fs-6">
+                <div class="mb-1 row row-cols-1 row-cols-md-12 justify-content-center text-center align-items-center">
+                    <div class=' col-md-12 text-wrap'>
+                        {% if location.is_primary %}
+                        <span class="text-start badge fs-6 rounded-pill badge-primary">
+                            Primary location
+                        </span>
+                        {% endif %}
+                        <span class="text-center badge badge-danger text-wrap fs-5 all">{%if location.source.display_name is not None%}{{location.source.display_name|truncatechars:50 }}{% elif 'twente' in location.pdf_url %} UT RIS/Pure {%else%}No name found{%endif%}</span>
+                        {% if location.is_best_oa %}
+                        <div class="text-end badge fs-6 rounded-pill badge-success">
+                            Best OA Location
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div class="col">
+                        <a href="{{ location.source.homepage_url }}">
+                            {{ location.source.homepage_url }}
+                        </a>
+                    </div>
+                </div>
+                <div class="row  row-cols-2 ">
+                    <div class="col-md-1 col  ">
+                        {% if location.is_accepted or location.is_published %}
+                        <span class="badge rounded-pill badge-primary"> <i class="fas fa-check"></i>
+                            Publisher accepted</span>
+                        {% endif %}
+                        {% if location.is_oa %}
+                        <span class="badge rounded-pill badge-success"> <i
+                                class="fas fa-lock-open"></i> Open Access </span>
+                        {% endif %}
+                        {% if location.source.is_in_doaj %}
+                        <span class="badge rounded-pill badge-info"> <i class="fas fa-leaf"></i> DOAJ
+                        </span>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-11 text-end ">
+                        {% if location.source.host_org %}
+                        {% if 'journal' in location.source.type %}
+                            <div class="badge badge-info fs-6">Journal published by {{ location.source.host_org }}</div>
+                        {% elif 'repository' in location.source.type %}
+                            <div class="badge badge-success fs-6">Repository hosted by {{ location.source.host_org }}</div>
+                        {% else %}
+                            <div class="badge badge-info fs-6">{{ location.source.type }} published by {{ location.source.host_org }}</div>
+                        {% endif %}
+                        {% if location.source.issn %}
+                            <div class="ms-4"> ISSN: <span class="all">{{ location.source.issn }}</span></div>
+                        {% endif %}
+                        {% endif %}
+                        {% if location.license %}
+                        <div>
+                            <span class="ms-4 fw-bold">License: </span><span class='all'>{{ location.license }}</span>
+                        </div>
+                        {%endif%}
+                    </div>
+                    <div class="col-md-12 align-center justify-content-center text-center">
+                        <div class="fw-bold">
+                            <i class="fas fa-book-open"></i> Landing page
+                        </div>
+                        <div class="ms-4">
+                            <a href="{{ location.landing_page_url }}" class="text-wrap">
+                                {{ location.landing_page_url|truncatechars:40 }}
+                            </a>
+                        </div>
+                        {% if location.source.openalex_url != "" and  location.source.openalex_url is not None %}
+                            <div class="fw-bold"><i class="fas fa-database"></i> OpenAlex source information</div>
+                            <div class="ms-4"><a
+                                    href="{{ location.openalex_url }}">{{ location.source.openalex_url|truncatechars:40  }}</a>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </li>
+            {% endfor %}
+        </ul>
+{% /papercard_ly %}

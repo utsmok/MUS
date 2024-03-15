@@ -1,0 +1,86 @@
+{% load replace %}
+{% load static %}
+{% load lowest %}
+{% load highest %}
+{% load concat %}
+
+{% #papercard_b heading='Authors' id='authors-'|concat:article.id %}
+        <div class="htmx-slide container "
+        style="display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: auto; grid-gap: 10px; ">
+
+        <div class="row align-items-center justify-content-center text-center "><span class=" flex-shrink-1 badge badge-primary bg-gradient border fs-6"><i class="fas fa-user"></i>  |  Name</span></div>
+        <div class="row align-items-center justify-content-center text-center"><span class=" flex-shrink-1 badge badge-primary bg-gradient border fs-6"><i class="fas fa-pen-nib"></i> | Authorship</span></div>
+        <div class="row align-items-center justify-content-center text-center"><span class=" flex-shrink-1 badge badge-primary bg-gradient border fs-6"><i class="fas fa-graduation-cap"></i> | UT information</span></div>
+        <div class="row align-items-center justify-content-center text-center"><span class=" flex-shrink-1 badge badge-primary bg-gradient  border fs-6"><i class="fas fa-landmark"></i> | Affiliations</span></div>
+        {% for authorship in article.preloaded_authorships %}
+            {% for author in article.preloaded_authors %}
+                {% if author.id == authorship.author.id%}
+                    <div class="row align-items-center justify-content-center text-center">
+                            {% if author.utdata %}
+                                <div class='me-auto float-start align-self-center'><img class="img-fluid rounded-pill rounded-5 shadow-5" src="{% static author.utdata.avatar_path %}" style="width: 80px; height: 80px;"></div>
+                            {% else %}
+                                <div class='me-auto  float-start align-self-center'><img class="img-fluid rounded-pill rounded-5 shadow-5" src="{% static 'author_avatars\default_avatar.png' %}" style="width: 80px; height: 80px;"></div>
+                            {% endif %}
+                            <div class='d-inline float-end'>
+                                <div><span class="all badge flex-shrink text-wrap badge-info fs-6">{{ author.name }}</span> </div>
+                                <div><span class="text-warning flex-shrink text-wrap font-monospace all">{{ author.first_name }}</span><span> </span><span class="text-primary  font-monospace flex-shrink text-wrap all">{{ author.middle_name }}</span><span> </span><span class="text-success flex-shrink text-wrap font-monospace all">{{ author.last_name }}</span></div>
+                                <div><span class="text-danger flex-shrink text-wrap font-monospace all">{{ author.initials }}</span><span> </span><span class="text-success flex-shrink text-wrap font-monospace all">{{ author.last_name }}</span></div>
+                            </div>
+                    </div>
+                    <div class="row align-items-center justify-content-center text-center">
+                        <div>
+                            {% if authorship.corresponding %} <div
+                                class="all badge badge-success rounded-pill">corresponding</div>{% endif %}
+                            <span class="all badge badge-info rounded-pill">{{ authorship.position }}
+                                author</span>
+                        </div>
+                    </div>
+                    <div class="row text-wrap d-flex align-items-center justify-content-center text-center">
+                        <div class='w-75'>
+                            {% if author.utdata %}
+                                <div class="all badge text-center justify-content-center badge-danger rounded-pill">
+                                    <i class="me-1 fas fa-envelope fa-lg"></i> {{author.utdata.email}}
+                                </div>
+                                <div class="all badge text-center justify-content-center badge-info rounded-pill">
+                                    <i class="me-1 fas fa-briefcase"></i> {{author.utdata.current_position}}
+                                </div>
+                                <div class=" all badge text-center justify-content-center badge-secondary rounded-pill ">
+                                    <i class="me-1 fas fa-landmark"></i> {{author.utdata.current_group}} | ({{author.utdata.current_faculty}})
+                                </div>
+                            {% else %}
+                                <div class=" badge badge-danger rounded-pill">No UT data found</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class=" row flex-shrink-1 align-items-center justify-content-center text-center">
+                        <div>
+                        {% for affiliation in author.affiliations.all %}
+                                {% if 'Twente' in affiliation.organization.name %}
+                                    {% if affiliation.ut_author_year_match %}
+                                        <div class="all badge badge-success fw-bold">
+                                    {% else %}
+                                        <div class="all badge badge-info">
+                                    {% endif %}
+                                        {% if  affiliation.years|lowest == affiliation.years|highest %}
+                                            {{ affiliation.organization.name }} | {{ affiliation.years|lowest }}
+                                        {% else %}
+                                            {{ affiliation.organization.name }} | {{ affiliation.years|lowest }} - {{ affiliation.years|highest }}
+                                        {% endif %}
+                                    </div>
+                                {% endif %}
+                        {% endfor %}
+                        <div>
+                            <a id='moreaffilsbtn-{{ author.id }}' class="moreaffils btn btn-sm btn-secondary" hx-get="{% url 'PureOpenAlex:affiliations' author.id %}" hx-target="#affiliations-{{ author.id }}" hx-swap='innerHTML transition:true'>
+                                Click to show all affiliations (total: {{ author.affils.count }})
+                            </a>
+                        </div>
+                        <div id='affiliations-{{ author.id }}'>
+                        </div>
+                        </div>
+                    </div>
+                    <hr class="hr hr-blurry" style="grid-column: 1/-1;" />
+                {% endif %}
+            {% endfor %}
+        {% endfor %}
+        </div>
+{% /papercard_b %}

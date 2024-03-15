@@ -10,6 +10,7 @@
     <th>oa type</th>
     <th>pure link in OpenAlex?</th>
     <th>found in OAI-PMH?</th>
+    <th>UT-author match for year?</th>
     <th>locations</th>
     <th>author(s)</th>
 </thead>
@@ -19,7 +20,7 @@
             <td id="{{article.id}}-mark">
                 {% if article.marked %}
                 <span class="visually-hidden d-flex badge badge-danger p-3 rounded-4 justify-content-center align-items-center" id="{{article.id}}-removespinner">
-                    <span class="spinner-grow text-danger " role="status"> </span> 
+                    <span class="spinner-grow text-danger " role="status"> </span>
                     <span id="loadingtext" class=" ps-1 text-danger"> Removing... </span>
                 </span>
                 <button onclick="remove_mark('{{article.id}}');" id="{{article.id}}-removemark" class="badge badge-danger p-3 rounded-4">
@@ -28,7 +29,7 @@
                 </button>
                 {% else %}
                 <span class="visually-hidden d-flex badge badge-success p-3 rounded-4 justify-content-center align-items-center" id="{{article.id}}-addspinner">
-                    <span class="spinner-grow text-success " role="status"> </span> 
+                    <span class="spinner-grow text-success " role="status"> </span>
                     <span id="loadingtext" class=" ps-1 text-success"> Adding... </span>
                 </span>
                                     <button onclick="add_mark('{{article.id}}');" id="{{article.id}}-addmark" class="badge badge-success p-3 rounded-4">
@@ -64,13 +65,16 @@
                 {% if article.has_pure_oai_match %}<span class="badge bg-success">Yes</span>{% else %}<span class="badge bg-danger">No</span>{% endif %}
             </td>
             <td>
+                {% if article.has_any_ut_author_year_match %}<span class="badge bg-success">Yes</span>{% else %}<span class="badge bg-danger">No</span>{% endif %}
+            </td>
+            <td>
                 {% for location in article.pref_locations %}
                 {% if location.pdf_url != "" %}
                 <div>
                     <a href="{{ location.pdf_url }}"
                         class="{%if 'twente' in location.pdf_url %} link-info {% elif location.is_oa %} link-success {% endif %}"  target ="_blank">
-                            {% if 'twente' in location.pdf_url %} 
-                            UT Pure 
+                            {% if 'twente' in location.pdf_url %}
+                            UT Pure
                             {% elif location.source.host_org %}
                             Hosted by {{location.source.host_org}} ({{location.source.type}})
                             {% else %}
@@ -93,7 +97,7 @@
                 {% if not forloop.last %},{% endif %}
             {% endfor %}
             </td>
-            
+
         </tr>
     {% endfor %}
 </tbody>

@@ -1,0 +1,13 @@
+{% load replace %}
+{% load static %}
+{% load lowest %}
+{% load highest %}
+{% load concat %}
+
+{% #papercard_g heading='Abstract' id='abstract-'|concat:article.id %}
+        {% if article.abstract %}
+        <span class="all fs-6">{{ article.abstract.strip }}</span>
+        {% else %}
+        No abstract found.
+        {% endif %}
+{% /papercard_g %}

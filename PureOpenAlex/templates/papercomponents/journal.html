@@ -1,0 +1,32 @@
+{% load replace %}
+{% load static %}
+{% load lowest %}
+{% load highest %}
+{% load concat %}
+
+{% #papercard_r heading='Journal' id='journal-'|concat:article.id %}
+        <div class="mb-1 row row-cols-2 row-cols-md-2 justify-content-center text-center align-items-center">
+            <div class="col-md-6 col badge badge-success fs-6">Title</div>
+            <div class="col-md-6 col" ><span class="fs-6 text-success all"> {{ article.journal.name }}</span></div>
+        </div>
+        <div class="mb-1 row row-cols-2 row-cols-md-2 justify-content-center text-center align-items-center">
+            <div class="col-md-6 col badge badge-danger fs-6"> ISSN </div>
+            <div class="col-md-6 col" ><span class="fs-6 text-danger all"> {{ article.journal.issn }}</span></div>
+        </div>
+        <div class="mb-1 row row-cols-2 row-cols-md-2 justify-content-center text-center align-items-center">
+            <div class="col-md-6 col badge badge-danger fs-6"> eISSN </div>
+            <div class="col-md-6 col" ><span class="fs-6 text-danger all"> {{ article.journal.eissn }}</span></div>
+        </div>
+        <div class="mb-1 row row-cols-2 row-cols-md-2 justify-content-center text-center align-items-center">
+            <div class="col-md-6 col badge badge-primary fs-6"> Publisher </div>
+            <div class="col-md-6 col" ><span class="fs-6 text-primary all"> {{ article.journal.host_org }}</span></div>
+        </div>
+        <div class="mb-1 row row-cols-2 row-cols-md-2 justify-content-center text-center align-items-center">
+            <div class="col-md-6 col badge badge-info fs-6"> Volume </div>
+            <div class="col-md-6 col" ><span class="fs-6 text-info all"> {{ article.volume }}</span></div>
+        </div>
+        <div class="mb-1 row row-cols-2 row-cols-md-2 justify-content-center text-center align-items-center">
+            <div class="col-md-6 col badge badge-info fs-6"> Issue</div>
+            <div class="col-md-6 col" ><span class="fs-6 text-info all"> {{ article.issue }}</span></div>
+        </div>
+{% /papercard_r %}

@@ -1,0 +1,8 @@
+components:
+  papercard_g: "comps/paper_card_green.html"
+  papercard_lg: "comps/paper_card_lightgreen.html"
+  papercard_b: "comps/paper_card_blue.html"
+  papercard_lb: "comps/paper_card_lightblue.html"
+  papercard_y: "comps/paper_card_yellow.html"
+  papercard_ly: "comps/paper_card_lightyellow.html"
+  papercard_r: "comps/paper_card_red.html"
