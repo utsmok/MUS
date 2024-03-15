@@ -194,6 +194,7 @@ class Paper(TimeStampedModel, models.Model):
     apc_paid_value_eur = models.IntegerField(blank=True, null=True)
     is_in_pure = models.BooleanField(null=True)
     has_pure_oai_match = models.BooleanField(null=True)
+    has_any_ut_author_year_match = models.BooleanField(null=True)
     published_print = models.DateField(blank=True, null=True)
     published_online = models.DateField(blank=True, null=True)
     published = models.DateField(blank=True, null=True)
@@ -226,6 +227,7 @@ class Authorship(models.Model):
     )
     position = models.CharField(max_length=256, blank=True, null=False)
     corresponding = models.BooleanField(null=True)
+    ut_author_year_match = models.BooleanField(null=True)
     class Meta:
         indexes = [
             models.Index(fields=["author",
