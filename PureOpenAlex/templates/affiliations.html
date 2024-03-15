@@ -1,0 +1,23 @@
+{% block content %}
+{% load static %}
+{% load highest %}
+{% load lowest %}
+<div id='affiliationdetails-{{ author_id }}' class="affildetails border border-secondary rounded-5 border-1 bg-warning d-flex justify-content-center align-items-center align-content-center flex-wrap" style='--mdb-bg-opacity: 0.1'>
+    <div>
+        {% for affiliation in affiliations %}
+            {% if 'twente' not in affiliation.organization.name.lower %}
+                <div class='order-5 p-1 all badge badge-primary'>
+                    {% if  affiliation.years|lowest == affiliation.years|highest %}
+                        {{ affiliation.organization.name }} | {{ affiliation.years|lowest }}
+                    {% else %}
+                        {{ affiliation.organization.name }} | {{ affiliation.years|lowest }} - {{ affiliation.years|highest }}
+                    {% endif %}
+                </div>
+            {% endif %}
+        {% endfor %}
+    </div>
+    <div>
+        <button class=' btn-sm btn btn-danger' hx-swap='delete transition:true' hx-get="" hx-target='#affiliationdetails-{{ author_id }}'>Close</button>
+    </div>
+</div>
+{% endblock %}

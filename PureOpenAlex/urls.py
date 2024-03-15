@@ -15,7 +15,8 @@ from .views import (
     filtertoolpage,
     single_article_raw_data,
     get_raw_data_json,
-    chart
+    chart,
+    load_affils,
 )
 
 app_name = "PureOpenAlex"
@@ -40,4 +41,5 @@ urlpatterns = [
     path('rawdata/<int:article_id>/', single_article_raw_data, name='rawdata'),
     path('rawjson/<int:article_id>/', get_raw_data_json, name='rawjson'),
     path('chart/', chart, name='chart'),
+    path('affiliations/<int:author_id>/', load_affils, name='affiliations'),
 ]

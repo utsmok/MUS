@@ -1,6 +1,6 @@
 from django.shortcuts import render
 from django.http import JsonResponse, HttpResponse
-from .models import Paper, viewPaper
+from .models import Paper, viewPaper, Author
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.core.cache.backends.base import DEFAULT_TIMEOUT
@@ -17,6 +17,7 @@ from io import StringIO
 import plotly.express as px
 import pandas as pd
 import plotly.graph_objects as go
+from rich import print
 
 CACHE_TTL = getattr(settings, "CACHE_TTL", DEFAULT_TIMEOUT)
 
@@ -352,6 +353,13 @@ def customfilter(request):
         facultyname, stats, listpapers = getPapers('all', filters, request.user)
 
         return render(request, "faculty_table.html",{"faculty": facultyname, "stats": stats, "articles": listpapers, "filter":filters})
+
+@login_required
+def load_affils(request,author_id):
+    author = Author.objects.filter(id=author_id).prefetch_related('affiliations').first()
+    affils = author.affiliations.all().prefetch_related('organization').all().order_by('-years__-1')
+    return render(request, "affiliations.html",{"affiliations": affils, "author_id": author_id})
+
 
 @login_required
 def chart(request):

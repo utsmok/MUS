@@ -9,6 +9,7 @@ import os
 from .models import UTData, DealData
 from django.db import transaction
 from loguru import logger
+import re
 
 TAGLIST = ["UT-Hybrid-D", "UT-Gold-D", "NLA", "N/A OA procedure"]
 LICENSESOA = [
@@ -123,6 +124,7 @@ def convertToEuro(amount, currency, publishdate):
     Returns:
         int: The converted amount in Euro.
     """
+    raise Exception("currently not implemented properly")
     folder = 'ecb_data'
     zipname = f"ecb_{date.today():%Y%m%d}.zip"
     filename = os.path.join(os.getcwd(),folder, zipname)
@@ -142,19 +144,24 @@ def determineIsInPure(paper):
             return True
     return False
 
-def processDOI(doi):
-    startdoi = doi
-    if doi != "":
-        try:
-            if doi[0:4] != "http":
-                doi = "".join(["https://doi.org/", doi])
-            elif doi[0:16] == "https://doi.org/":
-                doi = doi
-        except Exception as error:
-            logger.error("Error {error} while processing DOI {doi}", error=error, doi=doi)
-    if doi != startdoi:
-        logger.debug("Changed DOI from {startdoi} to {doi}", startdoi=startdoi, doi=doi)
-    return doi
+def processDOI(doi: str) -> str|None:
+    doi_pattern = re.compile(r'10.\d{4,9}/[-._;()/:A-Z0-9]+', re.IGNORECASE)
+    doi = str(doi).replace(' ', '').replace(r'%20','').replace(r'%2F','/').replace(',','.')
+    if doi.endswith('/'):
+        doi = doi[:-1]
+    match = doi_pattern.search(doi)
+    if match:
+        extracted_doi = match.group()
+        if extracted_doi.endswith('/'):
+            extracted_doi = doi[:-1]
+        if extracted_doi.lower().endswith('openaccess'):
+            extracted_doi = extracted_doi[:-10]
+        if extracted_doi.lower().endswith('thefunderforthischapterisuniversityoftwente'):
+            extracted_doi = extracted_doi.replace('ThefunderforthischapterisUniversityofTwente','')
+        return "https://doi.org/" + extracted_doi
+    else:
+        logger.error(f"Invalid DOI: {doi}")
+        return None
 
 def calculateUTkeyword(work, paper, authorships):
     keyword = ""

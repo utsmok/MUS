@@ -55,7 +55,32 @@
         -webkit-user-select: all;
         user-select: all;
       }
-
+      @keyframes fade-in {
+        from { opacity: 0; }
+      }
+   
+      @keyframes fade-out {
+        to { opacity: 0; }
+      }
+   
+      @keyframes slide-from-right {
+        from { transform: translateX(90px); }
+      }
+   
+      @keyframes slide-to-left {
+        to { transform: translateX(-90px); }
+      }
+   
+      .htmx-slide {
+        view-transition-name: htmx-slide;
+      }
+   
+      ::view-transition-old(htmx-slide) {
+        animation: 180ms cubic-bezier(0.4, 0, 1, 1) both fade-out,
+      }
+      ::view-transition-new(htmx-slide) {
+        animation: 420ms cubic-bezier(0, 0, 0.2, 1) 90ms both fade-in,
+      }
 
     </style>
 
@@ -69,9 +94,8 @@
     <!-- Ajax Datatable (django app) -->
     <script type="text/javascript" src="{% static 'ajax_datatable/js/utils.js' %}"></script>
     <link href="{% static 'ajax_datatable/css/style.css' %}" rel="stylesheet" />
-    <link href="{% static 'jquery.json-viewer.css' %}" rel="stylesheet" />
     <script src = "{% static 'svg.min.js' %}"></script>
-    <script src = "{% static 'jquery.json-viewer.js' %}"></script>
+
 </head>
 <body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}' hx-ext="debug, event-header">
   <!-- MDB --> <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mdb-ui-kit/7.1.0/mdb.umd.min.js" ></script>
@@ -89,6 +113,8 @@
     document.addEventListener('htmx:afterSettle', function() {
         $('#facultytable').DataTable();
     });
+
+    htmx.config.globalViewTransitions = true;
 </script>
 </html>
 

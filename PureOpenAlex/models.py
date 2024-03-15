@@ -62,6 +62,7 @@ class UTData(models.Model):
     avatar = models.ImageField(
         upload_to="author_avatars/", blank=True, null=True
     )
+    avatar_path = models.CharField(max_length=256, blank=True, null=True)
     current_position = models.CharField(max_length=256)
     current_group = models.CharField(max_length=256, blank=True, null=True)
     current_faculty = models.CharField(max_length=256, blank=True, null=True)

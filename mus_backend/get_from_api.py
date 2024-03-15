@@ -377,6 +377,7 @@ def getOpenAlexAuthorData():
     Check if author has been added to database, if not, add it.
     If author is UT author, remember to also add UT author data -> get_from_scraper -> getUTPeoplePageData
     '''
+
     def getAuthorListFromDB():
         import time
         authorids=[]
@@ -414,32 +415,49 @@ def getOpenAlexAuthorData():
         print(f'{len(alreadyadded)} already in DB')
         return authorids, utauthorids
 
+    result={'total':0,'non-ut':0,'ut':0,'non_ut_openalex_urls':[], 'ut_openalex_urls':[]}
+
     MONGODB = MongoClient(MONGOURL)
     db=MONGODB["mus"]
     authors_openalex = db["api_responses_authors_openalex"]
     authors, utauthors=getAuthorListFromDB()
+    result['non-ut']=len(authors)
+    result['ut']=len(utauthors)
+    result['non_ut_openalex_urls']=authors
+    result['ut_openalex_urls']=utauthors
     print(f'adding {len(authors)} non-UT authors')
     print(f'of which {len(utauthors)} UT authors')
     batch=[]
     total=0
-    for author in authors:
-        batch.append(author)
-        if len(batch)==50:
-            authorids="|".join(batch)
-            query = Authors().filter(openalex=authorids)
-            for author in batched(chain(*query.paginate(per_page=100, n_max=None)),100):
-                authors_openalex.insert_many(author)
-            total=total+50
-            print(f'added {total} non-UT authors')
-            batch=[]
-            authorids=""
+    i=0
+    for grouping in [authors, utauthors]:
+        i=i+1
+        grouptype="non-UT"
+        if i == 2:
+            grouptype='UT'
+        for author in grouping:
+            batch.append(author)
+            if len(batch)==50:
+                authorids="|".join(batch)
+                query = Authors().filter(openalex=authorids)
+                for author in batched(chain(*query.paginate(per_page=100, n_max=None)),100):
+                    authors_openalex.insert_many(author)
+                total=total+50
+                print(f'added {total} {grouptype} authors')
+                batch=[]
+                authorids=""
 
-    authorids="|".join(batch)
-    query = Authors().filter(openalex=authorids)
-    for author in batched(chain(*query.paginate(per_page=100, n_max=None)),100):
-        authors_openalex.insert_many(author)
-    total=total+len(batch)
-    print(f'added {total} non-UT authors to DB')
+        authorids="|".join(batch)
+        query = Authors().filter(openalex=authorids)
+        for author in batched(chain(*query.paginate(per_page=100, n_max=None)),100):
+            authors_openalex.insert_many(author)
+        total=total+len(batch)
+
+        result['total']=total
+        print(f'added {total} {grouptype} authors to mongoDB')
+        if result['total']>0:
+            dbupdate = DBUpdate.objects.create(update_source="OpenAlex", update_type="getOpenAlexAuthorData", details=result)
+            dbupdate.save()
 
 def getOpenAlexJournalData():
     def getJournalListFromDB():
@@ -494,7 +512,9 @@ def updateAll():
     years=[2022,2023,2024,2025]
     getOpenAlexWorks(years)
 
-    addedfrompure = getPureItems(years)
+    result=getOpenAlexAuthorData()
+
+    '''addedfrompure = getPureItems(years)
     if addedfrompure:
         pureupdate = DBUpdate.objects.create(update_source="Pure", update_type="manualmongo", details = addedfrompure)
         pureupdate.save()
@@ -513,3 +533,4 @@ def updateAll():
     if addedfromopenaire:
         oaire=DBUpdate.objects.create(update_source="OpenAire", update_type="manualmongo", details=addedfromopenaire)
         oaire.save()
+'''

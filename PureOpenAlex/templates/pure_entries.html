@@ -239,7 +239,6 @@
 				<div class="card-body">
 					<div class="container "
 					style="display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: auto; grid-gap: 10px; ">
-					<div></div><div></div><div><span class="badge badge-info"><i class="fas fa-book-open-reader"></i> = from OpenAlex </span><span class="badge badge-warning"><i class="fab fa-orcid"></i> = from ORCID</span></div>
 					<div class="row align-items-center justify-content-center text-center "><span class="badge badge-primary bg-gradient border fs-6"><i class="fas fa-user"></i>  |  Name</span></div>
 					<div class="row align-items-center justify-content-center text-center"><span class="badge badge-primary bg-gradient border fs-6"><i class="fas fa-graduation-cap"></i> | UT information</span></div>
 					<div class="row align-items-center justify-content-center text-center"><span class="badge badge-primary bg-gradient  border fs-6"><i class="fas fa-landmark"></i> | Affiliations</span></div>
@@ -247,7 +246,7 @@
 								<div class="row align-items-center justify-content-center text-center">
 									<div class="d-inline-flex ">
 										{% if author.utdata %}
-											<div class='me-auto w-50 align-self-center'><img class="img-fluid rounded-pill rounded-5 shadow-5" src="{% static author.utdata.avatar.url %}" style="width: 80px; height: 80px;"></div>
+											<div class='me-auto w-50 align-self-center'><img class="img-fluid rounded-pill rounded-5 shadow-5" src="{% static author.utdata.avatar_path %}" style="width: 80px; height: 80px;"></div>
 										{% else %}
 											<div class='me-auto w-50 align-self-center'><img class="img-fluid rounded-pill rounded-5 shadow-5" src="{% static 'author_avatars\default_avatar.png' %}" style="width: 80px; height: 80px;"></div>
 										{% endif %}
@@ -274,42 +273,22 @@
 										{% endif %}
 									</div>
 								</div>
-								<div class="row align-items-center justify-content-center text-center">
+								<div class=" row flex-shrink-1 align-items-center justify-content-center text-center">
 									<div>
-									{% for affiliation in author.affiliations.all %}
-										{% if forloop.counter < 5 %}
-											{% if affiliation.organization.data_source == "OpenAlex" %}
-											<div class="all badge badge-info">
-												<i class="fas fa-book-open-reader"></i>
-											{% elif affiliation.organization.data_source == "ORCID" %}
-											<div class="all badge badge-warning">
-												<i class="fab fa-orcid"></i>
-											{% else %}
-											<div class="all badge badge-secondary">
-												<i class="fas fa-circle-question"></i>
-											{% endif %}
-												{{ affiliation.organization.name }}
-											</div>
-										{% elif forloop.counter >= 5 %}
+									{% for affiliation in author.affils.all %}
 											{% if 'Twente' in affiliation.name %}
-												{% if affiliation.organization.data_source == "OpenAlex" %}
 												<div class="all badge badge-info">
-													<i class="fas fa-book-open-reader"></i>
-												{% elif affiliation.organization.data_source == "ORCID" %}
-												<div class="all badge badge-warning">
-													<i class="fab fa-orcid"></i>
-												{% else %}
-												<div class="all badge badge-secondary">
-													<i class="fas fa-circle-question"></i>
-												{% endif %}
-													{{ affiliation.organization.name }}
+													{{ affiliation.name }} | {{ affiliation.years.min }} - {{ affiliation.years.max }}
 												</div>
 											{% endif %}
-											{% if forloop.counter == 5 %}
-												<div class="badge badge-danger">+{{author.affiliations.all|length|add:"-4"}} more (not shown) </div>
-											{% endif %}
-										{% endif %}
 									{% endfor %}
+									<div>
+										<a id='moreaffilsbtn-{{ author.id }}' class="moreaffils btn btn-sm btn-secondary" hx-get="{% url 'PureOpenAlex:affiliations' author.id %}" hx-target="#affiliations-{{ author.id }}" hx-swap='innerHTML transition:true'>
+											Click to show all affiliations (total: {{ author.affils.count }})
+										</a>
+									</div>
+									<div id='affiliations-{{ author.id }}'>
+									</div>
 									</div>
 								</div>
 								<hr class="hr hr-blurry" style="grid-column: 1/-1;" />
