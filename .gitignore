@@ -9,6 +9,13 @@ __pycache__/
 # C extensions
 *.so
 
+*.xml
+*.xml.gz
+*.dtd
+*.pickle
+*.csv
+*.xls
+*.xlsx
 # Distribution / packaging
 .Python
 build/

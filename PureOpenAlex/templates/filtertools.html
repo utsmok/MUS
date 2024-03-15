@@ -1,7 +1,8 @@
 {% extends 'base.html' %}
 {% block content %}
 {% load static %}
-<div class="container-fluid justify-content-center align-items-center col-10" >
+{% include 'topbar.html' %}
+<div class="container-fluid justify-content-center align-items-center col-10 pt-5" >
     <div id="doi-input" class="card justify-content-center ">
         <div class="card-header bg-info bg-gradient " style="--mdb-bg-opacity: 0.9;">
             <h5 class="text-black ps-5 mb-0"><i class="fas fa-filter"></i>  |  Build your own list </h5>
@@ -11,13 +12,15 @@
                 Select whatever filters you like & press the button to generate the view.
                 Might take a while if there are many papers in your query!
                 <div class="card mb-3 mt-3">
-                    <span class="position-absolute top-0 start-0 translate-middle badge rounded-5 badge-danger">
-                        <i class="fs-4 fas fa-triangle-exclamation"></i>
+                    <span class="position-absolute top-0 start-100 translate-middle badge rounded-5 badge-primary">
+                        <i class="fs-4 fas fa-circle-question"></i>
                     </span>
-                    <div class="card-body text-white bg-danger">Note: Currently filters always chain together.
-                        For instance, selecting 'BMS' and 'EEMCS' will show only papers that are linked to BOTH faculties
-                        -- NOT all papers by BMS PLUS all papers by EEMCS.
-                        This will change in in a future update.<div>
+                    <div class="card-body text-black bg-success rounded-5 border border-dark" style="--mdb-bg-opacity: 0.3;"> If you select nothing in a box, it will not filter on that type. For instance,
+                        if you do not filter on faculty, it will start with all items in the database. 
+                        If you select a single faculty, it will show only papers from that faculty; and if you select 2 faculties, it will show all papers linked to those 2 faculties.
+                        
+                        All listed 'other filters' will be combined: so 'after tavernedate' and 'is open access' will select open access papers with a passed tavernedate.
+                        <div>
                     </div>
                 </div>
 
@@ -89,7 +92,7 @@
                         </div>
                     </div>
                     <div class="row justify-content-center">
-                        <div id='faculties' class='col-4 pt-2' style="--mdb-bg-opacity: 0.5;">
+                        <div id='faculties' class='col-4 pt-5' style="--mdb-bg-opacity: 0.5;">
                             <div class='card'>
                                 <div class="card-header bg-success bg-gradient " style="--mdb-bg-opacity: 0.6;">
                                     <span class='text-black'><i class="me-2 fas fa-graduation-cap"></i>Faculties</span>
@@ -128,18 +131,28 @@
                                 </div>
                             </div>
                         </div>
-                        <div id='faculties' class='pt-2 col-6' style="--mdb-bg-opacity: 0.5;">
+                        <div id='faculties' class='pt-5 col-6' style="--mdb-bg-opacity: 0.5;">
                             <div class='card'>
                                 <div class="card-header bg-warning bg-gradient " style="--mdb-bg-opacity: 0.6;">
                                     <span class='text-black'><i class="me-2 fas fa-filter-circle-xmark"></i>Other filters</span>
                                 </div>
                                 <div class='card-body bg-primary bg-gradient' style="--mdb-bg-opacity: 0.4;">
                                     <div class='row'>
-                                        <div class='form-check col-6'>
-                                            <input class="form-check-input" type="checkbox" name='is_oa' id="check-is-oa" value="true" />
-                                            <label class="form-check-label" for="check-is-oa">is Open Access</label>
+                                        <div class='col-5'>
+                                            Open Access:
                                         </div>
-                                        <div class='form-check col-6'>
+                                        <div class='form-check col-2'>
+                                            <input class="form-check-input" type="checkbox" name='is_oa' id="check-is-oa" value="true" />
+                                            <label class="text-success form-check-label" for="check-is-oa">Y</label>
+                                        </div>
+                                        <div class='form-check col-2'>
+                                            <input class="form-check-input" type="checkbox" name='is_oa' id="check-is-oa" value="false" />
+                                            <label class="text-danger form-check-label" for="check-is-oa">N</label>
+                                        </div>
+
+                                    </div>
+                                    <div class='row'>
+                                        <div class='form-check col-4'>
                                             <input class="form-check-input" type="checkbox"  name='has_apc' id="check-has-apc" value="true" />
                                             <label class="form-check-label" for="check-has-apc">has APC data </label>
                                         </div>
@@ -181,10 +194,10 @@
 
                         </div>
                     </div>
-                    <div class="row justify-content-center pt-3">
+                    <div class="row justify-content-center text-center pt-3" id='applyfilter'>
                         <div>
-                            <button hx-post="/customfilter/" hx-trigger="click" hx-target="#dbinfo" hx-push-url="true" class="btn btn-lg btn-danger">
-                                <div class='pt-4'>Apply filters</div>
+                            <button hx-post="/customfilter/" hx-trigger="click" hx-target="#facultytable" hx-push-url="true" class="btn btn-lg btn-danger">
+                                <div class='pt-4 text-bold fs-6'>Apply filters</div>
                                 <img class="htmx-indicator" src="{% static 'rings.svg' %}">
                             </button>
                         </div>
@@ -193,6 +206,19 @@
             </form>
         </div>
     </div>
+</div>
+<div>
+    <div class="card mb-3 mt-3 w-50 text-center align-items-center justify-content-center">
+        <span class="position-absolute top-0 start-100 translate-middle badge rounded-5 badge-danger">
+            <i class="fs-4 fas fa-triangle-exclamation"></i>
+        </span>
+        <div class="card-body text-black bg-danger rounded-5 border border-dark" style="--mdb-bg-opacity: 0.3;">
+            <h5 class="card-title">Warning</h5>
+            <p class="card-text">Due to a bug, the results table is not rendered properly if you filter more than once in a row. Go back to the initial filter-tool page & start from scratch to fix this.</p>
+        </div>
+    </div>
+    <table id="facultytable" class="display" >
+    </table>
 </div>
 
 {% endblock %}

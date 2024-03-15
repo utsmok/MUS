@@ -1,21 +1,38 @@
-import logging
 from .models import (
     Location,
     Author,
-    Journal,
     Paper,
     Authorship,
-    Keyword,
     viewPaper,
-    DealData,
-
 )
 from django.db.models import Count, Q, Prefetch, Exists, OuterRef
 from .data_helpers import TCSGROUPS, TCSGROUPSABBR
 import regex as re
 from datetime import datetime
-logger = logging.getLogger(__name__)
+from loguru import logger
+from collections import defaultdict
+from io import StringIO
+from rich import print
+from pymongo import MongoClient
+from django.conf import settings
+import json
 
+def getTablePrefetches(filterpapers):
+    location_prefetch = Prefetch(
+        "locations",
+        queryset=Location.objects.all().select_related('source'),
+        to_attr="pref_locations",
+    )
+    authors_prefetch =Prefetch(
+        'authors',
+        queryset=Author.objects.all().select_related('utdata'),
+        to_attr="pref_authors",
+    )
+
+    return [
+        location_prefetch,
+        authors_prefetch,
+    ]
 
 def generateMainPage(user):
     """
@@ -34,7 +51,7 @@ def generateMainPage(user):
     }
     faculties = []
     for faculty in facultynamelist:
-        facultyname, stats, listpapers = getPapers(faculty, "all", user)
+        facultyname, stats, _ = getPapers(faculty, "all", user)
         total["articles"] += stats["num"]
         total["numoa"] += stats["numoa"]
         total["inpure"] += stats["articlesinpure"]
@@ -50,8 +67,6 @@ def generateMainPage(user):
                 "inpurematch_percent": stats["articlesinpurematch_percent"],
             }
         )
-
-
     total["oa"] = round(total["numoa"] / total["articles"] * 100, 2)
     total["inpure_percent"] = round(total["inpure"] / total["articles"] * 100, 2)
     total["inpurematch_percent"] = round(
@@ -62,10 +77,14 @@ def generateMainPage(user):
 
 
 def getPapers(name, filter="all", user=None):
-    if isinstance(name, int):
-        logger.info("getpaper [id] %s [user] %s", name, user.username)
+    if user==None:
+        username = "none"
     else:
-        logger.info("getpapers [name] %s [filter] %s [user] %s", name, filter, user.username)
+        username = user.username
+    if isinstance(name, int):
+        logger.info("getpaper [id] {} [user] {}", name, username)
+    else:
+        logger.info("getpapers [name] {} [filter] {} [user] {}", name, filter, username)
 
     facultynamelist = ["EEMCS", "BMS", "ET", "ITC", "TNW", 'eemcs', 'bms', 'et', 'itc','tnw']
     facultyname = ""
@@ -83,111 +102,144 @@ def getPapers(name, filter="all", user=None):
         stats = None
         return facultyname, stats, listpapers
 
-    def applyFilter(listpapers, filter, value=""):
-        logger.debug("[filter] %s [value] %s", filter, value)
-        if filter == "pure_match":
-            newlist = listpapers.filter(has_pure_oai_match=True)
-        if filter == "no_pure_match":
-            newlist = listpapers.filter(
-                has_pure_oai_match=False
-            ) | listpapers.filter(has_pure_oai_match__isnull=True)
-        if filter == "has_pure_link":
-            newlist = listpapers.filter(is_in_pure=True)
-        if filter == "no_pure_link":
-            newlist = listpapers.filter(is_in_pure=False) | listpapers.filter(is_in_pure__isnull=True)
-        if filter == "hasUTKeyword":
-            newlist = listpapers.filter(
-            pure_entries__ut_keyword__gt=''
-            ).distinct().prefetch_related('pure_entries').order_by("title")
-        if filter == "hasUTKeywordNLA":
-            newlist = listpapers.filter(pure_entries__ut_keyword="NLA").prefetch_related('pure_entries')
-        if filter == 'openaccess':
-            newlist = listpapers.filter(is_oa=True)
-        if filter == 'apc':
-            newlist = listpapers.filter(apc_listed_value__isnull=False).exclude(apc_listed_value='')
-        if filter == 'TCS':
-            # get all papers where at least one of the authors has a linked AFASData entry that has 'is_tcs'=true
-            # also get all papers where at least one of the authors has a linked UTData entry where current_group is in TCSGROUPS or TCSGROUPSABBR
-            tcscheck = TCSGROUPS + TCSGROUPSABBR
-            newlist = listpapers.filter(
-                Q(authorships__author__afas_data__is_tcs=True)
-                | Q(authorships__author__utdata__current_group__in=tcscheck)
-            )
-        if filter == 'author':
-            author = Author.objects.get(name = name)
-            newlist = listpapers.filter(
-                authorships__author=author
-            )
-        if filter == 'group':
-            group = value
-            newlist = listpapers.filter(
-                authorships__author__utdata__current_group=group
-            )
-        if filter == 'journal':
-            journal = Journal.objects.get(name = value)
-            newlist = listpapers.filter(
-                journal=journal
-            ).select_related('journal')
-        if filter == 'publisher':
-            publisher = DealData.objects.get(publisher = value).prefetch_related('journal')
-            journals = publisher.journal.all()
-            newlist = listpapers.filter(
-                journal__in=journals
-            ).select_related('journal')
-        if filter == 'start_date':
-            start_date = value
-            # should be str in format YYYY-MM-DD
-            datefmt=re.compile(r"^\d{4}-\d{2}-\d{2}$")
-            if datefmt.match(start_date):
-                newlist = listpapers.filter(
-                    date__gte=start_date
-                )
-            else:
-                raise ValueError("Invalid start_date format")
+    def applyFilter(listpapers, filter):
+        '''
+        listpapers = main list of papers that need filtering
+        filter = list of filters
+                each entry is another list with:
+                    [filtername, value to use when filtering]
+                    "" is the default value
+        '''
 
-        if filter == 'end_date':
-            end_date = value
+        if len(filter) == 0:
+            return listpapers
+        if len(filter) == 1:
+            if filter[0][0] == 'all':
+                return listpapers
 
-            # should be str in format YYYY-MM-DD
-            datefmt=re.compile(r"^\d{4}-\d{2}-\d{2}$")
-            if datefmt.match(end_date):
-                newlist = listpapers.filter(
-                    date__lte=end_date
-                )
-            else:
-                raise ValueError("Invalid end_date format")
+        finalfilters = defaultdict(list)
+        for item in filter:
+            filter=item[0]
+            value=item[1]
+            logger.debug("[filter] {} [value] {}", filter, value)
+            if filter == "pure_match" and value in ['yes', '']:
+                finalfilters['bools'].append(Q(has_pure_oai_match=True) )
+            if filter == "no_pure_match" or (filter == "pure_match" and value == 'no'):
+                finalfilters['bools'].append((Q(
+                    has_pure_oai_match=False
+                ) | Q(has_pure_oai_match__isnull=True)))
+            if filter == "has_pure_link" and value in ['yes', '']:
+                finalfilters['bools'].append(Q(is_in_pure=True))
+            if filter == "no_pure_link" or (filter == "has_pure_link" and value == 'no'):
+                finalfilters['bools'].append((Q(is_in_pure=False) | Q(is_in_pure__isnull=True)))
+            if filter == "hasUTKeyword":
+                finalfilters['bools'].append(Q(
+                pure_entries__ut_keyword__gt=''
+                ))
+            if filter == "hasUTKeywordNLA":
+                finalfilters['bools'].append(Q(pure_entries__ut_keyword="NLA"))
+            if filter == 'openaccess':
+                if value in ['yes', '', 'true', 'True', True]:
+                    finalfilters['bools'].append(Q(is_oa=True))
+                if value in ['no', 'false', 'False', False]:
+                    finalfilters['bools'].append(Q(is_oa=False))
+            if filter == 'apc':
+                finalfilters['bools'].append((Q(apc_listed_value__isnull=False) & ~Q(apc_listed_value='')))
+            if filter == 'TCS':
+                # get all papers where at least one of the authors has a linked AFASData entry that has 'is_tcs'=true
+                # also get all papers where at least one of the authors has a linked UTData entry where current_group is in TCSGROUPS or TCSGROUPSABBR
+                tcscheck = TCSGROUPS + TCSGROUPSABBR
+                q_expressions = Q()
+                for group_abbr in TCSGROUPSABBR:
+                    q_expressions |= Q(
+                        authorships__author__utdata__employment_data__contains={'group': group_abbr}
+                    )
+                finalfilters['groups'].append((Q(authorships__author__utdata__current_group__in=tcscheck) | q_expressions))
+            if filter == 'author':
+                author = Author.objects.get(name = name)
+                finalfilters['authors'].append(Q(
+                    authorships__author=author
+                ))
+            if filter == 'group':
+                group = value
+                finalfilters['groups'].append(Q(
+                    authorships__author__utdata__current_group=group
+                ))
 
-        if filter == 'type':
-
-            itemtype = value
-            ITEMTYPES = ['journal-article', 'proceedings-article','book', 'book-chapter']
-            if itemtype != 'other':
-                if itemtype == 'book' or itemtype == 'book-chapter':
-                    newlist = listpapers.filter(Q(itemtype='book')|Q(itemtype='book-chapter'))
+            if filter == 'start_date':
+                start_date = value
+                # should be str in format YYYY-MM-DD
+                datefmt=re.compile(r"^\d{4}-\d{2}-\d{2}$")
+                if datefmt.match(start_date):
+                    finalfilters['dates'].append(Q(
+                        date__gte=start_date
+                    ))
                 else:
-                    newlist = listpapers.filter(itemtype=itemtype)
-            else:
-                newlist = listpapers.exclude(
-                    itemtype__in=ITEMTYPES
-                )
+                    raise ValueError("Invalid start_date format")
 
-        if filter == 'faculty':
-            faculty=value
-            if faculty in facultynamelist:
-                faculty = faculty.upper()
-                newlist = listpapers.filter(
-                    authorships__author__utdata__current_faculty=faculty
-                )
-            else:
-                authors = Author.objects.filter(utdata__isnull=False).filter(~Q(utdata__current_faculty__in=facultynamelist)).select_related('utdata')
-                newlist = listpapers.filter(authorships__author__in=authors)
+            if filter == 'end_date':
+                end_date = value
 
-        if filter == 'taverne_passed':
-            date = datetime.today().strftime('%Y-%m-%d')
-            newlist = listpapers.filter(
-                taverne_date__lt=date
-            )
+                # should be str in format YYYY-MM-DD
+                datefmt=re.compile(r"^\d{4}-\d{2}-\d{2}$")
+                if datefmt.match(end_date):
+                    finalfilters['dates'].append(Q(
+                        date__lte=end_date
+                    ))
+                else:
+                    raise ValueError("Invalid end_date format")
 
+            if filter == 'type':
+                itemtype = value
+                ITEMTYPES = ['journal-article', 'proceedings', 'proceedings-article','book', 'book-chapter']
+                if itemtype != 'other':
+                    if itemtype == 'book' or itemtype == 'book-chapter':
+                        finalfilters['types'].append(Q(Q(itemtype='book')|Q(itemtype='book-chapter')))
+                    else:
+                        finalfilters['types'].append(Q(itemtype=itemtype))
+                else:
+                    finalfilters['types'].append(~Q(
+                        itemtype__in=ITEMTYPES
+                    ))
+
+            if filter == 'faculty':
+                faculty=value
+                if faculty in facultynamelist:
+                    faculty = faculty.upper()
+                    finalfilters['faculties'].append(Q(
+                        authorships__author__utdata__current_faculty=faculty
+                    ))
+                else:
+                    authors = Author.objects.filter(utdata__isnull=False).filter(~Q(utdata__current_faculty__in=facultynamelist)).select_related('utdata')
+                    finalfilters['faculties'].append(Q(authorships__author__in=authors))
+
+            if filter == 'taverne_passed':
+                date = datetime.today().strftime('%Y-%m-%d')
+                finalfilters['bools'].append(Q(
+                    taverne_date__lt=date
+                ))
+        boolfilter = Q()
+        groupfilter = Q()
+        facultyfilter= Q()
+        typefilter = Q()
+        datefilter = Q()
+        authorfilter = Q()
+
+        for qfilt in finalfilters['bools']:
+            boolfilter = boolfilter & qfilt
+        for qfilt in finalfilters['types']:
+            typefilter = typefilter | qfilt
+        for qfilt in finalfilters['groups']:
+            groupfilter = groupfilter | qfilt
+        for qfilt in finalfilters['faculties']:
+            facultyfilter = facultyfilter | qfilt
+        for qfilt in finalfilters['dates']:
+            datefilter = datefilter & qfilt
+        for qfilt in finalfilters['authors']:
+            authorfilter = authorfilter | qfilt
+
+        finalfilter = boolfilter & typefilter & groupfilter & facultyfilter & datefilter & authorfilter
+        newlist = listpapers.filter(finalfilter)
         return newlist
 
     def aggregrateStats(listpapers):
@@ -252,67 +304,50 @@ def getPapers(name, filter="all", user=None):
             queryset=Location.objects.filter(papers__in=filterpapers).select_related("source"),
             to_attr="preloaded_locations",
         )
-        keyword_prefetch = Prefetch(
-            "keywords",
-            queryset=Keyword.objects.filter(papers__in=filterpapers),
-            to_attr="keywords_prefetch",
-        )
-        journal_prefetch = Prefetch(
-            "journal",
-            queryset=Journal.objects.filter(papers__in=filterpapers).select_related(),
-            to_attr="journal_prefetch",
-        )
         authors_and_affiliation_prefetch =Prefetch(
             'authors',
             queryset=Author.objects.filter(authorships__paper__in=filterpapers).distinct()
-            .prefetch_related('affiliations').select_related('utdata'),
+            .prefetch_related('affils').select_related('utdata'),
             to_attr="preloaded_authors",
         )
         return [
             authorships_prefetch,
             location_prefetch,
-            keyword_prefetch,
-            journal_prefetch,
             authors_and_affiliation_prefetch,
         ]
 
-    def getTablePrefetches(filterpapers):
-        location_prefetch = Prefetch(
-            "locations",
-            queryset=Location.objects.all().select_related('source'),
-            to_attr="pref_locations",
-        )
-        authors_prefetch =Prefetch(
-            'authors',
-            queryset=Author.objects.all().select_related('utdata'),
-            to_attr="pref_authors",
-        )
 
-        return [
-            location_prefetch,
-            authors_prefetch,
-        ]
 
     if isinstance(name, int):
         return getSinglePaper()
     elif filter == 'author':
         facultyname = name+" [Author]"
-        filterpapers = Paper.objects.all()
+        filterpapers = Paper.objects.filter(authors__name=name).distinct().order_by("-modified")
+        filter = [['all','']]
     elif name == "marked" or name == "Marked papers":
         facultyname = "Marked papers"
         filterpapers=Paper.objects.filter(view_paper__user=user).order_by("-modified")
+        if isinstance(filter, str):
+            filter = [[str(filter),""]]
     else:
         filterpapers = Paper.objects.all().distinct()
         if name == "all" or name == "All items":
             facultyname = "All MUS papers"
-        elif name not in facultynamelist:
-            facultyname = "Other groups"
+            name = 'all'
             if isinstance(filter, str):
-                filter = {str(filter):'','faculty':'other'}
+                filter = [[str(filter),""]]
         else:
+            if name not in facultynamelist:
+                facultyname = "Other groups"
+                name = 'other'
+            else:
+                facultyname = name
+
             if isinstance(filter, str):
-                filter = {str(filter):'','faculty':name}
-            facultyname = name
+                filter = [[str(filter),""],['faculty',name]]
+            if isinstance(filter, list):
+                if ['faculty', name] not in filter:
+                    filter.append(['faculty',name])
     listpapers = (
         filterpapers
         .prefetch_related(*getTablePrefetches(filterpapers))
@@ -327,19 +362,7 @@ def getPapers(name, filter="all", user=None):
             )
         .order_by('-year')
     )
-    if isinstance(filter, str):
-        if filter != "all":
-            listpapers = applyFilter(listpapers,filter)
-    elif isinstance(filter, list):
-        for f in filter:
-            if isinstance(f, list):
-                if f[0]!='all':
-                    listpapers = applyFilter(listpapers, f[0], f[1])
-    elif isinstance(filter, dict):
-        for f, value in filter.items():
-            if f != 'all':
-                listpapers = applyFilter(listpapers, f, value)
-
+    listpapers = applyFilter(listpapers, filter)
     stats = getStats(listpapers)
     return facultyname, stats, listpapers
 
@@ -350,7 +373,6 @@ def get_pure_entries(article_id, user):
             'authors',
             queryset=Author.objects.filter(pure_entries__in=pure_entries).distinct()
             .prefetch_related('affiliations').select_related('utdata'),
-            to_attr="preloaded_authors",
         )
     pure_entries=pure_entries.prefetch_related(author_prefetch)
 
@@ -408,6 +430,9 @@ def open_alex_autocomplete(query, types=['works','authors'], amount=5):
         data=response.json()
 
         result['count']=data['meta']['count']
+        if result['count']==0:
+            print('no results (?)')
+            return None
         result['type']=[oa_type]
         if result['count']>=5:
             result['results']=data['results'][:6]
@@ -421,6 +446,8 @@ def open_alex_autocomplete(query, types=['works','authors'], amount=5):
         if value['count']>maxlen:
             maxlen=value['count']
             most_results_type=key
+    if most_results_type=='':
+        return None
     if tresults[most_results_type]['count']>=5:
         result=tresults[most_results_type]
     else:
@@ -437,5 +464,152 @@ def open_alex_autocomplete(query, types=['works','authors'], amount=5):
     return result
 
 def getAuthorPapers(display_name, user=None):
-    logger.info("authorpapers [author] %s [user] %s", display_name, user.username)
+    logger.info("authorpapers [author] {} [user] {}", display_name, user.username)
     return getPapers(display_name, 'author', user)
+
+def get_raw_data(article_id, user=None):
+    article=Paper.objects.filter(pk=article_id).prefetch_related('authors').annotate(
+            marked=Exists(viewPaper.objects.filter(displayed_paper=OuterRef("pk")).select_related()),
+        ).first()
+    if not article:
+        return None, None, None
+
+    openalexid=article.openalex_url
+    doi = article.doi
+    title = article.title
+
+    if not any([openalexid, doi, title]):
+        return None, None, None
+
+    author_openalexids = []
+    for author in article.authors.all():
+        author_openalexids.append(author.openalex_url)
+    source_openalexids = []
+    for location in article.locations.all():
+        try:
+            source_openalexids.append(location.source.openalex_url)
+        except Exception:
+            pass
+
+    raw_data={}
+    fulljson = {}
+    client=MongoClient(getattr(settings, 'MONGOURL', None))
+    db=client['mus']
+    cutdoi = doi.replace('https://doi.org/','')
+    pure_works=db['api_responses_pure']
+
+    if openalexid:
+        openalex_works=db['api_responses_works_openalex']
+        mongo_openaire_results = db['api_responses_openaire']
+
+        raw_data['openalex_work']=openalex_works.find_one({'id':openalexid})
+        raw_data['openaire']=mongo_openaire_results.find_one({'id':openalexid})
+    if doi:
+        crossref_info=db['api_responses_crossref']
+        datacite_info=db['api_responses_datacite']
+        raw_data['crossref']=crossref_info.find_one({'DOI':cutdoi})
+        raw_data['datacite']=datacite_info.find_one({'doi':cutdoi})
+        if raw_data.get('datacite'):
+            del raw_data['datacite']['_id']
+        if article.has_pure_oai_match:
+            raw_data['pure']=pure_works.find_one({'identifier':{'doi':cutdoi}})
+            if not raw_data.get('pure'):
+                raw_data['pure']=pure_works.find_one({'identifier':{'doi':doi}})
+    if article.has_pure_oai_match and not raw_data.get('pure'):
+        raw_data['pure']=pure_works.find_one({'title':article.pure_entries.first().title})
+    if author_openalexids != []:
+        raw_data['authors']={}
+        openalex_ut_authors = db['api_responses_UT_authors_openalex']
+        openalex_authors = db['api_responses_authors_openalex']
+        peoplepage_results = db['api_responses_UT_authors_peoplepage']
+        for author_openalexid in author_openalexids:
+            raw_data['authors'][author_openalexid]={}
+            raw_data['authors'][author_openalexid]['openalex_author']=openalex_ut_authors.find_one({'id':author_openalexid})
+            if not raw_data['authors'][author_openalexid]['openalex_author']:
+                raw_data['authors'][author_openalexid]['openalex_author']=openalex_authors.find_one({'id':author_openalexid})
+            raw_data['authors'][author_openalexid]['peoplepage']=peoplepage_results.find_one({'id':author_openalexid})
+    if source_openalexids != []:
+        openalex_journals = db['api_responses_journals_openalex']
+        dealdata = db['api_responses_journals_dealdata_scraped']
+        raw_data['locations']={}
+        for source_openalexid in source_openalexids:
+            raw_data['locations'][source_openalexid]={}
+            raw_data['locations'][source_openalexid]['openalex_journal']=openalex_journals.find_one({'id':source_openalexid})
+            raw_data['locations'][source_openalexid]['dealdata']=dealdata.find_one({'id':source_openalexid})
+
+
+
+    fulljson=json.dumps(raw_data, default=str)
+
+    return article, fulljson, raw_data
+
+def exportris(papers):
+    itemtypekey = {
+        'journal-article':'JOUR',
+        'posted-content':'GEN',
+        'dissertation':'THES',
+        'monograph':'SER',
+        'reference-entry':'GEN',
+        'proceedings-article':'CONF',
+        'report':'RPRT',
+        'book':'BOOK',
+        'dataset':'DATA',
+        'reference-book':'GEN',
+        'journal-issue':'JOUR',
+        'peer-review':'GEN',
+        'report-series':'SER',
+        'proceedings':'CONF',
+        'other':'GEN',
+        'book-chapter':'CHAP',
+    }
+    fullrisdata = []
+    for paper in papers:
+        risdata =[
+            ["TY",itemtypekey[paper.itemtype]],
+            ["T1",paper.title]
+        ]
+
+        for author in paper.authors.all():
+            risdata.append(['AU',author.last_name+', '+author.first_name])
+
+        risdata.append(["PY",paper.year])
+        risdata.append(["Y1",paper.year])
+        risdata.append(["N2",paper.abstract])
+        risdata.append(["AB",paper.abstract])
+
+        if paper.keywords != []:
+            for keyword in paper.keywords:
+                risdata.append(['KW',keyword.get('keyword')])
+
+        for location in paper.locations.all():
+            if location.landing_page_url and location.landing_page_url != '':
+                risdata.append(['UR',location.landing_page_url])
+
+
+        risdata.append(["U2",paper.doi.replace('https://doi.org/', '')])
+        risdata.append(["DO",paper.doi.replace('https://doi.org/', '')])
+        risdata.append(["M3",paper.itemtype])
+        if paper.journal:
+
+            risdata.append(["VL",paper.volume])
+            risdata.append(["JO",paper.journal.name])
+            risdata.append(["JF",paper.journal.name])
+            risdata.append(["SN",paper.journal.issn])
+
+            if paper.pages:
+                if '-' in paper.pages:
+                    pages = paper.pages.split('-')[0]
+                else:
+                    pages = paper.pages
+                risdata.append(["M1",pages])
+
+        risdata.append(["ER",''])
+        fullrisdata.append(risdata)
+
+    content = StringIO()
+    with content as f:
+        for risentry in fullrisdata:
+            for item in risentry:
+                f.write(str(item[0])+'  - '+str(item[1])+'\n')
+        return content.getvalue()
+

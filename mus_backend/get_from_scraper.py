@@ -19,7 +19,11 @@ import httpx
 from unidecode import unidecode
 from fuzzywuzzy import process, fuzz
 from pymongo import MongoClient
-MONGODB = MongoClient('mongodb://smops:bazending@192.168.2.153:27017/')
+from PureOpenAlex.models import DBUpdate
+from django.conf import settings
+MONGOURL = getattr(settings, "MONGOURL")
+
+MONGODB = MongoClient(MONGOURL)
 db=MONGODB["mus"]
 
 async def getUTPeoplePageData(authors):
@@ -380,3 +384,13 @@ def fillJournalData():
     print(f'added {total}/{batchtotal} rows of journal dealdata [{already_added} skipped]')
 
 
+def allscrapes():
+    #TODO: don't forget to actually make the result dict in the functions themselves
+    resultjb = fillJournalData()
+    if resultjb:
+        update = DBUpdate.objects.create(update_source="Journal browser", update_type="manualmongo", details=resultjb)
+        update.save()
+    resultpeople = fillUTPeopleData()
+    if resultpeople:
+        update = DBUpdate.objects.create(update_source="UT People page", update_type="manualmongo", details=resultpeople)
+        update.save()

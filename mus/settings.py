@@ -13,13 +13,14 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 from pathlib import Path
 from dotenv import load_dotenv
 import os
+from loguru import logger
 
 dotenv_path = 'secrets.env'
 load_dotenv(dotenv_path)
 
 MONGOURL = str(os.getenv('MONGOURL'))
 APIEMAIL = str(os.getenv('APIEMAIL'))
-
+OPENAIRETOKEN = str(os.getenv('OPENAIRETOKEN'))
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -33,10 +34,14 @@ ACCOUNT_ADAPTER = "accounts.adapter.NoNewUsersAccountAdapter"
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-if DEBUG:
+'''if DEBUG:
     LOGLEVEL = "DEBUG"
-else:
-    LOGLEVEL = "INFO"
+else:'''
+LOGLEVEL = "INFO"
+    
+LOGFMT = "{time:[%m %d] %H:%M:%S} | {name}>{function}() [{level}] |> {message}"
+logger.remove()
+logger.add('log_mus.log', format=LOGFMT, level=LOGLEVEL)
 
 ALLOWED_HOSTS = [
     "openalex.samuelmok.cc",
@@ -71,13 +76,13 @@ INSTALLED_APPS = [
     "data_browser",
     "django_extensions",
     "ajax_datatable",
-    'debug_toolbar',
+   # 'debug_toolbar',
 
 ]
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
-    "debug_toolbar.middleware.DebugToolbarMiddleware",
+    #"debug_toolbar.middleware.DebugToolbarMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -120,6 +125,7 @@ DATABASES = {
         "PASSWORD": str(os.getenv('POSTGRESPWD')),
     }
 }
+print(DATABASES)
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
@@ -209,33 +215,3 @@ SESSION_CACHE_ALIAS = "default"
 
 CACHE_TTL = 60 * 5
 
-LOGGING = {
-    "version": 1,  # the dictConfig format version
-    "disable_existing_loggers": False,  # retain the default loggers
-    "handlers": {
-            "file": {
-                "level": LOGLEVEL,
-                "class": "logging.FileHandler",
-                "filename": "log_mus.log",
-                "formatter": "verbose",
-            },
-    },
-    "root": {
-
-        "level": "INFO",
-    },
-    "loggers": {
-        "PureOpenAlex": {
-            "level":LOGLEVEL,
-            "handlers": ["file"],
-        },
-    },
-    "formatters": {
-        "verbose": {
-            "format": "{asctime} | {module} [{levelname}] |> {message}",
-            "style": "{",
-            "datefmt": "[%m %d] %H:%M:%S",
-        },
-
-    },
-}

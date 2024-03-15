@@ -13,12 +13,18 @@ import xml.etree.ElementTree as ET
 from more_itertools import batched
 from itertools import chain
 from habanero import Crossref
-from pyalex import Works, Authors, Journals, config
+from pyalex import Works, Authors, Journals
 import pyalex
 from pymongo import MongoClient
 from django.conf import settings
+import httpx
+from datetime import datetime, timedelta
+from PureOpenAlex.models import Paper, DBUpdate
+import xmltodict
+
 MONGOURL = getattr(settings, "MONGOURL")
 APIEMAIL = getattr(settings, "APIEMAIL", "no@email.com")
+OPENAIRETOKEN = getattr(settings, "OPENAIRETOKEN", "")
 
 MONGODB=MongoClient(MONGOURL)
 db=MONGODB["mus"]
@@ -34,23 +40,7 @@ for year in range(start_year, end_year + 1):
     UTKEYWORD.append(f"{year} OA procedure")
 
 ITCKEYWORD=["ITC-ISI-JOURNAL-ARTICLE", "ITC-HYBRID", "ITC-GOLD"]
-def getItems(identifiers):
-    '''
-    If 1 or more items are not present in the main SQL database, use this function to add them.
-    It will choose the data source(s) to use based on the identifier.
 
-    Input:
-    identifiers: a list of identifiers to retrieve data for, preferably in canonical format (see helpers.formatIdentifier)
-
-    returns ??
-    '''
-    from .identifier import IdentifierFactory, Identifier
-    id_factory = IdentifierFactory()
-
-    results=[]
-    ids=id_factory.create(identifiers)
-    # Decide which data to pull from where
-    return results
 
 def getPureItems(years):
     def fillFromPure(year):
@@ -65,9 +55,9 @@ def getPureItems(years):
         Returns:
             total: the number of entries added
         '''
+        result={'ris_pages':[], 'ris_files':[], 'total':0}
 
         api_responses_pure = db["api_responses_pure"]
-        total=0
         base_url = "https://ris.utwente.nl/ws/oai"
         metadata_prefix = "oai_dc"
         set_name = f"publications:year{year}"
@@ -84,6 +74,8 @@ def getPureItems(years):
 
         def process_records(records, xml,total):
             articles=[]
+            result={'ris_pages':[], 'ris_files':[], 'total':0}
+
             # First turn every article into from an XML to a dict
             for record in records:
                 metadata = record.find("oai:metadata", namespace)
@@ -159,11 +151,19 @@ def getPureItems(years):
                     if isinstance(article[tag],list) and len(article[tag])==1:
                         article[tag]=article[tag][0]
 
+            # check if article is already in mongodb
+            addarticles=[]
+            for article in articles:
+                if api_responses_pure.find_one({"identifier":{'ris_page':article["identifier"]["ris_page"]}}) or \
+                    api_responses_pure.find_one({"identifier":{'ris_file':article["identifier"]["ris_file"]}}):
+                        addarticles.append(article)
+                        result['ris_files'].append(article["identifier"]["ris_file"])
+                        result['ris_pages'].append(article["identifier"]["ris_page"])
+                        result['total']+=1
             # add the articles to mongodb
-            api_responses_pure.insert_many(articles)
-            total=total+len(articles)
-            print(f"[{year}] {total} articles (+{len(articles)})")
-            return total
+            if len(addarticles)>0:
+                api_responses_pure.insert_many(addarticles)
+            return result
 
         initial_url = (
             f"{base_url}?verb=ListRecords&metadataPrefix={metadata_prefix}&set={set_name}"
@@ -172,10 +172,12 @@ def getPureItems(years):
 
         list_records = root.find("oai:ListRecords", namespace)
         try:
-            total=process_records(list_records.findall("oai:record", namespace), xml,total)
+            resultt=process_records(list_records.findall("oai:record", namespace), xml)
+            result['total']+=resultt['total']
+            result['ris_files'].extend(resultt['ris_files'])
+            result['ris_pages'].extend(resultt['ris_pages'])
         except Exception as e:
-            print(f"[{year}] {e} while processing initial batch")
-            pass
+            ...
         resumption_token = root.find("oai:ListRecords/oai:resumptionToken", namespace)
         i = 1
         while resumption_token is not None:
@@ -185,24 +187,28 @@ def getPureItems(years):
             try:
                 root, xml = fetch_records(next_url)
                 list_records = root.find("oai:ListRecords", namespace)
-                total=process_records(list_records.findall("oai:record", namespace), xml, total)
+                resultt=process_records(list_records.findall("oai:record", namespace), xml)
+                result['total']+=resultt['total']
+                result['ris_files'].extend(resultt['ris_files'])
+                result['ris_pages'].extend(resultt['ris_pages'])
             except Exception as e:
-                print(f"[{year}] {e} while processing batch {i}")
+                ...
             resumption_token = root.find("oai:ListRecords/oai:resumptionToken", namespace)
 
 
-        return total
+        return result
 
-    results=[]
-
+    result = {'ris_files':[], 'ris_pages':[], 'total':0}
     for year in years:
         t=fillFromPure(year)
-        results.append({"year":year, "articles":t})
-    return results
+        result['ris_files'].extend(t['ris_files'])
+        result['ris_pages'].extend(t['ris_pages'])
+        result['total']+=t['total']
+    return result if result['total']>0 else None
 
 def getDataCiteItems(years):
     api_responses_datacite = db["api_responses_datacite"]
-    total=0
+    result = {'dois':[], 'total':0}
     # the url to retrieve the api response from datacite
     # returns json, with {data:..., meta:..., links:...} as root.
     # data is a list of dicts, one per item.
@@ -236,44 +242,40 @@ def getDataCiteItems(years):
                 if isinstance(value, list):
                     if len(value)==1:
                         tmp[key]=value[0]
-            api_responses_datacite.insert_one(tmp)
-            total=total+1
-            if total%25==0:
-                print(f"{total} DataCite items added")
+            if api_responses_datacite.find_one({"id":tmp['id']}):
+                continue
+            else:
+                api_responses_datacite.insert_one(tmp)
+                result['dois'].append(tmp['id'])
+                result['total']+=1
 
-    return total
+    return result if result['total']>0 else None
 
 def getCrossrefWorks(years):
     api_responses_crossref = db["api_responses_crossref"]
     pagesize=100
     results=cr.works(filter = {'from-pub-date':f'{years[-1]}-01-01','until-pub-date': f'{years[0]}-12-31'}, query_affiliation='twente', cursor = "*", limit = pagesize, cursor_max=100000)
-    total=0
+    result = {'dois':[], 'total':0}
     for page in results:
         articles=[]
         for article in page['message']['items']:
             articles.append(article)
-        total=total+len(articles)
-        api_responses_crossref.insert_many(articles)
-        print(f'{total} Crossref articles [+{len(articles)}]')
+        addarticles=[]
+        for article in articles:
+            if api_responses_crossref.find_one({"DOI":article['DOI']}):
+                continue
+            else:
+                addarticles.append(article)
+                result['dois'].append(article['DOI'])
+        if addarticles:
+            api_responses_crossref.insert_many(addarticles)
+            result['total']+=len(addarticles)
 
-def getOpenAlexWorksInstituteID(years):
-    api_responses_openalex = db["api_responses_utasinstitute_openalex"]
-    query = (
-            Works()
-            .filter(
-                institutions={"id":"I94624287"},
-                publication_year="|".join([str(x) for x in years]),
-            )
-    )
-    total=0
-    for article in batched(chain(*query.paginate(per_page=100, n_max=None)),100):
-        api_responses_openalex.insert_many(article)
-        total=total+len(article)
-        print(f'{total} OpenAlex articles')
-    print(f'{total} OpenAlex articles added filtering on institution id I94624287 (UTwente)')
+    return result if result['total']>0 else None
 
-def getOpenAlexWorksROR(years):
-    api_responses_openalex = db["api_responses_utasinstitute_openalex"]
+
+
+def getOpenAlexWorks(years):
     query = (
             Works()
             .filter(
@@ -281,12 +283,92 @@ def getOpenAlexWorksROR(years):
                 publication_year="|".join([str(x) for x in years]),
             )
     )
-    total=0
+    result = retrieveOpenAlexQuery(query)
+    query = (
+            Works()
+            .filter(
+                institutions={"id":"I94624287"},
+                publication_year="|".join([str(x) for x in years]),
+            )
+    )
+    result2= retrieveOpenAlexQuery(query)
+    result['total']+=result2['total']
+    result['openalex_url'].extend(result2['openalex_url'])
+    result['new']+=result2['new']
+    result['updated']+=result2['updated']
+    result['skipped']+=result2['skipped']
+    if result['total']>0:
+        print(f"[New     items] {result['new']}\n[Updated items] {result['updated']}\n-----------------------\n[Total   edits] {result['total']}")
+        print(f"\n[Skipped] {result['skipped']}")
+        oaupdate = DBUpdate.objects.create(update_source="OpenAlex", update_type="getOpenAlexWorks", details=result)
+        oaupdate.save()
+    else:
+        print("no updates from OpenAlex.")
+
+
+def retrieveOpenAlexQuery(query):
+    api_responses_openalex = db["api_responses_works_openalex"]
+    result={'total':0,'new':0,'updated':0,'skipped':0,'openalex_url':[]}
     for article in batched(chain(*query.paginate(per_page=100, n_max=None)),100):
-        api_responses_openalex.insert_many(article)
-        total=total+len(article)
-        print(f'{total} OpenAlex articles')
-    print(f'{total} OpenAlex articles added filtering on https://ror.org/006hf6230 (UTwente)')
+        for art in article:
+            doc = api_responses_openalex.find_one_and_replace({"id":art['id']}, art, upsert=True)
+            if not doc:
+                result['total'] += 1
+                result['new'] += 1
+                result['openalex_url'].append(art['id'])
+            else:
+                if art['updated_date'] != doc['updated_date']:
+                    result['total'] += 1
+                    result['updated'] += 1
+                    result['openalex_url'].append(art['id'])
+                else:
+                    result['skipped']+=1
+
+    return result
+
+def addItemsFromOpenAire():
+    def get_openaire_token():
+        refreshurl=f'https://services.openaire.eu/uoa-user-management/api/users/getAccessToken?refreshToken={OPENAIRETOKEN}'
+        tokendata = httpx.get(refreshurl)
+        return tokendata.json()
+
+    result = {'openalex_url':[], 'total':0}
+    mongo_openaire_results=db['api_responses_openaire']
+    tokendata=get_openaire_token()
+    time = datetime.now()
+    url = 'https://api.openaire.eu/search/researchProducts'
+    headers = {
+        'Authorization': f'Bearer {tokendata.get("access_token")}'
+    }
+
+    paperlist = Paper.objects.filter(year__gte=2023).values('doi','openalex_url')
+    for paper in paperlist:
+        if mongo_openaire_results.find_one({'id':paper['openalex_url']}):
+            ...
+            continue
+        params = {'doi':paper['doi'].replace('https://doi.org/','')}
+        try:
+            r = httpx.get(url, params=params, headers=headers)
+        except Exception as e:
+            ...
+        try:
+            metadata = xmltodict.parse(r.text, attr_prefix='',dict_constructor=dict,cdata_key='text', process_namespaces=True).get('response').get('results').get('result').get('metadata').get('http://namespace.openaire.eu/oaf:entity').get('http://namespace.openaire.eu/oaf:result')
+        except Exception as e:
+            continue
+
+        metadata['id']=paper['openalex_url']
+        mongo_openaire_results.insert_one(metadata)
+        result['total'] += 1
+        result['openalex_url'].append(paper['openalex_url'])
+        if datetime.now()-time > timedelta(minutes=58):
+            tokendata=get_openaire_token()
+            headers = {
+                'Authorization': f'Bearer {tokendata.get("access_token")}'
+            }
+            time = datetime.now()
+
+
+    return result if result['total']>0 else None
 
 def getOpenAlexAuthorData():
     '''
@@ -295,6 +377,7 @@ def getOpenAlexAuthorData():
     Check if author has been added to database, if not, add it.
     If author is UT author, remember to also add UT author data -> get_from_scraper -> getUTPeoplePageData
     '''
+
     def getAuthorListFromDB():
         import time
         authorids=[]
@@ -332,32 +415,49 @@ def getOpenAlexAuthorData():
         print(f'{len(alreadyadded)} already in DB')
         return authorids, utauthorids
 
-    MONGODB = MongoClient('mongodb://smops:bazending@192.168.2.153:27017/')
+    result={'total':0,'non-ut':0,'ut':0,'non_ut_openalex_urls':[], 'ut_openalex_urls':[]}
+
+    MONGODB = MongoClient(MONGOURL)
     db=MONGODB["mus"]
     authors_openalex = db["api_responses_authors_openalex"]
     authors, utauthors=getAuthorListFromDB()
+    result['non-ut']=len(authors)
+    result['ut']=len(utauthors)
+    result['non_ut_openalex_urls']=authors
+    result['ut_openalex_urls']=utauthors
     print(f'adding {len(authors)} non-UT authors')
     print(f'of which {len(utauthors)} UT authors')
     batch=[]
     total=0
-    for author in authors:
-        batch.append(author)
-        if len(batch)==50:
-            authorids="|".join(batch)
-            query = Authors().filter(openalex=authorids)
-            for author in batched(chain(*query.paginate(per_page=100, n_max=None)),100):
-                authors_openalex.insert_many(author)
-            total=total+50
-            print(f'added {total} non-UT authors')
-            batch=[]
-            authorids=""
+    i=0
+    for grouping in [authors, utauthors]:
+        i=i+1
+        grouptype="non-UT"
+        if i == 2:
+            grouptype='UT'
+        for author in grouping:
+            batch.append(author)
+            if len(batch)==50:
+                authorids="|".join(batch)
+                query = Authors().filter(openalex=authorids)
+                for author in batched(chain(*query.paginate(per_page=100, n_max=None)),100):
+                    authors_openalex.insert_many(author)
+                total=total+50
+                print(f'added {total} {grouptype} authors')
+                batch=[]
+                authorids=""
 
-    authorids="|".join(batch)
-    query = Authors().filter(openalex=authorids)
-    for author in batched(chain(*query.paginate(per_page=100, n_max=None)),100):
-        authors_openalex.insert_many(author)
-    total=total+len(batch)
-    print(f'added {total} non-UT authors to DB')
+        authorids="|".join(batch)
+        query = Authors().filter(openalex=authorids)
+        for author in batched(chain(*query.paginate(per_page=100, n_max=None)),100):
+            authors_openalex.insert_many(author)
+        total=total+len(batch)
+
+        result['total']=total
+        print(f'added {total} {grouptype} authors to mongoDB')
+        if result['total']>0:
+            dbupdate = DBUpdate.objects.create(update_source="OpenAlex", update_type="getOpenAlexAuthorData", details=result)
+            dbupdate.save()
 
 def getOpenAlexJournalData():
     def getJournalListFromDB():
@@ -407,12 +507,30 @@ def getOpenAlexJournalData():
     total=total+len(batch)
     print(f'added {total} journals to DB')
 
-'''def getAll():
-    years=[2024, 2023, 2022, 2021, 2020, 2019, 2018, 2017, 2016, 2015, 2014, 2013, 2012, 2011, 2010]
-    getOpenAlexWorksROR(years) #or use getOpenAlexWorksInstituteID(years)
-    getPureItems(years)
-    getDataCiteItems(years)
-    getCrossrefWorks(years)
-    ...
 
+def updateAll():
+    years=[2022,2023,2024,2025]
+    getOpenAlexWorks(years)
+
+    result=getOpenAlexAuthorData()
+
+    '''addedfrompure = getPureItems(years)
+    if addedfrompure:
+        pureupdate = DBUpdate.objects.create(update_source="Pure", update_type="manualmongo", details = addedfrompure)
+        pureupdate.save()
+
+    addedfromdatacite = getDataCiteItems(years)
+    if addedfromdatacite:
+        dataciteupdate = DBUpdate.objects.create(update_source="DataCite", update_type="manualmongo", details = addedfromdatacite)
+        dataciteupdate.save()
+
+    addedfromcrossref = getCrossrefWorks(years)
+    if addedfromcrossref:
+        cr = DBUpdate.objects.create(update_source="Crossref", update_type="manualmongo", details=addedfromcrossref)
+        cr.save()
+
+    addedfromopenaire = addItemsFromOpenAire()
+    if addedfromopenaire:
+        oaire=DBUpdate.objects.create(update_source="OpenAire", update_type="manualmongo", details=addedfromopenaire)
+        oaire.save()
 '''

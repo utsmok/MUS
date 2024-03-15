@@ -1,4 +1,5 @@
 {% block content %}
+
 <thead>
     <th>add/remove mark</th>
     <th>details</th>
@@ -67,9 +68,9 @@
                 {% if location.pdf_url != "" %}
                 <div>
                     <a href="{{ location.pdf_url }}"
-                        class="{%if 'twente' in location.pdf_url %} fs-5 link-info {% elif location.is_oa %} link-success {% endif %}"  target ="_blank">
+                        class="{%if 'twente' in location.pdf_url %} link-info {% elif location.is_oa %} link-success {% endif %}"  target ="_blank">
                             {% if 'twente' in location.pdf_url %} 
-                            UTwente RIS Pure 
+                            UT Pure 
                             {% elif location.source.host_org %}
                             Hosted by {{location.source.host_org}} ({{location.source.type}})
                             {% else %}
@@ -96,4 +97,10 @@
         </tr>
     {% endfor %}
 </tbody>
+
+<script>
+    $(document).ready( function () {
+        $('#facultytable').DataTable();
+    } );
+</script>
 {% endblock %}

@@ -1,4 +1,14 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block content %} 
 <div class='' id='search-results'>
+<span>Showing <span class='text-success fw-bold'>{{db_items|length}}</span>/{{db_count}} <span id='mustextlogo'><i class="fas fa-crow" s></i> MUS</span> items.</span>
+{% if db_count != oa_count %}
+<span><span class='text-succes text-bold'>{{oa_found_count}}</span>/{{oa_count}} OpenAlex results already in MUS. </span>
+<span>Showing <span class='text-success fw-bold'>{{oa_items|length}}</span>/{{oa_count}} found OpenAlex items</span>
+{% else %}
+    <span> All OpenAlex results for this query already in MUS. </span>
+{% endif %}
 {% for paper in db_items %}
         <div class='htmx-fade card border border-success bg-success bg-gradient' style="--mdb-bg-opacity: 0.2;">
             <span class="position-absolute top-50 start-100 translate-middle p-2 bg-info rounded-pill badge-danger">
@@ -30,19 +40,17 @@
                 {{ paper.item.external_id }}
             </a>
         </div>
-        {% if paper.type == 'works' %}
+        {% if paper.type == 'work' %}
             <div class='ms-5'>
-                <button onclick="add_article('{{paper.item.external_id}}');" id="{{paper.item.external_id}}-add" class="rounded btn-sm me-2 btn btn-info">
-                    <i id='{{paper.item.external_id}}-add-icon' class="fas fa-download"></i>
-                    <span id="{{paper.item.external_id}}-add-text" class="">
-                        Click to download item to <span id='mustextlogo'><i class="fas fa-crow" s></i> MUS</span>
+                <button hx-post="{% url 'PureOpenAlex:addarticle' paper.item.external_id %}" hx-trigger='click' hx-target='#messages' hx-swap='beforeend' id="{{paper.item.id|cut:'https://openalex.org/'}}-add" class="rounded btn-sm me-2 btn btn-info">
+                    <i id='{{paper.item.id|cut:"https://openalex.org/"}}-add-icon' class="fas fa-download"></i>
+                    <span id="{{paper.item.id|cut:'https://openalex.org/'}}-add-text" class="">
+                        Click to download item to <span id='mustextlogo'><i class="fas fa-crow" s></i> MUS <img class="htmx-indicator" src="{% static 'bars.svg' %}"></span>
+
                     </span>
-                    <span id="{{paper.item.external_id}}-spinner" class="spinner-border spinner-border-sm visually-hidden" role="status"
-                    aria-hidden="true"></span>
-                    <span id="{{paper.item.external_id}}-loading-text" class="visually-hidden">Adding...</span>
                 </button>
             </div>
-        {% elif paper.type == 'authors' %}
+        {% elif paper.type == 'author' %}
             <div class='ms-5'>
                 <a class='button rounded btn-sm me-2 btn btn-info' href='{% url "PureOpenAlex:authorarticles" paper.item.display_name %}' target=_blank>
                     <i class="fas fa-book-open-reader"></i>
@@ -54,11 +62,6 @@
         {% endif %}
     </div>
 {% endfor %}
-<span>Showing <span class='text-success fw-bold'>{{db_items|length}}</span>/{{db_count}} <span id='mustextlogo'><i class="fas fa-crow" s></i> MUS</span> items.</span>
-{% if db_count != oa_count %}
-    <span>{{oa_found_count}} OpenAlex results already in MUS. </span>
-    <span>Showing <span class='text-success fw-bold'>{{oa_items|length}}</span>/{{oa_count}} found OpenAlex items</span>
-{% else %}
-        <span> All OpenAlex results for this query already in MUS. </span>
-{% endif %}
+
 </div>
+{% endblock %}
