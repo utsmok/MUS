@@ -351,7 +351,8 @@ def customfilter(request):
                             filters.append(['end_date',"-".join([str(request.POST['year_end']),month,'01'])])
         logger.info("customfilter [filters] {} [user] {}",filters, request.user.username)
         facultyname, stats, listpapers = getPapers('all', filters, request.user)
-
+        print('rendering...')
+        print(stats)
         return render(request, "faculty_table.html",{"faculty": facultyname, "stats": stats, "articles": listpapers, "filter":filters})
 
 @login_required
@@ -437,11 +438,11 @@ def chart(request):
     fig.update_yaxes(range=[0,100], ticksuffix="%")
     fig.update_xaxes(type='category')
     fig.add_hline(y=baseline_eemcs, line_dash="dot",
-                annotation_text="EEMCS baseline", 
+                annotation_text="EEMCS baseline",
                 annotation_position="top right",
                 line_color='magenta')
     fig.add_hline(y=baseline, line_dash="dot",
-                annotation_text="baseline UT", 
+                annotation_text="baseline UT",
                 annotation_position="top right",
                 line_color='red')
 
