@@ -18,7 +18,7 @@ import re
 from unidecode import unidecode
 from collections import defaultdict
 from rich import print
-
+from django.core.exceptions import MultipleObjectsReturned
 
 
 
@@ -82,7 +82,7 @@ def timeit(func):
 
 
 @timeit
-def processMongoPaper(dataset, user=None):
+def processMongoPaper(dataset, user=None, update=False):
     '''
     Input: dataset with openalex & crossref work data
     Processes the input to create a Paper object in the db including all related other objects
@@ -176,13 +176,16 @@ def processMongoPaper(dataset, user=None):
                 'issued':issued
             }
             for datetype in ['published','published_online','published_print','issued']:
-                if data.get(datetype):
-                    if data.get(datetype).get('date-parts'):
-                        if len(data.get(datetype).get('date-parts')[0])==1:
-                            year=data.get(datetype).get('date-parts')[0][0]
-                            datetypekey[datetype]=date.fromisoformat(f"{year}-01-01")
-                        elif len(data.get(datetype).get('date-parts')[0])==3:
-                            datetypekey[datetype] = date.fromisoformat("-".join([f"{i:02}" for i in data.get('published')['date-parts'][0]]))
+                try:
+                    if data.get(datetype):
+                        if data.get(datetype).get('date-parts'):
+                            if len(data.get(datetype).get('date-parts')[0])==1:
+                                year=data.get(datetype).get('date-parts')[0][0]
+                                datetypekey[datetype]=date.fromisoformat(f"{year}-01-01")
+                            elif len(data.get(datetype).get('date-parts')[0])==3:
+                                datetypekey[datetype] = date.fromisoformat("-".join([f"{i:02}" for i in data.get('published')['date-parts'][0]]))
+                except Exception:
+                    pass
             return {
                 'dates': {
                     'published':datetypekey['published'] ,
@@ -253,10 +256,26 @@ def processMongoPaper(dataset, user=None):
 
     #def calc_ut_keyword_suggestion(oa_work, cr_work):
     #    return None
+    paper=None
     logger.info("adding new paper from mongodata with doi {doi}", doi=dataset['works_openalex']['doi'])
     if Paper.objects.filter(doi=dataset['works_openalex']['doi']).exists():
-        logger.error("paper already exists, aborting. matching itemid: {id}",id=Paper.objects.get(doi=dataset['works_openalex']['doi']).id)
-        return
+        if update:
+            logger.warning("paper already exists; updating")
+            try:
+                paper=Paper.objects.get(doi=dataset['works_openalex']['doi'])
+            except MultipleObjectsReturned:
+                paperset = Paper.objects.filter(doi=dataset['works_openalex']['doi']).order_by('id')
+                len = paperset.count()
+                i = 0
+                for paperentry in paperset:
+                    if i < len:
+                        paperentry.delete()
+                        i = i + 1
+                    else:
+                        paper = paperentry
+        else:
+            logger.error("paper already exists, aborting. matching itemid: {id}",id=Paper.objects.get(doi=dataset['works_openalex']['doi']).id)
+            raise Exception('paper already exists, arg update==False')
 
     oa_work = prep_openalex_data(dataset['works_openalex'])
     if dataset.get('crossref'):
@@ -267,12 +286,18 @@ def processMongoPaper(dataset, user=None):
     oa_work['paper']['license'] = get_license_data(oa_work)
     oa_work['paper']['pagescount'], oa_work['paper']['pages'] = get_pages_count(oa_work, cr_work)
 
-    with transaction.atomic():
-        paper, created = Paper.objects.get_or_create(**oa_work['paper'])
-        if created:
-            paper.save()
-    logger.info("paper created with id {id} ", id=paper.id)
+    if paper:
+        id = paper.id
+        Paper.objects.filter(id=id).update(**oa_work['paper'])
+        logger.info(f"paper {paper.id} updated")
 
+    else:
+        with transaction.atomic():
+            paper, created = Paper.objects.update_or_create(**oa_work['paper'])
+            if created:
+                paper.save()
+            logger.info("paper created with id {id} ", id=paper.id)
+    
     with transaction.atomic():
         paper = add_authorships(oa_work['full'],paper)
     with transaction.atomic():
@@ -284,7 +309,7 @@ def processMongoPaper(dataset, user=None):
     view = None
     if user:
         with transaction.atomic():
-            view, created = viewPaper.objects.get_or_create(user=user, displayed_paper=paper)
+            view, created = viewPaper.objects.update_or_create(user=user, displayed_paper=paper)
             if created:
                 view.save()
     logger.info("fully processed paper with doi {doi}", doi=paper.doi)
@@ -305,7 +330,7 @@ def add_authorships(data, paper):
             orgdata = {
                 'name':orgsrc.get('display_name'),
                 'openalex_url':orgsrc.get('id'),
-                'ror':orgsrc.get('ror'),
+                'ror':orgsrc.get('ror') if orgsrc.get('ror') else '',
                 'type':orgsrc.get('type'),
                 'country_code':orgsrc.get('country_code') if orgsrc.get('country_code') else '',
                 'data_source':'openalex'
@@ -319,24 +344,24 @@ def add_authorships(data, paper):
                 years = org.get('years')
             else:
                 years = []
+            try:
+                if Organization.objects.filter(Q(ror=orgdata['ror']) & Q(name=orgdata['name']) & Q(openalex_url=orgdata['openalex_url'])).exists():
+                    found_org  = Organization.objects.filter(Q(ror=orgdata['ror']) & Q(name=orgdata['name']) & Q(openalex_url=orgdata['openalex_url'])).first()
+                    if found_org.type != orgdata['type'] or found_org.country_code != orgdata['country_code']:
+                        #for now, assumed that the new data is better... might be a bad assumption
+                        if orgdata['type'] and orgdata['type'] != '':
+                            found_org.type = orgdata['type']
+                        if orgdata['country_code'] and orgdata['country_code'] != '':
+                            found_org.country_code = orgdata['country_code']
+                        found_org.save()
+                    org = found_org
 
-            # if org is already in db, either
-            if Organization.objects.filter(Q(ror=orgdata['ror']) & Q(name=orgdata['name']) & Q(openalex_url=orgdata['openalex_url'])).exists():
-                found_org  = Organization.objects.filter(Q(ror=orgdata['ror']) & Q(name=orgdata['name']) & Q(openalex_url=orgdata['openalex_url'])).first()
-                if found_org.type != orgdata['type'] or found_org.country_code != orgdata['country_code']:
-                    #for now, assumed that the new data is better... might be a bad assumption
-                    if orgdata['type'] and orgdata['type'] != '':
-                        found_org.type = orgdata['type']
-                    if orgdata['country_code'] and orgdata['country_code'] != '':
-                        found_org.country_code = orgdata['country_code']
-                    found_org.save()
-                org = found_org
-
-            if not isinstance(org, Organization):
-                org, created = Organization.objects.get_or_create(**orgdata)
-                if created:
-                    org.save()
-
+                if not isinstance(org, Organization):
+                    org, created = Organization.objects.update_or_create(**orgdata)
+                    if created:
+                        org.save()
+            except Exception:
+                continue
             affiliations.append([org, years])
         return affiliations
     def makefullauthor(author, authorship):
@@ -383,13 +408,20 @@ def add_authorships(data, paper):
                 'known_as': authordata.get('display_name_alternatives')
                 })
 
-        authorobject, created = Author.objects.get_or_create(**authordict)
+        authorobject, created = Author.objects.update_or_create(**authordict)
         if created:
             authorobject.save()
+            ut_author_year_match = False
+        else:
+            ut_author_year_match = authorobject.ut_author_year_match
+
         for aff in affiliations:
             authorobject.affils.add(aff[0],through_defaults={'years':aff[1]})
-
-        return authorobject
+            if not ut_author_year_match:
+                if 'twente' in aff[0].name.lower():
+                    if paper.year in aff[1]:
+                        ut_author_year_match = True
+        return authorobject, ut_author_year_match
     def add_peoplepagedata(author, authorobject):
         peoplepage_data = mongo_peoplepage.find_one({"id":author.get('id')})
         if peoplepage_data:
@@ -401,8 +433,9 @@ def add_authorships(data, paper):
                 'employee': authorobject,
                 'email': peoplepage_data.get('email'),
                 'employment_data': peoplepage_data.get('grouplist'),
+                'avatar_path': peoplepage_data.get('avatar_url').replace('https://people.utwente.nl/','author_avatars/').replace('/picture',''),
             }
-            ut, created = UTData.objects.get_or_create(**utdata)
+            ut, created = UTData.objects.update_or_create(**utdata)
             if created:
                 ut.save()
             authorobject.is_ut = True
@@ -412,15 +445,24 @@ def add_authorships(data, paper):
     authorships = data.get('authorships')
     for authorship in authorships:
         author = authorship.get('author')
+        ut_author_year_match = False
         if Author.objects.filter(openalex_url=author.get('id')).exists():
             authorobject = Author.objects.filter(openalex_url=author.get('id')).get()
         else:
-            authorobject = makefullauthor(author, authorship)
+            authorobject, ut_author_year_match = makefullauthor(author, authorship)
+        
+        if not ut_author_year_match:
+            for affil in authorobject.affiliations.all():
+                if 'twente' in affil.organization.name.lower():
+                    if paper.year in affil.years:
+                        ut_author_year_match = True
+                        break
 
         authorshipdict = {
                     'paper':paper,
                     'position':authorship.get('author_position'),
                     'corresponding':authorship.get('is_corresponding'),
+                    'ut_author_year_match':ut_author_year_match
                 }
         paper.authors.add(authorobject, through_defaults={'position':authorshipdict.get('position'), 'corresponding':authorshipdict.get('corresponding')})
 
@@ -441,6 +483,8 @@ def add_locations(data, paper):
             return dealdata, dealdatacontents.get('keywords'), dealdatacontents.get('publisher')
         else:
             return None, None, None
+        
+    
     primary_location = ""
     best_oa_location = ""
     if data.get('primary_location'):
@@ -453,7 +497,12 @@ def add_locations(data, paper):
             best_oa_location = data.get('best_oa_location').get('pdf_url')
     for location in data['locations']:
         if location['source']:
-            source, sourcedict = get_source(location['source'])
+            try:
+                source, sourcedict = get_source(location['source'])
+            except Exception as e:
+                logger.warning(f'exception {e} while trying to add source')
+                source = None
+                sourcedict={}
         else:
             is_twente = False
             if location.get('landing_page_url'):
@@ -463,16 +512,11 @@ def add_locations(data, paper):
                 if 'twente' in location.get('pdf_url'):
                     is_twente = True
             if is_twente:
-                source, created = Source.objects.filter(openalex_url='https://openalex.org/P4363603077').get_or_create({
-                    'openalex_url':'https://openalex.org/P4363603077',
-                    'display_name':'University of Twente RIS',
-                    'host_org':'University of Twente',
-                    'type':'repository',
-                    'is_in_doaj':False,
-                })
-                if created:
-                    source.save()
-                sourcedict = None
+                source = Source.objects.filter(openalex_url='https://openalex.org/P4363603077').first()
+                if source:
+                    sourcedict = None
+                else:
+                    raise Exception("UTWente RIS source not found in DB?")
                 paper.is_in_pure = True
                 paper.save()
             else:
@@ -499,33 +543,34 @@ def add_locations(data, paper):
             'is_best_oa':is_best_oa,
             'source':source
         }
-        location, created = Location.objects.get_or_create(**cleandata)
+        location, created = Location.objects.update_or_create(**cleandata)
         if created:
             location.save()
 
         paper.locations.add(location)
 
-        if any([is_primary, len(data['locations'])==1]) and sourcedict:
-            journaldata=sourcedict
-            journaldata['name']=sourcedict.get('display_name')
-            del journaldata['display_name']
-            if 'homepage_url' in journaldata:
-                del journaldata['homepage_url']
-            dealdata, keywords, publisher = get_deal_data(journaldata['openalex_url'])
-            journaldata['keywords']=keywords
-            journaldata['publisher']=publisher if publisher else ""
-            journal, created = Journal.objects.get_or_create(**journaldata)
-            if created:
-                journal.save()
-            if dealdata and not journal.dealdata:
-                deal, created = DealData.objects.get_or_create(**dealdata)
+        if sourcedict:
+            if any([sourcedict.get('type') == 'journal', is_primary, len(data['locations'])==1]):
+                journaldata=sourcedict
+                journaldata['name']=sourcedict.get('display_name')
+                del journaldata['display_name']
+                if 'homepage_url' in journaldata:
+                    del journaldata['homepage_url']
+                dealdata, keywords, publisher = get_deal_data(journaldata['openalex_url'])
+                journaldata['keywords']=keywords
+                journaldata['publisher']=publisher if publisher else ""
+                journal, created = Journal.objects.update_or_create(**journaldata)
                 if created:
-                    deal.save()
-                journal.dealdata=deal
-                journal.save()
+                    journal.save()
+                if dealdata and not journal.dealdata:
+                    deal, created = DealData.objects.update_or_create(**dealdata)
+                    if created:
+                        deal.save()
+                    journal.dealdata=deal
+                    journal.save()
+                paper.journal=journal
+                paper.save()
 
-            paper.journal=journal
-            paper.save()
     return paper
 def get_source(data):
     issn=data.get('issn_l')
@@ -562,17 +607,18 @@ def get_source(data):
     if not sourcedict.get('homepage_url'):
         sourcedict['homepage_url']=''
 
-    source, created = Source.objects.get_or_create(**sourcedict)
+    source, created = Source.objects.update_or_create(**sourcedict)
     if created:
         source.save()
     sourcedict['publisher']=publisher
+    sourcedict['is_oa']=data.get('is_oa')
     return source, sourcedict
 def determine_is_in_pure(data):
     locs = data.get('locations')
     twentecheckstrs={'twente','ris.utwente.nl','research.utwente.nl'}
     if locs:
         for loc in locs:
-            if str(loc.get('landing_page_url')).lower() in twentecheckstrs or str(loc.get('pdf_url')).lower() in twentecheckstrs:
+            if twentecheckstrs in str(loc.get('landing_page_url')).lower() or twentecheckstrs in str(loc.get('pdf_url')).lower():
                 return True
     return False
 
@@ -594,7 +640,7 @@ def processMongoPureEntry(puredata):
         'keywords': puredata.get('subject').get('subjects','') if puredata.get('subject') else '',
         'ut_keyword': puredata.get('subject').get('ut_keywords', '') if puredata.get('subject') else '',
     }
-    pureentry, created = PureEntry.objects.get_or_create(**pureentrydict)
+    pureentry, created = PureEntry.objects.update_or_create(**pureentrydict)
     if created:
         pureentry.save()
 
@@ -603,6 +649,7 @@ def processMongoPureEntry(puredata):
     pureentry = add_pureentry_ids(puredata.get('identifier', None), pureentry)
     pureentry = match_paper(pureentry)
     logger.debug("pureentry {entryid} created for title {title}", title=puredata.get('title'), entryid=pureentry.id)
+    
 def add_pureentry_journal(ispartof, pureentry):
     if not ispartof:
         return pureentry
@@ -771,8 +818,8 @@ def processMongoTCSPilotEntry(entrydata):
     entry = PilotPureData.objects.create(**entrydict)
     return entry
 @transaction.atomic
-@timeit
 def processMongoOpenAireEntry(openairedata):
+    logger.debug(f'processing openaire data for {openairedata["id"]}')
     paper = Paper.objects.get(openalex_url=openairedata['id'])
     updated=False
     if not paper:
@@ -794,11 +841,11 @@ def processMongoOpenAireEntry(openairedata):
                 oa_publisher = None
 
             if not paper.journal:
-                print('paper does not have journal')
+                logger.debug('paper does not have journal')
                 if any([Journal.objects.filter(issn=oa_issn).exists(), Journal.objects.filter(e_issn=oa_issn).exists(), Journal.objects.filter(name=oa_title).exists()]):
-                    print('journal found in db, adding to paper')
+                    logger.debug('journal found in db, adding to paper')
                     journals = Journal.objects.filter(Q(issn=oa_issn) | Q(e_issn=oa_issn) | Q(name=oa_issn))
-                    print('openaire journal name:', oa_title)
+                    logger.debug('openaire journal name:', oa_title)
                     for journal in journals:
                         if journal.name.lower() == oa_title.lower():
                             paper.journal = journal
@@ -806,12 +853,12 @@ def processMongoOpenAireEntry(openairedata):
                                 paper.save()
                                 updated=True
                 else:
-                    print('journal not found in db. Could be created. Skipping for now.')
+                    logger.debug('journal not found in db. Could be created. Skipping for now.')
             if paper.journal:
                 if paper.journal.publisher and oa_publisher:
                     if paper.journal.publisher.lower() != oa_publisher.lower():
                         if oa_publisher is not None and oa_publisher != '':
-                            print(f'updating journal publisher from {paper.journal.publisher} to {openairedata.get("publisher")}')
+                            logger.debug(f'updating journal publisher from {paper.journal.publisher} to {openairedata.get("publisher")}')
                             paper.journal.publisher = oa_publisher
                             with transaction.atomic():
                                 paper.journal.save()
@@ -819,7 +866,7 @@ def processMongoOpenAireEntry(openairedata):
             if (not paper.pages or not paper.pagescount) or (paper.pages=="" or paper.pagescount==0):
                 if startpage and endpage:
                     if startpage.isdigit() and endpage.isdigit():
-                        print('pageinfo found in openaire, adding to paper')
+                        logger.debug('pageinfo found in openaire, adding to paper')
                         paper.pages = startpage+'-'+endpage
                         paper.pagescount = int(endpage)-int(startpage)+1
                         with transaction.atomic():
@@ -827,7 +874,7 @@ def processMongoOpenAireEntry(openairedata):
                             updated=True
                 if startpage and not endpage:
                     if startpage.isdigit():
-                        print('only startpage found, adding as articlenumber')
+                        logger.debug('only startpage found, adding as articlenumber')
                         paper.pages = startpage
                         paper.pagescount = 1
                         with transaction.atomic():
@@ -850,9 +897,9 @@ def processMongoOpenAireEntry(openairedata):
                             continue
                     except Exception:
                         continue
-                    print('checking link:', link)
+                    logger.debug('checking link:', link)
                     if 'utwente' in link:
-                        print('found utwente pure link, marking as matched')
+                        logger.debug('found utwente pure link, marking as matched')
                         paper.has_pure_oai_match = True
                         paper.save()
                         updated=True
@@ -867,9 +914,9 @@ def processMongoOpenAireEntry(openairedata):
                                             updated=True
                                             break
                             else:
-                                print("no matching pure item in database... maybe add it? How could it have been missed?")
+                                logger.debug("no matching pure item in database... maybe add it? How could it have been missed?")
                         else:
-                            print('link to ut ris not found in openaire data... ?')
+                            logger.debug('link to ut ris not found in openaire data... ?')
 
 
 

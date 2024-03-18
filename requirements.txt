@@ -33,3 +33,7 @@ plotly
 django-ninja
 rapidfuzz
 slippers
+python-Levenshtein
+pyzotero
+aiohttp
+aiodns

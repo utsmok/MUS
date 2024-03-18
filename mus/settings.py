@@ -14,6 +14,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 import os
 from loguru import logger
+from pyzotero import zotero
 
 dotenv_path = 'secrets.env'
 load_dotenv(dotenv_path)
@@ -21,6 +22,11 @@ load_dotenv(dotenv_path)
 MONGOURL = str(os.getenv('MONGOURL'))
 APIEMAIL = str(os.getenv('APIEMAIL'))
 OPENAIRETOKEN = str(os.getenv('OPENAIRETOKEN'))
+ZOTERO_PUBLIC = str(os.getenv('ZOTERO_PUBLIC'))
+ZOTERO_PRIVATE = str(os.getenv('ZOTERO_PRIVATE'))
+ZOTERO = zotero.Zotero(ZOTERO_PUBLIC, 'user', ZOTERO_PRIVATE)
+SCRAPEOPSKEY = str(os.getenv('SCRAPEOPSKEY'))
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -34,10 +40,8 @@ ACCOUNT_ADAPTER = "accounts.adapter.NoNewUsersAccountAdapter"
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-'''if DEBUG:
-    LOGLEVEL = "DEBUG"
-else:'''
-LOGLEVEL = "INFO"
+
+LOGLEVEL = "DEBUG"
 
 LOGFMT = "{time:[%m %d] %H:%M:%S} | {name}>{function}() [{level}] |> {message}"
 logger.remove()

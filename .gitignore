@@ -1,6 +1,9 @@
 _old_stuff_and_notes/
 _ecb_data/
 static/authoravatars
+static/papers
+static/author_avatars
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

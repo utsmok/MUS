@@ -218,6 +218,27 @@ class Paper(TimeStampedModel, models.Model):
                                 ]),
         ]
 
+class MUSPDF(TimeStampedModel, models.Model):
+    paper = models.ForeignKey(
+        Paper, on_delete=models.DO_NOTHING, related_name="pdfs"
+    )
+    location = models.ForeignKey(
+        Location, on_delete=models.DO_NOTHING, related_name="pdfs"
+    )
+    doi = models.CharField(max_length=256, blank=True, null=False)
+    openalex_url = models.CharField(max_length=256, blank=True, null=False)
+    url = models.CharField(max_length=256, blank=True, null=False)
+    is_oa = models.BooleanField(null=True)
+    from_pure = models.BooleanField(null=True)
+    year = models.CharField(max_length=256, blank=True, null=False)
+    filename = models.CharField(max_length=256, blank=True, null=False)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["paper",
+                                "location",
+                                ]),
+        ]
 class Authorship(models.Model):
     author = models.ForeignKey(
         Author, on_delete=models.CASCADE, related_name="authorships"

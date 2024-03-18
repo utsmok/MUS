@@ -37,13 +37,15 @@ pure_works=db['api_responses_pure']
 tcs_pilot_entries=db['pure_report_start_tcs']
 
 
-def addOpenAlexWorksFromMongo():
+def addOpenAlexWorksFromMongo(updatelist=[]):
     datasets=[]
     i=0
     j=0
     filterdois = Paper.objects.all().values_list('doi', flat=True).order_by('doi')
+    added=[]
+    failed=[]
     for document in openalex_works.find().sort('doi'):
-        if document['doi'] in filterdois:
+        if document['doi'] not in updatelist and document['id'] not in updatelist and document['doi'] in filterdois:
             continue
         crossrefdoc={}
         try:
@@ -68,22 +70,24 @@ def addOpenAlexWorksFromMongo():
 
     message=f"processing {len(datasets)}  works"
     logger.info(message)
-    added=[]
-    failed=[]
-    k=0
+
     for dataset in datasets:
         j=j+1
         id=dataset['works_openalex']['id']
         try:
-            processMongoPaper(dataset)
+            update=False
+            if id in updatelist or dataset['works_openalex']['doi'] in updatelist:
+                update=True
+            processMongoPaper(dataset, update=update)
         except Exception as e:
             failed.append(id)
             print(e)
             logger.exception('exception {e} while adding work with doi {doi}',doi=id,e=e)
             if 'value too long' in str(e):
+                logger.warning("continuing because exception is of type: value too long")
                 continue
             else:
-                print(dataset)
+                logger.error("Stopping AddOpenAlexWorksFromMongo because of exception {e}",e=e)
                 break
         added.append(id)
 
@@ -92,7 +96,7 @@ def addOpenAlexWorksFromMongo():
     dbu=DBUpdate.objects.create(update_source='OpenAlex', update_type='addOpenAlexWorksFromMongo',details={'added':len(added),'failed':len(failed),'added_ids':added,'failed_ids':failed})
     dbu.save()
 
-def addPureWorksFromMongo():
+def addPureWorksFromMongo(updatedict={'ris_file':[], 'ris_page':[]}):
     datasets=[]
     i=0
     k=0
@@ -102,16 +106,19 @@ def addPureWorksFromMongo():
     sets['doi'] = set(pureentries.values_list('doi', flat=True))
     sets['ris_file'] = set(pureentries.values_list('risutwente', flat=True))
     sets['ris_page'] = set(pureentries.values_list('researchutwente', flat=True))
+    added=[]
+    failed=[]
     allapientrys = pure_works.find().sort('date',pymongo.DESCENDING)
     for document in allapientrys:
         stop=False
         for checkitemstr in ['doi', 'ris_file', 'ris_page']:
             checkitem = document.get('identifier').get(checkitemstr)
-            if checkitem:
+            if checkitem in updatedict['ris_file'] or checkitem in updatedict['ris_page']:
+                break
+            elif checkitem:
                 if isinstance(checkitem, list):
                     checkitem = checkitem[0]
                 if checkitem in sets[checkitemstr]:
-
                     stop=True
                     break
 
@@ -125,11 +132,18 @@ def addPureWorksFromMongo():
             message=f"processing batch of {len(datasets)} works, skipped {s} works"
             logger.info(message)
             for dataset in datasets:
+                id = dataset.get('identifier').get('ris_file') if dataset.get('identifier').get('ris_file') else dataset.get('identifier').get('ris_page')
+                if not id:
+                    id = dataset.get('identifier').get('doi')
+                if not id:
+                    id = 'unknown_id'
                 try:
                     processMongoPureEntry(dataset)
                 except Exception as e:
                     logger.exception('exception {e} while adding PureEntry', e=e)
+                    failed.append(id)
                     continue
+                added.append(id)
                 k=k+1
                 if k%100==0:
                     message=f"{k} works added in total"
@@ -139,17 +153,26 @@ def addPureWorksFromMongo():
     message=f"final batch: processing {len(datasets)} works"
     logger.info(message)
     for dataset in datasets:
+        id = dataset.get('identifier').get('ris_file') if dataset.get('identifier').get('ris_file') else dataset.get('identifier').get('ris_page')
+        if not id:
+            id = dataset.get('identifier').get('doi')
+        if not id:
+            id = 'unknown_id'
         try:
             processMongoPureEntry(dataset)
         except Exception as e:
             logger.exception('exception {e} while adding PureEntry', e=e)
+            failed.append(id)
             continue
+        added.append(id)
         k=k+1
         if k%100==0:
             message=f"{k} works added in total"
             logger.info(message)
+    dbu=DBUpdate.objects.create(update_source='PureOAI-PMH', update_type='addPureWorksFromMongo',details={'added':len(added),'failed':len(failed),'added_ids':added,'failed_ids':failed})
+    dbu.save()
 
-def addOpenAireWorksFromMongo():
+def addOpenAireWorksFromMongo(updatelist=None):
     datasets=[]
     i=0
     k=0

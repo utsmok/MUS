@@ -21,6 +21,7 @@ from fuzzywuzzy import process, fuzz
 from pymongo import MongoClient
 from PureOpenAlex.models import DBUpdate
 from django.conf import settings
+from loguru import logger
 MONGOURL = getattr(settings, "MONGOURL")
 
 MONGODB = MongoClient(MONGOURL)
@@ -62,9 +63,15 @@ async def getUTPeoplePageData(authors):
                     r = await client.get(url, params={"query": name}, headers=headers)
             except Exception:
                 continue
-            data = r.json()
-            tmp = await processUTPeoplePageData(author, name, data["data"])
-            results.append(tmp)
+            try:
+                data = r.json()
+            except Exception:
+                continue
+            try:
+                tmp = await processUTPeoplePageData(author, name, data["data"])
+                results.append(tmp)
+            except Exception:
+                continue
 
         foundnames={}
         for result in results:
@@ -149,6 +156,7 @@ async def getUTPeoplePageData(authors):
 
     # This is a wrapper function to enable asynchronous scraping and processing
     tasks = []
+    logger.info(f'Scraping ut people page data for {len(authors.keys())} authors')
     for author, names in authors.items():
         task = asyncio.create_task(getData(author,names))
         tasks.append(task)
@@ -167,8 +175,6 @@ def fillUTPeopleData():
 
     return nothing; writes directly to mongodb.
     """
-    MONGODB = MongoClient('mongodb://smops:bazending@192.168.2.153:27017/')
-    db=MONGODB["mus"]
 
     authors_openalex = db["api_responses_UT_authors_openalex"]
     authors_ut_people = db["api_responses_UT_authors_peoplepage"]
@@ -182,7 +188,7 @@ def fillUTPeopleData():
         if author['id'] not in authors.keys():
             authors[author['id']]=author['display_name_alternatives']
 
-    print(f'adding {len(authors.keys())} rows of UT people page data')
+    logger.info(f'adding {len(authors.keys())} rows of UT people page data')
     authorbatch={}
     for key, value in authors.items():
         if not authors_ut_people.find_one({'id':key}):
@@ -196,7 +202,7 @@ def fillUTPeopleData():
                         authors_ut_people.insert_one(item)
                         total=total+1
                 batchtotal=batchtotal+batch
-                print(f'added {total}/{batchtotal} rows of UT data')
+                logger.debug(f'added {total}/{batchtotal} rows of UT data')
                 authorbatch={}
     if len(authorbatch.keys())>0:
         result=asyncio.run(getUTPeoplePageData(authorbatch))
@@ -205,9 +211,11 @@ def fillUTPeopleData():
                 authors_ut_people.insert_one(item)
                 total=total+1
         batchtotal=batchtotal+len(authors.keys())
-        print(f'added {total}/{batchtotal} rows of UT data')
+        logger.debug(f'added {total}/{batchtotal} rows of UT data')
         authors={}
-    print(f"Skipped (already in DB): {already_added} \n Added: {total} \n Failures: {batchtotal-total}")
+    logger.info(f"Done scraping people page. Skipped (already in DB): {already_added} Added: {total} Failures: {batchtotal-total}")
+    dbu = DBUpdate.objects.create(update_source="UTPeoplePage", update_type="fillUTPeopleData", details={'added_count':total,'skipped_count':already_added,'failed_count':batchtotal-total})
+    dbu.save()
 async def getJournalBrowserData(journals):
     async def getOADealData(journalid, journaldata):
         """
@@ -326,6 +334,7 @@ async def getJournalBrowserData(journals):
 
 
     tasks=[]
+    logger.info(f'scraping {len(journals.keys())} journals for dealdata')
     for key, value in journals.items():
         task = asyncio.create_task(getOADealData(key, value))
         tasks.append(task)
@@ -356,7 +365,7 @@ def fillJournalData():
     batchtotal=0
     total=0
     already_added=0
-    print(f"scraping & adding for {len(journals.keys())} journals")
+    logger.info(f"scraping & adding for {len(journals.keys())} journals")
     for key, value in journals.items():
         if journals_dealdata_scraped.find_one({'id':key}):
             already_added=already_added+1
@@ -371,7 +380,7 @@ def fillJournalData():
                         journals_dealdata_scraped.insert_one(item)
                         total=total+1
             batchtotal=batchtotal+batchsize
-            print(f'added {total}/{batchtotal} rows of journal dealdata [{already_added} skipped]')
+            logger.debug(f'added {total}/{batchtotal} rows of journal dealdata [{already_added} skipped]')
             journalbatch={}
 
 
@@ -381,16 +390,6 @@ def fillJournalData():
             journals_dealdata_scraped.insert_one(item)
             total=total+1
     batchtotal=batchtotal+len(journalbatch.keys())
-    print(f'added {total}/{batchtotal} rows of journal dealdata [{already_added} skipped]')
+    logger.debug(f'added {total}/{batchtotal} rows of journal dealdata [{already_added} skipped]')
 
 
-def allscrapes():
-    #TODO: don't forget to actually make the result dict in the functions themselves
-    resultjb = fillJournalData()
-    if resultjb:
-        update = DBUpdate.objects.create(update_source="Journal browser", update_type="manualmongo", details=resultjb)
-        update.save()
-    resultpeople = fillUTPeopleData()
-    if resultpeople:
-        update = DBUpdate.objects.create(update_source="UT People page", update_type="manualmongo", details=resultpeople)
-        update.save()

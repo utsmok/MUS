@@ -21,7 +21,9 @@ import httpx
 from datetime import datetime, timedelta
 from PureOpenAlex.models import Paper, DBUpdate
 import xmltodict
-
+from loguru import logger
+from collections import defaultdict
+from PureOpenAlex.data_add import addOpenAlexWorksFromMongo, addPureWorksFromMongo, addOpenAireWorksFromMongo
 MONGOURL = getattr(settings, "MONGOURL")
 APIEMAIL = getattr(settings, "APIEMAIL", "no@email.com")
 OPENAIRETOKEN = getattr(settings, "OPENAIRETOKEN", "")
@@ -43,6 +45,8 @@ ITCKEYWORD=["ITC-ISI-JOURNAL-ARTICLE", "ITC-HYBRID", "ITC-GOLD"]
 
 
 def getPureItems(years):
+    logger.info("Retrieving new items from Pure OAI-PMH")
+
     def fillFromPure(year):
 
         '''
@@ -65,7 +69,7 @@ def getPureItems(years):
             "oai": "http://www.openarchives.org/OAI/2.0/",
             "oai_dc": "http://www.openarchives.org/OAI/2.0/oai_dc/",
         }
-        total=0
+
         def fetch_records(url):
             response = requests.get(url)
             xml_data = response.text
@@ -250,7 +254,6 @@ def getDataCiteItems(years):
                 result['total']+=1
 
     return result if result['total']>0 else None
-
 def getCrossrefWorks(years):
     api_responses_crossref = db["api_responses_crossref"]
     pagesize=100
@@ -272,10 +275,8 @@ def getCrossrefWorks(years):
             result['total']+=len(addarticles)
 
     return result if result['total']>0 else None
-
-
-
 def getOpenAlexWorks(years):
+    logger.info("Retrieving OpenAlex API results for UT works")
     query = (
             Works()
             .filter(
@@ -297,18 +298,17 @@ def getOpenAlexWorks(years):
     result['new']+=result2['new']
     result['updated']+=result2['updated']
     result['skipped']+=result2['skipped']
+    result['dois'].extend(result2['dois'])
     if result['total']>0:
-        print(f"[New     items] {result['new']}\n[Updated items] {result['updated']}\n-----------------------\n[Total   edits] {result['total']}")
-        print(f"\n[Skipped] {result['skipped']}")
+        logger.info(f"[New     items] {result['new']}\n[Updated items] {result['updated']}\n-----------------------\n[Total   edits] {result['total']}")
+        logger.info(f"\n[Skipped] {result['skipped']}")
         oaupdate = DBUpdate.objects.create(update_source="OpenAlex", update_type="getOpenAlexWorks", details=result)
         oaupdate.save()
     else:
-        print("no updates from OpenAlex.")
-
-
+        logger.info("no API updates from OpenAlex.")
 def retrieveOpenAlexQuery(query):
     api_responses_openalex = db["api_responses_works_openalex"]
-    result={'total':0,'new':0,'updated':0,'skipped':0,'openalex_url':[]}
+    result={'total':0,'new':0,'updated':0,'skipped':0,'openalex_url':[], 'dois':[]}
     for article in batched(chain(*query.paginate(per_page=100, n_max=None)),100):
         for art in article:
             doc = api_responses_openalex.find_one_and_replace({"id":art['id']}, art, upsert=True)
@@ -316,23 +316,24 @@ def retrieveOpenAlexQuery(query):
                 result['total'] += 1
                 result['new'] += 1
                 result['openalex_url'].append(art['id'])
+                result['dois'].append(art['doi'])
             else:
                 if art['updated_date'] != doc['updated_date']:
                     result['total'] += 1
                     result['updated'] += 1
                     result['openalex_url'].append(art['id'])
+                    result['dois'].append(art['doi'])
                 else:
                     result['skipped']+=1
 
     return result
-
 def addItemsFromOpenAire():
     def get_openaire_token():
         refreshurl=f'https://services.openaire.eu/uoa-user-management/api/users/getAccessToken?refreshToken={OPENAIRETOKEN}'
         tokendata = httpx.get(refreshurl)
         return tokendata.json()
 
-    result = {'openalex_url':[], 'total':0}
+    result = {'openalex_url':[], 'dois':[], 'total':0}
     mongo_openaire_results=db['api_responses_openaire']
     tokendata=get_openaire_token()
     time = datetime.now()
@@ -360,16 +361,21 @@ def addItemsFromOpenAire():
         mongo_openaire_results.insert_one(metadata)
         result['total'] += 1
         result['openalex_url'].append(paper['openalex_url'])
+        result['dois'].append(paper['doi'])
         if datetime.now()-time > timedelta(minutes=58):
-            tokendata=get_openaire_token()
-            headers = {
-                'Authorization': f'Bearer {tokendata.get("access_token")}'
-            }
-            time = datetime.now()
+            try:
+                tokendata=get_openaire_token()
+                headers = {
+                    'Authorization': f'Bearer {tokendata.get("access_token")}'
+                }
+                time = datetime.now()
+            except Exception as e:
+                logger.error('exception {e} while retrieving OpenAire item {id}', e=e, id=metadata['id'])
+                break
+
 
 
     return result if result['total']>0 else None
-
 def getOpenAlexAuthorData():
     '''
     Go through all the works in the database and get detailed author data for each author.
@@ -385,8 +391,8 @@ def getOpenAlexAuthorData():
         alreadyadded=[]
         i=0
         api_responses_openalex = db["api_responses_works_openalex"]
-        authors_openalex = db["api_responses_UT_authors_openalex"]
-
+        authors_openalex = db["api_responses_authors_openalex"]
+        authors_ut_openalex = db['api_responses_UT_authors_openalex']
         start=time.time()
         for article in api_responses_openalex.find():
             i=i+1
@@ -454,22 +460,17 @@ def getOpenAlexAuthorData():
         total=total+len(batch)
 
         result['total']=total
-        print(f'added {total} {grouptype} authors to mongoDB')
+        logger.info(f'added {total} {grouptype} authors to mongoDB')
         if result['total']>0:
             dbupdate = DBUpdate.objects.create(update_source="OpenAlex", update_type="getOpenAlexAuthorData", details=result)
             dbupdate.save()
-
 def getOpenAlexJournalData():
     def getJournalListFromDB():
-        import time
         journals={}
         i=0
         api_responses_openalex = db["api_responses_openalex"]
-        start=time.time()
         for article in api_responses_openalex.find():
             i=i+1
-            if i%1000==0:
-                print(f'journals for {i} articles processed in {int(time.time()-start)}s')
             if 'locations' in article:
                 for location in article['locations']:
                     try:
@@ -485,7 +486,17 @@ def getOpenAlexJournalData():
 
     journals_openalex = db["api_responses_journals_openalex"]
     journals=getJournalListFromDB()
-    print(f'adding {len(journals)} journals')
+    
+    mongojournals=set()
+    for journal in journals_openalex.find():
+        mongojournals.add(journal['id'])
+    
+    
+    for journal in journals.keys():
+        if journal in mongojournals:
+            del journals[journal]
+
+    logger.info(f'looking up {len(journals)} journals')
     batch=[]
     total=0
     for journal in journals.keys():
@@ -493,44 +504,20 @@ def getOpenAlexJournalData():
         if len(batch)==50:
             journalids="|".join(batch)
             query = Journals().filter(openalex=journalids)
-            for author in batched(chain(*query.paginate(per_page=100, n_max=None)),100):
-                journals_openalex.insert_many(author)
+            for items in batched(chain(*query.paginate(per_page=100, n_max=None)),100):
+                journals_openalex.insert_many(items)
             total=total+50
-            print(f'added {total} journals')
             batch=[]
             journalids=""
 
     journalids="|".join(batch)
     query = Journals().filter(openalex=journalids)
-    for author in batched(chain(*query.paginate(per_page=100, n_max=None)),100):
-        journals_openalex.insert_many(author)
+    for items in batched(chain(*query.paginate(per_page=100, n_max=None)),100):
+        journals_openalex.insert_many(items)
     total=total+len(batch)
-    print(f'added {total} journals to DB')
+    logger.info(f'added {total} journals to DB')
+
+    dbupdate = DBUpdate.objects.create(update_source="OpenAlex", update_type="getOpenAlexJournalData", details={'added':total, 'added_ids':list(journals.keys())})
+    dbupdate.save()
 
 
-def updateAll():
-    years=[2022,2023,2024,2025]
-    getOpenAlexWorks(years)
-
-    result=getOpenAlexAuthorData()
-
-    '''addedfrompure = getPureItems(years)
-    if addedfrompure:
-        pureupdate = DBUpdate.objects.create(update_source="Pure", update_type="manualmongo", details = addedfrompure)
-        pureupdate.save()
-
-    addedfromdatacite = getDataCiteItems(years)
-    if addedfromdatacite:
-        dataciteupdate = DBUpdate.objects.create(update_source="DataCite", update_type="manualmongo", details = addedfromdatacite)
-        dataciteupdate.save()
-
-    addedfromcrossref = getCrossrefWorks(years)
-    if addedfromcrossref:
-        cr = DBUpdate.objects.create(update_source="Crossref", update_type="manualmongo", details=addedfromcrossref)
-        cr.save()
-
-    addedfromopenaire = addItemsFromOpenAire()
-    if addedfromopenaire:
-        oaire=DBUpdate.objects.create(update_source="OpenAire", update_type="manualmongo", details=addedfromopenaire)
-        oaire.save()
-'''
