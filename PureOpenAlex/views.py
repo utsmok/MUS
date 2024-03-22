@@ -270,6 +270,7 @@ def filtertoolpage(request):
 @login_required
 def customfilter(request):
     '''
+    TODO: move logic to data_view or something, out of views.py, make more modular to use in other functions
     Returns a table with papers based on requested filters.
     Needs more testing, code needs cleanup.
     '''
@@ -513,4 +514,39 @@ def chart(request):
     
     chart = fig.to_html()
     print('rendering chart')
+    return render(request, "chart.html", {"chart": chart})
+
+def customchart(request):
+    '''
+    Make a custom chart based on the user's selections
+    request.POST contains the user's selections:
+    - grouping: how to group the results
+    - filters: uses the same logic as customfilter to generate the list of papers that contain the data for the chart
+
+    returns a rendered chart
+    '''
+    fig = go.Figure()
+    if request.method == "POST":
+        filters = []
+        grouping = []
+        for key, value in request.POST.items():
+            print(key, value)
+            if key == 'csrfmiddlewaretoken':
+                continue
+            if key == 'grouping':
+                # determine how to group the data
+                grouping = value
+            elif key == 'filters':
+                # check if filters are valid, process them, and call getPapers with the filters
+                for key, value in value.items():
+                    filters.append((key, value))
+                facultyname, stats, listpapers = getPapers('all', filters, request.user)
+            else:
+                print('unknown key', key)
+
+    # determine the chart type based on grouping & filters
+    # then generate the chart
+    # export it to html & return the render
+    chart = fig.to_html()
+
     return render(request, "chart.html", {"chart": chart})
