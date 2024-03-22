@@ -544,6 +544,59 @@ def get_raw_data(article_id, user=None):
     return article, fulljson, raw_data
 
 def exportris(papers):
+    # this is how the ris fields are imported in Pure
+    mapping_ris_to_pure = {
+        'T1': 'Title',
+        'T2': 'Subtitle or Event name',
+        'AU': 'Contributor',
+        'N1': 'Bibliographic Note',
+        'PY': 'Publication Date',
+        'Y1': 'Publication Date',
+        'Y2': 'Event Date',
+        'AB': 'Abstract',
+        'N2': 'Abstract',
+        'KW': 'Keyword',
+        'UR': 'Other Links',
+        'U2': 'DOI',
+        'DO': 'DOI',
+        'M3': 'Research Output Type',
+        'AN': 'Publication Import ID',
+        'VL': 'Volume',
+        'JO': 'Journal name',
+        'JF': 'Journal name',
+        'SN': 'ISSN or ISBN',
+        'IS': 'Issue',
+        'M1': 'Article Number',
+        'SP': 'Pages (begin)',
+        'EP': 'Pages (end)',
+        'BT': 'Host Publication',
+        'CY': 'Place of Publication',
+    }
+    #this is the mus data that is used to build the ris file
+    mapping_ris_to_mus = {
+        "TY",itemtypekey[paper.itemtype],
+        "TI",paper.title,
+        "AU",[(author.last_name+', '+author.first_name) for author in paper.authors.all().only('last_name','first_name').values()],
+        "PY",paper.date,
+        "Y1",paper.year,
+        'N2',paper.abstract,
+        'N1',paper.abstract,
+        'KW',[keyword.get('keyword') for keyword in paper.keywords] if paper.keywords else '',
+        'UR',[link.landing_page_url for link in paper.locations.all()],
+        'U2',paper.doi.replace('https://doi.org/',''),
+        'DO',paper.doi.replace('https://doi.org/',''),
+        'M3',paper.itemtype,
+        'VL',paper.volume,
+        'JO',paper.journal.name,
+        'JF',paper.journal.name,
+        'SN',paper.journal.issn,
+        'IS',paper.issue,
+        'M1',paper.pages,
+        'SP',paper.pages.split('-')[0],
+        'EP',paper.pages.split('-')[1],
+        #'BT', get host publication name from locations -> is primary -> source -> name or something; or from journal name?
+    }
+
     itemtypekey = {
         'journal-article':'JOUR',
         'posted-content':'GEN',
@@ -571,7 +624,6 @@ def exportris(papers):
 
         for author in paper.authors.all():
             risdata.append(['AU',author.last_name+', '+author.first_name])
-
         risdata.append(["PY",paper.year])
         risdata.append(["Y1",paper.year])
         risdata.append(["N2",paper.abstract])
