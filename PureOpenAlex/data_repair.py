@@ -20,6 +20,7 @@ from pymongo import MongoClient
 from collections import defaultdict
 from rich import print
 from rapidfuzz import process, fuzz, utils
+import pymongo
 
 APIEMAIL = getattr(settings, "APIEMAIL", "no@email.com")
 pyalex.config.email = APIEMAIL
@@ -35,7 +36,8 @@ mongo_peoplepage=db['api_responses_UT_authors_peoplepage']
 mongo_oa_journals = db['api_responses_journals_openalex']
 mongo_openaire_works = db['api_responses_openaire']
 mongo_pureentries = db['api_responses_pure']
-
+mongo_pure_report_start_tcs = db['pure_report_start_tcs']
+mongo_pure_report_ee = db['pure_report_ee']
 '''
 TODO: add fix<...> function for important classes, eg:
     - paper
@@ -505,6 +507,78 @@ def addPureEntryAuthors():
     logger.info(f'{len(faillist)} pureentries failed  | {len(donelist)} pureentries successfully checked')
     dbu = DBUpdate.objects.create(details=details,update_source='OpenAlex', update_type='addpureentryauthors')
     dbu.save()
+def matchPurePilotWithPureEntry():
+
+    mongocols = [ mongo_pure_report_ee] # also add mongo_pure_report_start_tcs
+    addlist = []
+    for group in mongocols:
+        h=0
+        i=0
+        j=0
+        z=0
+        k=0
+        for item in group.find().sort('year', pymongo.DESCENDING):
+            i=i+1
+            if item.get('pure_entry_id'):
+                #already matched
+                k=k+1
+                continue
+            if not item.get('dois'):
+                z=z+1
+                mongo_pure_report_start_tcs.update_one({'pureid': item['pureid']}, {'$set': {'pure_entry_id': None}})
+                continue
+
+            doi = item.get('dois')
+            if isinstance(doi, list):
+                print(item['title'], item['pureid'])
+                print(doi)
+                print("note: more than 1 doi? picked first in list.")
+                doi=doi[0]
+            if isinstance(doi, str):
+                if doi.startswith('https://doi.org/'):
+                    pass
+                else:
+                    doi = 'https://doi.org/' + doi
+
+            pureentry = PureEntry.objects.filter(doi=doi)
+            if not pureentry:
+                pureentry = PureEntry.objects.filter(doi=doi.lower())
+            if not pureentry:
+                if item.get('other_links'):
+                    if isinstance(item['other_links'], list):
+                        for link in item['other_links']:
+                            if 'scopus' in link:
+                                scopuslink = link
+                    elif isinstance(item['other_links'], str):
+                        if 'scopus' in item['other_links']:
+                            scopuslink = item['other_links']
+
+                    if scopuslink:
+                        pureentry = PureEntry.objects.filter(scopus=scopuslink)
+            if not pureentry:
+                pureid = item.get('pureid')
+                pureentry = PureEntry.objects.filter(risutwente__icontains=pureid)
+            if pureentry.count()>0:
+                if pureentry.count == 1:
+                    pure_entry_id = pureentry[0].id
+                    mongo_pure_report_start_tcs.update_one({'pureid': item['pureid']}, {'$set': {'pure_entry_id': pure_entry_id}})
+                else:
+                    pure_entry_ids=[]
+                    for pureentry in pureentry:
+                        pure_entry_ids.append(pureentry.id)
+                    mongo_pure_report_start_tcs.update_one({'pureid': item['pureid']}, {'$set': {'pure_entry_id': pure_entry_ids}})
+                j=j+1
+            else:
+                h=h+1
+                mongo_pure_report_start_tcs.update_one({'pureid': item['pureid']}, {'$set': {'pure_entry_id': None}})
+
+
+        print(f'total:                  {i}')
+        print(f'    already matched:    {k}')
+        print(f'        matched:        {j}/{i-k}')
+        print(f'        no doi:         {z}/{i-k}')
+        print(f'        no match:       {h}/{i-k}')
+
 def fixavatars():
     data = UTData.objects.all()
 

@@ -25,7 +25,7 @@ client=MongoClient(MONGOURL)
 db=client['mus']
 mongo_dblp_raw=db['file_dblp_raw']
 mongo_pure_report_start_tcs=db['pure_report_start_tcs']
-
+mongo_pure_report_ee=db['pure_report_ee']
 global added
 global processed
 added = 0
@@ -49,9 +49,13 @@ def getdblp():
     xmltodict.parse(GzipFile('dblp.xml.gz'),
                     item_depth=2, item_callback=handle_dblp)
 
-def getfrompurereport(filename='pure_report_before_pilot_tcs'):
+def getfrompurereport(group):
     result={'pureids':[], 'total':0}
-
+    filename=f'pure_report_{group}'
+    if group == 'ee':
+        mongocoll=mongo_pure_report_ee
+    elif group == 'tcs':
+        mongocoll=mongo_pure_report_start_tcs
     start = time()
     i=0
     final = []
@@ -134,21 +138,25 @@ def getfrompurereport(filename='pure_report_before_pilot_tcs'):
 
     addlist=[]
     for item in final:
-        if mongo_pure_report_start_tcs.find_one({"pureid":item['pureid']}):
+        if mongocoll.find_one({"pureid":item['pureid']}):
             continue
         else:
             addlist.append(item)
             result['total']+=1
             result['pureids'].append(item['pureid'])
     if addlist:
-        mongo_pure_report_start_tcs.insert_many(addlist)
+        mongocoll.insert_many(addlist)
 
     return result if result['total']>0 else None
 
 
 
 def addfromfiles():
-    result = getfrompurereport()
+    result = getfrompurereport('ee')
+    if result:
+        dbupdate=DBUpdate.objects.create(update_source="Pure EE Report", update_type="manualmongo", details = result)
+        dbupdate.save()
+    '''result = getfrompurereport('tcs')
     if result:
         dbupdate=DBUpdate.objects.create(update_source="Pure TCS Report", update_type="manualmongo", details = result)
-        dbupdate.save()
+        dbupdate.save()'''

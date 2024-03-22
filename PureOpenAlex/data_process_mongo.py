@@ -769,8 +769,7 @@ def match_paper(pureentry):
             paper.save()
         logger.debug("matching paper found for pureentry {entryid}", entryid=pureentry.id)
     return pureentry
-
-def processMongoTCSPilotEntry(entrydata):
+def processMongoPureReportEntry(entrydata):
     UTKEYWORD=["UT-Hybrid-D", "UT-Gold-D", "NLA", "N/A OA procedure", "n/a OA procedure"]
 
     entry = None
@@ -782,7 +781,7 @@ def processMongoTCSPilotEntry(entrydata):
         'all_authors': entrydata.get('all_authors'),
         'ut_authors': entrydata.get('ut_authors'),
         'other_links': entrydata.get('other_links',''),
-        'apc_paid_amount': entrydata.get('apc_paid_amount'),
+        'apc_paid_amount': entrydata.get('apc_paid_amount') if isinstance(entrydata.get('apc_paid_amount'), float) or isinstance(entrydata.get('apc_paid_amount'), int) else None,
         'file_names': entrydata.get('file_names',[]),
         'article_number': entrydata.get('article_number',''),
         'item_type': entrydata.get('item_type'),
@@ -792,7 +791,7 @@ def processMongoTCSPilotEntry(entrydata):
         'import_source': entrydata.get('import_source',''),
         'journal_title': entrydata.get('journal_title',''),
         'issn': entrydata.get('issn',''),
-        'is_doaj': entrydata.get('is_doaj',False),
+        'is_doaj': entrydata.get('is_doaj',False) if isinstance(entrydata.get('is_doaj'), bool) else False,
         'publisher_journal': entrydata.get('publisher_journal',''),
         "pure_entry_created" :entrydata.get('pure_entry_dates').get('date_created'),
         "pure_entry_last_modified":entrydata.get('pure_entry_dates').get('last_modified'),
@@ -803,7 +802,7 @@ def processMongoTCSPilotEntry(entrydata):
         'publisher_other':entrydata.get('publisher_other',''),
         'ut_keyword':'',
         'pages':entrydata.get('pages',''),
-        'pagescount':entrydata.get('pagescount'),
+        'pagescount':entrydata.get('pagescount',None) if isinstance(entrydata.get('pagescount'), int) else None,
     }
     if entrydata.get('keywords'):
         if isinstance(entrydata.get('keywords'), list):
@@ -816,7 +815,11 @@ def processMongoTCSPilotEntry(entrydata):
                 entrydict['ut_keyword'] = entrydata.get('keywords')
 
     entry = PilotPureData.objects.create(**entrydict)
+    if entrydata.get('pure_entry_id') and entry:
+        pureentry = PureEntry.objects.filter(pureid=entrydata.get('pure_entry_id')).first().pilot_pure_data = entry
+        pureentry.save()
     return entry
+
 @transaction.atomic
 def processMongoOpenAireEntry(openairedata):
     logger.debug(f'processing openaire data for {openairedata["id"]}')

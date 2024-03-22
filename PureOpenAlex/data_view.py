@@ -6,7 +6,7 @@ from .models import (
     viewPaper,
 )
 from django.db.models import Count, Q, Prefetch, Exists, OuterRef
-from .data_helpers import TCSGROUPS, TCSGROUPSABBR
+from .data_helpers import TCSGROUPS, TCSGROUPSABBR, EEGROUPS, EEGROUPSABBR
 import regex as re
 from datetime import datetime
 from loguru import logger
@@ -77,7 +77,7 @@ def generateMainPage(user):
 
 
 def getPapers(name, filter="all", user=None):
-    if user==None:
+    if user is None:
         username = "none"
     else:
         username = user.username
@@ -145,16 +145,29 @@ def getPapers(name, filter="all", user=None):
                     finalfilters['bools'].append(Q(is_oa=False))
             if filter == 'apc':
                 finalfilters['bools'].append((Q(apc_listed_value__isnull=False) & ~Q(apc_listed_value='')))
-            if filter == 'TCS':
+            if filter == 'TCS' or filter == 'EE':
                 # get all papers where at least one of the authors has a linked AFASData entry that has 'is_tcs'=true
                 # also get all papers where at least one of the authors has a linked UTData entry where current_group is in TCSGROUPS or TCSGROUPSABBR
-                tcscheck = TCSGROUPS + TCSGROUPSABBR
+                if filter == 'TCS':
+                    grouplist = TCSGROUPS + TCSGROUPSABBR
+                elif filter == 'EE':
+                    grouplist = EEGROUPS + EEGROUPSABBR
                 q_expressions = Q()
-                for group_abbr in TCSGROUPSABBR:
-                    q_expressions |= Q(
-                        authorships__author__utdata__employment_data__contains={'group': group_abbr}
+                for group_abbr in grouplist:
+                    q_expressions |= (
+                            Q(
+                                authorships__author__utdata__employment_data__contains={'group': group_abbr}
+                            )
+                        &
+                            Q(
+                                authorships__author__utdata__employment_data__contains={'faculty':'EEMCS'}
+                            )
                     )
-                finalfilters['groups'].append((Q(authorships__author__utdata__current_group__in=tcscheck) | q_expressions))
+                    
+                finalfilters['groups'].append(((Q(authorships__author__utdata__current_group__in=grouplist) | q_expressions)) & Q(
+                        authorships__author__utdata__current_faculty='EEMCS'
+                    ))
+            
             if filter == 'author':
                 author = Author.objects.get(name = name)
                 finalfilters['authors'].append(Q(

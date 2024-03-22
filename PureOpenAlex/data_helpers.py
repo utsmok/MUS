@@ -50,6 +50,34 @@ TCSGROUPSABBR = [
     "HMI",
 ]
 
+EEGROUPS = [
+    'AMBER',
+    'Biomedical Signals and Systems',
+    'The BIOS lab-on-a-chip group',
+    'Integrated Circuit Design',
+    'Nano Electronics',
+    'Robotics and Mechatronics',
+    'Integrated Devices and Systems ',
+    'Power Electronic & Electromagnetic Compatibility',
+    'Radio Systems',
+    'Computer Architecture for Embedded Systems',
+    'Design and Analysis of Communication Systems',
+    'Datamanagement & Biometrics',
+]
+
+EEGROUPSABBR = [
+    'AMBER',
+    'BSS',
+    'BIOS',
+    'ICD',
+    'NE',
+    'RAM',
+    'PE',
+    'RS',
+    'CAES',
+    'DACS',
+    'DMB',
+]
 start_year = 2000
 end_year = 2030
 

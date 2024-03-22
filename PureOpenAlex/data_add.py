@@ -3,7 +3,7 @@ from pyalex import Works
 from .namematcher import NameMatcher
 from .models import  Paper, viewPaper, PureEntry, DBUpdate
 from django.db import transaction
-from .data_process_mongo import processMongoPaper, processMongoPureEntry, processMongoOpenAireEntry, processMongoTCSPilotEntry
+from .data_process_mongo import processMongoPaper, processMongoPureEntry, processMongoOpenAireEntry, processMongoPureReportEntry
 from pymongo import MongoClient
 from django.conf import settings
 from loguru import logger
@@ -35,7 +35,8 @@ openalex_works=db['api_responses_works_openalex']
 crossref_info=db['api_responses_crossref']
 pure_works=db['api_responses_pure']
 tcs_pilot_entries=db['pure_report_start_tcs']
-
+mongo_pure_report_start_tcs=db['pure_report_start_tcs']
+mongo_pure_report_ee=db['pure_report_ee']
 
 def addOpenAlexWorksFromMongo(updatelist=[]):
     datasets=[]
@@ -217,19 +218,23 @@ def addOpenAireWorksFromMongo(updatelist=None):
     logger.info(message)
     print(message)
 
-def addTCSPilotWorksFromMongo():
+def addPureReportWorksFromMongo(group):
     datasets=[]
     i=0
     k=0
     h=0
-    for document in tcs_pilot_entries.find():
+    if group == 'ee':
+        mongocoll=mongo_pure_report_ee
+    elif group == 'tcs':
+        mongocoll=mongo_pure_report_start_tcs
+    for document in mongocoll.find():
         datasets.append(document)
         i=i+1
         if i % 500 == 0:
             message=f"processing batch of {len(datasets)} TCS pure entries"
             print(message)
             for dataset in datasets:
-                entry = processMongoTCSPilotEntry(dataset)
+                entry = processMongoPureReportEntry(dataset)
                 if entry:
                     h=h+1
                 k=k+1
@@ -242,10 +247,9 @@ def addTCSPilotWorksFromMongo():
     logger.info(message)
     print(message)
     for dataset in datasets:
-        entry = processMongoTCSPilotEntry(dataset)
+        entry = processMongoPureReportEntry(dataset)
         if entry:
             h=h+1
-
         k=k+1
 
     message=f"processed {k} entries, {h} updated"
