@@ -1,6 +1,6 @@
 from django.db import models
 from django_extensions.db.models import TimeStampedModel
-from .managers import PaperQuerySet
+from .managers import PaperQuerySet, PaperManager, JournalManager, PureEntryManager, AuthorManager, AuthorQuerySet
 
 class Organization(models.Model):
     name = models.CharField(max_length=256)
@@ -21,7 +21,6 @@ class Organization(models.Model):
                                 ]),
         ]
 
-
 class Author(TimeStampedModel, models.Model):
     name = models.CharField(max_length=256, null=True)
     first_name = models.CharField(max_length=256, blank=True, null=True)
@@ -36,6 +35,8 @@ class Author(TimeStampedModel, models.Model):
     openalex_url = models.CharField(max_length=256, blank=True, null=True)
     known_as = models.JSONField(blank=True, null=True)
     scopus_id = models.CharField(max_length=256, unique=True, blank=True, null=True)
+
+    objects = AuthorManager().from_queryset(AuthorQuerySet)()
     class Meta:
         ordering = ['-is_ut', 'last_name']
         indexes = [
@@ -47,7 +48,6 @@ class Author(TimeStampedModel, models.Model):
                                 'known_as',
                                 ]),
         ]
-
 class Affiliation(models.Model):
     years = models.JSONField(default=dict)
     author = models.ForeignKey(Author, on_delete=models.CASCADE, related_name="affiliations")
@@ -83,7 +83,6 @@ class UTData(models.Model):
             ])
 
         ]
-
 class DealData(TimeStampedModel, models.Model):
     deal_status = models.CharField(max_length=256)
     publisher = models.CharField(max_length=512)
@@ -97,7 +96,6 @@ class DealData(TimeStampedModel, models.Model):
                                 'jb_url',
                                 ]),
         ]
-
 class Journal(models.Model):
     name = models.CharField(max_length=512)
     e_issn = models.CharField(max_length=256, blank=True, null=True)
@@ -110,6 +108,7 @@ class Journal(models.Model):
     publisher = models.CharField(max_length=512, blank=True, null=False)
     openalex_url = models.CharField(max_length=256, blank=True, null=False)
     dealdata = models.ForeignKey(DealData, on_delete=models.SET_NULL, blank=True, null=True)
+    objects = JournalManager()
     class Meta:
         indexes = [
             models.Index(fields=["openalex_url",
@@ -119,7 +118,6 @@ class Journal(models.Model):
                                 'publisher',
                                 ]),
         ]
-
 class Source(TimeStampedModel, models.Model):
     openalex_url = models.CharField(max_length=256)
     homepage_url = models.CharField(max_length=512, blank=True)
@@ -139,7 +137,6 @@ class Source(TimeStampedModel, models.Model):
                                 'host_org',
                                 ]),
         ]
-
 class Location(TimeStampedModel, models.Model):
     is_accepted = models.BooleanField(null=True)
     is_oa = models.BooleanField(null=True)
@@ -203,8 +200,8 @@ class Paper(TimeStampedModel, models.Model):
     taverne_date = models.DateField(blank=True, null=True)
     ut_keyword_suggestion = models.CharField(max_length=256, blank=True, null=True)
     topics = models.JSONField(blank=True, null=True)
-    
-    objects = PaperQuerySet().as_manager()
+
+    objects = PaperManager().from_queryset(PaperQuerySet)()
     class Meta:
         ordering = ['-year', 'doi']
         indexes = [
@@ -235,8 +232,7 @@ class MUSPDF(TimeStampedModel, models.Model):
     from_pure = models.BooleanField(null=True)
     year = models.CharField(max_length=256, blank=True, null=False)
     filename = models.CharField(max_length=256, blank=True, null=False)
-    
-    
+
     class Meta:
         indexes = [
             models.Index(fields=["paper",
@@ -343,7 +339,7 @@ class PureEntry(TimeStampedModel, models.Model):
     )
     keywords = models.JSONField(blank=True, null=True)
     pilot_pure_data = models.OneToOneField(PilotPureData, on_delete=models.DO_NOTHING, related_name="pure_entries", blank=True, null=True)
-
+    objects = PureEntryManager()
     class Meta:
         ordering = ['-year', 'doi']
         indexes = [

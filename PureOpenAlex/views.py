@@ -7,18 +7,17 @@ from django.core.cache.backends.base import DEFAULT_TIMEOUT
 from django.db.models import Q
 from django.core.exceptions import ObjectDoesNotExist
 from .data_add import addPaper
-from .data_view import generateMainPage, getPapers, getAuthorPapers, open_alex_autocomplete, get_pure_entries, exportris, get_raw_data
+from .data_view import generateMainPage, getPapers, getAuthorPapers, open_alex_autocomplete, exportris, get_raw_data
 from django.conf import settings
 from .data_helpers import processDOI
 from django.views.decorators.cache import cache_page
 from loguru import logger
 from datetime import datetime
 from io import StringIO
-import plotly.express as px
 import pandas as pd
 import plotly.graph_objects as go
 from rich import print
-from .constants import TCSGROUPS, TCSGROUPSABBR, EEGROUPS, EEGROUPSABBR
+from .constants import TCSGROUPSABBR,  EEGROUPSABBR
 from collections import defaultdict
 
 CACHE_TTL = getattr(settings, "CACHE_TTL", DEFAULT_TIMEOUT)
@@ -26,15 +25,12 @@ CACHE_TTL = getattr(settings, "CACHE_TTL", DEFAULT_TIMEOUT)
 # TODO: Add caching
 # TODO: implement messaging system to frontend -- with history?
 
-
 # TODO: Fix articlenumber / pagenumber stuff
-# TODO: Fix journals again
+
 # TODO: Fix available locations/pdf
-# TODO: For pure entry view fix affl/org view
-# TODO: fix avatars
 
 # TODO: run scheduled updates
-# TODO: user added suggestions and such
+
 # TODO: proper update bookmark count on frontend
 # TODO: fix filtertable not working more than once
 # TODO: add serverside rendering of tables? paginate, filter, sort
@@ -45,7 +41,6 @@ CACHE_TTL = getattr(settings, "CACHE_TTL", DEFAULT_TIMEOUT)
 # TODO: import DBLP papers to postgres from mongo
 # TODO: import data from pure report -> authors + paperlist for tcs
 
-# TODO: make and implement tests
 # TODO: make plots page
 
 
@@ -127,7 +122,7 @@ def single_article_pure_view(request, article_id):
     Returns page showing details for all PureEntry models linked to requested Paper id
     '''
     logger.info("[url] /pure_entries/{} [user] {}", article_id, request.user.username)
-    article, pure_entries = get_pure_entries(article_id, request.user)
+    article, pure_entries = Paper.objects.get_pure_entries(article_id)
     return render(request, "pure_entries.html", {"article": article, 'pure_entries': pure_entries})
 
 def single_article_raw_data(request, article_id):
@@ -214,6 +209,7 @@ def author(request, name):
 def removemark(request, id="all"):
     '''
     Removes bookmark(s) for request.user. if id is "all", removes all bookmarks (default), otherwise only paper with id 'id'.
+    TODO: move to viewPaperManager
     '''
     logger.info("removemark [id] {} [user] {}", id, request.user.username)
     if id == "all":
@@ -235,6 +231,7 @@ def removemark(request, id="all"):
 def addmark(request, id):
     '''
     Adds bookmark for request.user for paper with id 'id'.
+    TODO: move to viewPaperManager
     '''
     logger.info("addmark [id] {} [user] {}", id, request.user.username)
     viewPaper.objects.create(
@@ -250,6 +247,7 @@ def getris(request):
     '''
     returns a ris file with data for all papers marked by the user -> can be used to import data into pure.
     Needs testing.
+    TODO: move to viewPaperManager/paper manager or other place
     '''
     user = request.user
     viewpapers = viewPaper.objects.filter(user=user)
@@ -270,7 +268,6 @@ def filtertoolpage(request):
 @login_required
 def customfilter(request):
     '''
-    TODO: move logic to data_view or something, out of views.py, make more modular to use in other functions
     Returns a table with papers based on requested filters.
     Needs more testing, code needs cleanup.
     '''
@@ -353,6 +350,7 @@ def customfilter(request):
                             if len(month)==1:
                                 month = '0'+month
                             filters.append(['end_date',"-".join([str(request.POST['year_end']),month,'01'])])
+
         logger.info("customfilter [filters] {} [user] {}",filters, request.user.username)
         facultyname, stats, listpapers = getPapers('all', filters, request.user)
         print('rendering...')
@@ -362,14 +360,16 @@ def customfilter(request):
 
 @login_required
 def load_affils(request,author_id):
-    author = Author.objects.filter(id=author_id).prefetch_related('affiliations').first()
-    affils = author.affiliations.all().prefetch_related('organization').all().order_by('-years__-1')
+    affils = Author.objects.get_affiliations(author_id)
     return render(request, "affiliations.html",{"affiliations": affils, "author_id": author_id})
 
 
 @login_required
 def chart(request):
 
+    '''
+    TODO: make modular (see func 'customchart' below), move logic to other file
+    '''
     dataoa = []
     datatypes = []
     oatypes = ['green', 'bronze', 'closed', 'hybrid', 'gold']
@@ -431,10 +431,10 @@ def chart(request):
                 dept='EE'
             if faculty == 'EEMCS':
                 baseline_eemcs[year] += value
-                
+
             elif faculty == 'all':
                 baseline[year] += value
-                
+
             else:
                 dataoa.append({'faculty':faculty, 'dept':dept,'year':year,'counttype':'immediate','count':value, 'amount':immediate, 'total':total})
 
@@ -473,7 +473,7 @@ def chart(request):
                 ))
 
     fig.add_trace(go.Scatter(
-        x=[*baseline_ee.keys()], 
+        x=[*baseline_ee.keys()],
         y=[year['count'] for year in [*baseline_ee.values()]],
         mode='lines+markers',
         name='EE average',
@@ -483,7 +483,7 @@ def chart(request):
         ))
 
     fig.add_trace(go.Scatter(
-        x=[*baseline_tcs.keys()], 
+        x=[*baseline_tcs.keys()],
         y=[year['count'] for year in [*baseline_tcs.values()]],
         mode='lines+markers',
         name='TCS average',
@@ -511,7 +511,7 @@ def chart(request):
             annotation_position="top left",
             line_color='#5E1675')
 
-    
+
     chart = fig.to_html()
     print('rendering chart')
     return render(request, "chart.html", {"chart": chart})

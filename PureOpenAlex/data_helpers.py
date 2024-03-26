@@ -9,7 +9,7 @@ import os
 from .models import UTData, DealData
 from django.db import transaction
 from loguru import logger
-import re   
+import re
 from .constants import TCSGROUPS, TCSGROUPSABBR, EEGROUPS, EEGROUPSABBR, LICENSESOA
 
 ORCID_RECORD_API = "https://pub.orcid.org/v3.0/"
@@ -66,6 +66,7 @@ def convertToEuro(amount, currency, publishdate):
     return int(c.convert(amount, currency, "EUR", publishdate))
 
 def determineIsInPure(paper):
+    # TODO: Move to class function in Paper
     for location in paper.locations.all():
         if 'ris.utwente.nl' in location.landing_page_url.lower() or 'research.utwente.nl' in location.landing_page_url.lower():
             return True
@@ -93,6 +94,7 @@ def processDOI(doi: str) -> str|None:
         return None
 
 def calculateUTkeyword(work, paper, authorships):
+    # TODO: Move to class function in Paper
     keyword = ""
     dealstatus = ""
     license = ""
@@ -150,6 +152,7 @@ def calculateUTkeyword(work, paper, authorships):
 def addAvatars():
     """
     Reads URL for avatar of UT author from UTData.avatar, grabs the jpg and stores that instead
+    TODO: Move to AuthorManager
     """
     from django.core.files.images import ImageFile
 

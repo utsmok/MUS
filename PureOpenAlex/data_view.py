@@ -1,8 +1,5 @@
 from .models import (
-    Location,
-    Author,
     Paper,
-    viewPaper,
 )
 from django.db.models import Prefetch, Exists, OuterRef
 from .constants import FACULTYNAMES
@@ -12,24 +9,6 @@ from rich import print
 from pymongo import MongoClient
 from django.conf import settings
 import json
-
-
-def getTablePrefetches(filterpapers):
-    location_prefetch = Prefetch(
-        "locations",
-        queryset=Location.objects.all().select_related('source'),
-        to_attr="pref_locations",
-    )
-    authors_prefetch =Prefetch(
-        'authors',
-        queryset=Author.objects.all().select_related('utdata'),
-        to_attr="pref_authors",
-    )
-
-    return [
-        location_prefetch,
-        authors_prefetch,
-    ]
 
 def generateMainPage(user):
     """
@@ -71,7 +50,7 @@ def generateMainPage(user):
     )
     total['articles'] += -1
     return total, faculties
-def getPapers(name, filter="all", user=None):    
+def getPapers(name, filter="all", user=None):
     facultyname = ""
     listpapers = []
     if user is None:
@@ -86,7 +65,7 @@ def getPapers(name, filter="all", user=None):
         stats = None
         return facultyname, stats, listpapers
     else:
-        logger.info("getpapers [name] {} [filter] {} [user] {}", name, filter, username)        
+        logger.info("getpapers [name] {} [filter] {} [user] {}", name, filter, username)
         if filter == 'author':
             facultyname = name+" [Author]"
             filterpapers = Paper.objects.get_author_papers(name)
@@ -119,17 +98,6 @@ def getPapers(name, filter="all", user=None):
     stats = listpapers.get_stats()
     return facultyname, stats, listpapers
 
-def get_pure_entries(article_id, user):
-    article=Paper.objects.get(pk=article_id)
-    pure_entries = article.pure_entries.all()
-    author_prefetch=Prefetch(
-            'authors',
-            queryset=Author.objects.filter(pure_entries__in=pure_entries).distinct()
-            .prefetch_related('affiliations').select_related('utdata'),
-        )
-    pure_entries=pure_entries.prefetch_related(author_prefetch)
-
-    return article, pure_entries
 
 def open_alex_autocomplete(query, types=['works','authors'], amount=5):
     '''
@@ -370,7 +338,7 @@ def exportris(papers):
             #'BT', get host publication name from locations -> is primary -> source -> name or something; or from journal name?
         }
 
-        
+
         risdata =[
             ["TY",itemtypekey[paper.itemtype]],
             ["T1",paper.title]

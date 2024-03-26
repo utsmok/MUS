@@ -257,6 +257,7 @@ def addPureReportWorksFromMongo(group):
     print(message)
 
 def addPaper(doi, user):
+    # TODO: Move to PaperManager
     status = 'danger'
     message = f'An unknown error occurred while adding paper {doi} for {user}.'
     openalex_url = ''
