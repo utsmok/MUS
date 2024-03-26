@@ -2,20 +2,17 @@ from .models import (
     Location,
     Author,
     Paper,
-    Authorship,
     viewPaper,
 )
-from django.db.models import Count, Q, Prefetch, Exists, OuterRef
-from .data_helpers import TCSGROUPS, TCSGROUPSABBR, EEGROUPS, EEGROUPSABBR
-import regex as re
-from datetime import datetime
+from django.db.models import Prefetch, Exists, OuterRef
+from .constants import FACULTYNAMES
 from loguru import logger
-from collections import defaultdict
 from io import StringIO
 from rich import print
 from pymongo import MongoClient
 from django.conf import settings
 import json
+
 
 def getTablePrefetches(filterpapers):
     location_prefetch = Prefetch(
@@ -74,309 +71,52 @@ def generateMainPage(user):
     )
     total['articles'] += -1
     return total, faculties
-
-
-def getPapers(name, filter="all", user=None):
+def getPapers(name, filter="all", user=None):    
+    facultyname = ""
+    listpapers = []
     if user is None:
         username = "none"
     else:
         username = user.username
     if isinstance(name, int):
         logger.info("getpaper [id] {} [user] {}", name, username)
-    else:
-        logger.info("getpapers [name] {} [filter] {} [user] {}", name, filter, username)
-
-    facultynamelist = ["EEMCS", "BMS", "ET", "ITC", "TNW", 'eemcs', 'bms', 'et', 'itc','tnw']
-    facultyname = ""
-    listpapers = []
-
-    def getSinglePaper():
         paperid = name
-        filterpapers = Paper.objects.filter(id=paperid)
         facultyname = "single"
-        listpapers = Paper.objects.filter(id=paperid).prefetch_related(
-            *getcommonPrefetches(filterpapers)
-        ).select_related('journal').annotate(
-                marked=Exists(viewPaper.objects.filter(displayed_paper=OuterRef("pk")))
-            )
+        listpapers = Paper.objects.get_single_paper_data(paperid,user)
         stats = None
         return facultyname, stats, listpapers
-
-    def applyFilter(listpapers, filter):
-        '''
-        listpapers = main list of papers that need filtering
-        filter = list of filters
-                each entry is another list with:
-                    [filtername, value to use when filtering]
-                    "" is the default value
-        '''
-
-        if len(filter) == 0:
-            return listpapers
-        if len(filter) == 1:
-            if filter[0][0] == 'all':
-                return listpapers
-
-        finalfilters = defaultdict(list)
-        for item in filter:
-            filter=item[0]
-            value=item[1]
-            logger.debug("[filter] {} [value] {}", filter, value)
-            if filter == "pure_match" and value in ['yes', '']:
-                finalfilters['bools'].append(Q(has_pure_oai_match=True) )
-            if filter == "no_pure_match" or (filter == "pure_match" and value == 'no'):
-                finalfilters['bools'].append((Q(
-                    has_pure_oai_match=False
-                ) | Q(has_pure_oai_match__isnull=True)))
-            if filter == "has_pure_link" and value in ['yes', '']:
-                finalfilters['bools'].append(Q(is_in_pure=True))
-            if filter == "no_pure_link" or (filter == "has_pure_link" and value == 'no'):
-                finalfilters['bools'].append((Q(is_in_pure=False) | Q(is_in_pure__isnull=True)))
-            if filter == "hasUTKeyword":
-                finalfilters['bools'].append(Q(
-                pure_entries__ut_keyword__gt=''
-                ))
-            if filter == "hasUTKeywordNLA":
-                finalfilters['bools'].append(Q(pure_entries__ut_keyword="NLA"))
-            if filter == 'openaccess':
-                if value in ['yes', '', 'true', 'True', True]:
-                    finalfilters['bools'].append(Q(is_oa=True))
-                if value in ['no', 'false', 'False', False]:
-                    finalfilters['bools'].append(Q(is_oa=False))
-            if filter == 'apc':
-                finalfilters['bools'].append((Q(apc_listed_value__isnull=False) & ~Q(apc_listed_value='')))
-            if filter == 'TCS' or filter == 'EE':
-                # get all papers where at least one of the authors has a linked AFASData entry that has 'is_tcs'=true
-                # also get all papers where at least one of the authors has a linked UTData entry where current_group is in TCSGROUPS or TCSGROUPSABBR
-                if filter == 'TCS':
-                    grouplist = TCSGROUPS + TCSGROUPSABBR
-                elif filter == 'EE':
-                    grouplist = EEGROUPS + EEGROUPSABBR
-                q_expressions = Q()
-                for group_abbr in grouplist:
-                    q_expressions |= (
-                            Q(
-                                authorships__author__utdata__employment_data__contains={'group': group_abbr}
-                            )
-                        &
-                            Q(
-                                authorships__author__utdata__employment_data__contains={'faculty':'EEMCS'}
-                            )
-                    )
-                    
-                finalfilters['groups'].append(((Q(authorships__author__utdata__current_group__in=grouplist) | q_expressions)) & Q(
-                        authorships__author__utdata__current_faculty='EEMCS'
-                    ))
-            
-            if filter == 'author':
-                author = Author.objects.get(name = name)
-                finalfilters['authors'].append(Q(
-                    authorships__author=author
-                ))
-            if filter == 'group':
-                group = value
-                finalfilters['groups'].append(Q(
-                    authorships__author__utdata__current_group=group
-                ))
-
-            if filter == 'start_date':
-                start_date = value
-                # should be str in format YYYY-MM-DD
-                datefmt=re.compile(r"^\d{4}-\d{2}-\d{2}$")
-                if datefmt.match(start_date):
-                    finalfilters['dates'].append(Q(
-                        date__gte=start_date
-                    ))
-                else:
-                    raise ValueError("Invalid start_date format")
-
-            if filter == 'end_date':
-                end_date = value
-
-                # should be str in format YYYY-MM-DD
-                datefmt=re.compile(r"^\d{4}-\d{2}-\d{2}$")
-                if datefmt.match(end_date):
-                    finalfilters['dates'].append(Q(
-                        date__lte=end_date
-                    ))
-                else:
-                    raise ValueError("Invalid end_date format")
-
-            if filter == 'type':
-                itemtype = value
-                ITEMTYPES = ['journal-article', 'proceedings', 'proceedings-article','book', 'book-chapter']
-                if itemtype != 'other':
-                    if itemtype == 'book' or itemtype == 'book-chapter':
-                        finalfilters['types'].append(Q(Q(itemtype='book')|Q(itemtype='book-chapter')))
-                    else:
-                        finalfilters['types'].append(Q(itemtype=itemtype))
-                else:
-                    finalfilters['types'].append(~Q(
-                        itemtype__in=ITEMTYPES
-                    ))
-
-            if filter == 'faculty':
-                faculty=value
-                if faculty in facultynamelist:
-                    faculty = faculty.upper()
-                    finalfilters['faculties'].append(Q(
-                        authorships__author__utdata__current_faculty=faculty
-                    ))
-                else:
-                    authors = Author.objects.filter(utdata__isnull=False).filter(~Q(utdata__current_faculty__in=facultynamelist)).select_related('utdata')
-                    finalfilters['faculties'].append(Q(authorships__author__in=authors))
-
-            if filter == 'taverne_passed':
-                date = datetime.today().strftime('%Y-%m-%d')
-                finalfilters['bools'].append(Q(
-                    taverne_date__lt=date
-                ))
-        boolfilter = Q()
-        groupfilter = Q()
-        facultyfilter= Q()
-        typefilter = Q()
-        datefilter = Q()
-        authorfilter = Q()
-
-        for qfilt in finalfilters['bools']:
-            boolfilter = boolfilter & qfilt
-        for qfilt in finalfilters['types']:
-            typefilter = typefilter | qfilt
-        for qfilt in finalfilters['groups']:
-            groupfilter = groupfilter | qfilt
-        for qfilt in finalfilters['faculties']:
-            facultyfilter = facultyfilter | qfilt
-        for qfilt in finalfilters['dates']:
-            datefilter = datefilter & qfilt
-        for qfilt in finalfilters['authors']:
-            authorfilter = authorfilter | qfilt
-
-        finalfilter = boolfilter & typefilter & groupfilter & facultyfilter & datefilter & authorfilter
-        newlist = listpapers.filter(finalfilter)
-        return newlist
-
-    def aggregrateStats(listpapers):
-        stats = listpapers.aggregate(
-            num=Count("id"),
-            numoa=Count("id", filter=Q(is_oa=True)),
-            numpure=Count("id", filter=Q(is_in_pure=True)),
-            numpurematch=Count("id", filter=Q(has_pure_oai_match=True)),
-            numarticles=Count("id", filter=Q(itemtype="journal-article")),
-            articlesinpure=Count(
-                "id", filter=Q(is_in_pure=True, itemtype="journal-article")
-            ),
-            articlesinpurematch=Count(
-                "id", filter=Q(has_pure_oai_match=True, itemtype="journal-article")
-            ),
-            numarticlesoa=Count("id", filter=Q(is_oa=True, itemtype="journal-article")),
-        )
-        return stats
-
-    def getStats(listpapers, stats=None):
-        if not stats:
-            stats = aggregrateStats(listpapers)
-
-        stats["oa_percent"] = (
-            round((stats["numoa"] / stats["num"]) * 100, 2) if stats["num"] else 0
-        )
-        stats["numpure_percent"] = (
-            round((stats["numpure"] / stats["num"]) * 100, 2) if stats["num"] else 0
-        )
-        stats["oa_percent_articles"] = (
-            round((stats["numarticlesoa"] / stats["numarticles"]) * 100, 2)
-            if stats["numarticles"]
-            else 0
-        )
-        stats["articlesinpure_percent"] = (
-            round((stats["articlesinpure"] / stats["numarticles"]) * 100, 2)
-            if stats["numarticles"]
-            else 0
-        )
-        stats["numpurematch_percent"] = (
-            round((stats["numpurematch"] / stats["num"]) * 100, 2)
-            if stats["num"]
-            else 0
-        )
-        stats["articlesinpurematch_percent"] = (
-            round((stats["articlesinpurematch"] / stats["numarticles"]) * 100, 2)
-            if stats["numarticles"]
-            else 0
-        )
-        return stats
-
-    def getcommonPrefetches(filterpapers):
-        authorships_prefetch = Prefetch(
-            "authorships",
-            queryset=Authorship.objects.filter(paper__in=filterpapers).select_related(
-                "author"
-            ),
-            to_attr="preloaded_authorships",
-        )
-        location_prefetch = Prefetch(
-            "locations",
-            queryset=Location.objects.filter(papers__in=filterpapers).select_related("source"),
-            to_attr="preloaded_locations",
-        )
-        authors_and_affiliation_prefetch =Prefetch(
-            'authors',
-            queryset=Author.objects.filter(authorships__paper__in=filterpapers).distinct()
-            .prefetch_related('affils').select_related('utdata'),
-            to_attr="preloaded_authors",
-        )
-        return [
-            authorships_prefetch,
-            location_prefetch,
-            authors_and_affiliation_prefetch,
-        ]
-
-
-
-    if isinstance(name, int):
-        return getSinglePaper()
-    elif filter == 'author':
-        facultyname = name+" [Author]"
-        filterpapers = Paper.objects.filter(authors__name=name).distinct().order_by("-modified")
-        filter = [['all','']]
-    elif name == "marked" or name == "Marked papers":
-        facultyname = "Marked papers"
-        filterpapers=Paper.objects.filter(view_paper__user=user).order_by("-modified")
-        if isinstance(filter, str):
-            filter = [[str(filter),""]]
     else:
-        filterpapers = Paper.objects.all().distinct()
-        if name == "all" or name == "All items":
-            facultyname = "All MUS papers"
-            name = 'all'
+        logger.info("getpapers [name] {} [filter] {} [user] {}", name, filter, username)        
+        if filter == 'author':
+            facultyname = name+" [Author]"
+            filterpapers = Paper.objects.get_author_papers(name)
+            filter = [['all','']]
+        elif name == "marked" or name == "Marked papers":
+            facultyname = "Marked papers"
+            filterpapers=Paper.objects.get_marked_papers(user)
             if isinstance(filter, str):
                 filter = [[str(filter),""]]
         else:
-            if name not in facultynamelist:
-                facultyname = "Other groups"
-                name = 'other'
+            filterpapers = Paper.objects.all().distinct()
+            if name == "all" or name == "All items":
+                facultyname = "All MUS papers"
+                name = 'all'
+                if isinstance(filter, str):
+                    filter = [[str(filter),""]]
             else:
-                facultyname = name
+                if name not in FACULTYNAMES:
+                    facultyname = "Other groups"
+                    name = 'other'
+                else:
+                    facultyname = name
+                if isinstance(filter, str):
+                    filter = [[str(filter),""],['faculty',name]]
+                if isinstance(filter, list):
+                    if ['faculty', name] not in filter:
+                        filter.append(['faculty',name])
 
-            if isinstance(filter, str):
-                filter = [[str(filter),""],['faculty',name]]
-            if isinstance(filter, list):
-                if ['faculty', name] not in filter:
-                    filter.append(['faculty',name])
-    listpapers = (
-        filterpapers
-        .prefetch_related(*getTablePrefetches(filterpapers))
-        .annotate(
-            marked=Exists(viewPaper.objects.filter(displayed_paper=OuterRef("pk")).select_related()),
-        )
-        .defer('abstract','keywords','pure_entries',
-            'apc_listed_value', 'apc_listed_currency', 'apc_listed_value_eur', 'apc_listed_value_usd',
-            'apc_paid_value', 'apc_paid_currency', 'apc_paid_value_eur', 'apc_paid_value_usd',
-            'published_print', 'published_online', 'issued', 'published',
-            'license', 'citations','pages','pagescount', 'volume','issue', 'journal'
-            )
-        .order_by('-year')
-    )
-    listpapers = applyFilter(listpapers, filter)
-    stats = getStats(listpapers)
+    listpapers = filterpapers.get_table_data(filter,user)
+    stats = listpapers.get_stats()
     return facultyname, stats, listpapers
 
 def get_pure_entries(article_id, user):
@@ -481,9 +221,7 @@ def getAuthorPapers(display_name, user=None):
     return getPapers(display_name, 'author', user)
 
 def get_raw_data(article_id, user=None):
-    article=Paper.objects.filter(pk=article_id).prefetch_related('authors').annotate(
-            marked=Exists(viewPaper.objects.filter(displayed_paper=OuterRef("pk")).select_related()),
-        ).first()
+    article=Paper.objects.get_single_paper_data(article_id, user)
     if not article:
         return None, None, None
 
@@ -557,58 +295,7 @@ def get_raw_data(article_id, user=None):
     return article, fulljson, raw_data
 
 def exportris(papers):
-    # this is how the ris fields are imported in Pure
-    mapping_ris_to_pure = {
-        'T1': 'Title',
-        'T2': 'Subtitle or Event name',
-        'AU': 'Contributor',
-        'N1': 'Bibliographic Note',
-        'PY': 'Publication Date',
-        'Y1': 'Publication Date',
-        'Y2': 'Event Date',
-        'AB': 'Abstract',
-        'N2': 'Abstract',
-        'KW': 'Keyword',
-        'UR': 'Other Links',
-        'U2': 'DOI',
-        'DO': 'DOI',
-        'M3': 'Research Output Type',
-        'AN': 'Publication Import ID',
-        'VL': 'Volume',
-        'JO': 'Journal name',
-        'JF': 'Journal name',
-        'SN': 'ISSN or ISBN',
-        'IS': 'Issue',
-        'M1': 'Article Number',
-        'SP': 'Pages (begin)',
-        'EP': 'Pages (end)',
-        'BT': 'Host Publication',
-        'CY': 'Place of Publication',
-    }
-    #this is the mus data that is used to build the ris file
-    mapping_ris_to_mus = {
-        "TY",itemtypekey[paper.itemtype],
-        "TI",paper.title,
-        "AU",[(author.last_name+', '+author.first_name) for author in paper.authors.all().only('last_name','first_name').values()],
-        "PY",paper.date,
-        "Y1",paper.year,
-        'N2',paper.abstract,
-        'N1',paper.abstract,
-        'KW',[keyword.get('keyword') for keyword in paper.keywords] if paper.keywords else '',
-        'UR',[link.landing_page_url for link in paper.locations.all()],
-        'U2',paper.doi.replace('https://doi.org/',''),
-        'DO',paper.doi.replace('https://doi.org/',''),
-        'M3',paper.itemtype,
-        'VL',paper.volume,
-        'JO',paper.journal.name,
-        'JF',paper.journal.name,
-        'SN',paper.journal.issn,
-        'IS',paper.issue,
-        'M1',paper.pages,
-        'SP',paper.pages.split('-')[0],
-        'EP',paper.pages.split('-')[1],
-        #'BT', get host publication name from locations -> is primary -> source -> name or something; or from journal name?
-    }
+
 
     itemtypekey = {
         'journal-article':'JOUR',
@@ -630,6 +317,60 @@ def exportris(papers):
     }
     fullrisdata = []
     for paper in papers:
+        # this is how the ris fields are imported in Pure
+        mapping_ris_to_pure = {
+            'T1': 'Title',
+            'T2': 'Subtitle or Event name',
+            'AU': 'Contributor',
+            'N1': 'Bibliographic Note',
+            'PY': 'Publication Date',
+            'Y1': 'Publication Date',
+            'Y2': 'Event Date',
+            'AB': 'Abstract',
+            'N2': 'Abstract',
+            'KW': 'Keyword',
+            'UR': 'Other Links',
+            'U2': 'DOI',
+            'DO': 'DOI',
+            'M3': 'Research Output Type',
+            'AN': 'Publication Import ID',
+            'VL': 'Volume',
+            'JO': 'Journal name',
+            'JF': 'Journal name',
+            'SN': 'ISSN or ISBN',
+            'IS': 'Issue',
+            'M1': 'Article Number',
+            'SP': 'Pages (begin)',
+            'EP': 'Pages (end)',
+            'BT': 'Host Publication',
+            'CY': 'Place of Publication',
+        }
+        #this is the mus data that is used to build the ris file
+        mapping_ris_to_mus = {
+            "TY",itemtypekey[paper.itemtype],
+            "TI",paper.title,
+            "AU",[(author.last_name+', '+author.first_name) for author in paper.authors.all().only('last_name','first_name').values()],
+            "PY",paper.date,
+            "Y1",paper.year,
+            'N2',paper.abstract,
+            'N1',paper.abstract,
+            'KW',[keyword.get('keyword') for keyword in paper.keywords] if paper.keywords else '',
+            'UR',[link.landing_page_url for link in paper.locations.all()],
+            'U2',paper.doi.replace('https://doi.org/',''),
+            'DO',paper.doi.replace('https://doi.org/',''),
+            'M3',paper.itemtype,
+            'VL',paper.volume,
+            'JO',paper.journal.name,
+            'JF',paper.journal.name,
+            'SN',paper.journal.issn,
+            'IS',paper.issue,
+            'M1',paper.pages,
+            'SP',paper.pages.split('-')[0],
+            'EP',paper.pages.split('-')[1],
+            #'BT', get host publication name from locations -> is primary -> source -> name or something; or from journal name?
+        }
+
+        
         risdata =[
             ["TY",itemtypekey[paper.itemtype]],
             ["T1",paper.title]

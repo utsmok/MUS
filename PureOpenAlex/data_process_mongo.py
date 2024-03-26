@@ -8,9 +8,9 @@ from datetime import date
 from dateutil.relativedelta import relativedelta
 from pymongo import MongoClient
 import pyalex
-from .data_helpers import (
-    invertAbstract,
-    TWENTENAMES,)
+from .constants import TWENTENAMES
+
+from .data_helpers import invertAbstract
 from functools import wraps
 import time
 from loguru import logger

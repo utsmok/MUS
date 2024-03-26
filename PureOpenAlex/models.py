@@ -1,5 +1,6 @@
 from django.db import models
 from django_extensions.db.models import TimeStampedModel
+from .managers import PaperQuerySet
 
 class Organization(models.Model):
     name = models.CharField(max_length=256)
@@ -202,6 +203,8 @@ class Paper(TimeStampedModel, models.Model):
     taverne_date = models.DateField(blank=True, null=True)
     ut_keyword_suggestion = models.CharField(max_length=256, blank=True, null=True)
     topics = models.JSONField(blank=True, null=True)
+    
+    objects = PaperQuerySet().as_manager()
     class Meta:
         ordering = ['-year', 'doi']
         indexes = [
@@ -232,7 +235,8 @@ class MUSPDF(TimeStampedModel, models.Model):
     from_pure = models.BooleanField(null=True)
     year = models.CharField(max_length=256, blank=True, null=False)
     filename = models.CharField(max_length=256, blank=True, null=False)
-
+    
+    
     class Meta:
         indexes = [
             models.Index(fields=["paper",

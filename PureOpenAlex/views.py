@@ -18,7 +18,7 @@ import plotly.express as px
 import pandas as pd
 import plotly.graph_objects as go
 from rich import print
-from .data_helpers import TCSGROUPS, TCSGROUPSABBR, EEGROUPS, EEGROUPSABBR
+from .constants import TCSGROUPS, TCSGROUPSABBR, EEGROUPS, EEGROUPSABBR
 from collections import defaultdict
 
 CACHE_TTL = getattr(settings, "CACHE_TTL", DEFAULT_TIMEOUT)

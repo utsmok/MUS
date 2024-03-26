@@ -9,10 +9,9 @@ from .models import (
     UTData
 )
 from django.db import transaction
-from .data_helpers import TWENTENAMES
+from .constants import TWENTENAMES
 import pyalex
-from django.db.models import Q, Count, Window, F, Min, Max
-from django.db.models.functions import RowNumber
+from django.db.models import Q
 from django.conf import settings
 from loguru import logger
 import pickle
