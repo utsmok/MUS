@@ -138,7 +138,6 @@ def single_article_raw_data(request, article_id):
     if not fulljson:
         fulljson = {}
     return render(request, "rawdata.html", {"article": article, 'fulljson':fulljson, 'raw_data':raw_data})
-
 def get_raw_data_json(request, article_id):
     '''
     same as single_article_raw_data but returns json instead of page
@@ -162,11 +161,10 @@ def get_raw_data_json(request, article_id):
 def faculty(request, name="all", filter="all"):
     '''
     Returns a table with all papers for a specific faculty, or all papers, or non-faculty linked papers, or bookmarked papers for user.
-    This is an ease-of-use function -- most of these could also be created using the filtering system.
+    This is an ease-of-use function -- the filtering system could also be used.
     '''
 
     facultyname, stats, listpapers = getPapers(name, filter, request.user)
-
 
     logger.info(
         "[url] /faculty/{} [user] {}",
@@ -187,7 +185,7 @@ def faculty(request, name="all", filter="all"):
 @login_required
 def author(request, name):
     '''
-    Returns a table with all papers for a specific author. Uses the same logic as the faculty views.
+    Returns a table with all papers for a specific author. Uses the same logic as the faculty views. Another convenience function.
     '''
     try:
         _, stats, listpapers = getAuthorPapers(name, request.user)

@@ -1,5 +1,6 @@
 from .models import (
     Paper,
+    Location
 )
 from django.db.models import Prefetch, Exists, OuterRef
 from .constants import FACULTYNAMES
@@ -9,7 +10,7 @@ from rich import print
 from pymongo import MongoClient
 from django.conf import settings
 import json
-
+from typing import List
 def generateMainPage(user):
     """
     returns:
@@ -181,11 +182,9 @@ def open_alex_autocomplete(query, types=['works','authors'], amount=5):
             if result['count']>=5:
                 break
     return result
-
 def getAuthorPapers(display_name, user=None):
     logger.info("authorpapers [author] {} [user] {}", display_name, user.username)
     return getPapers(display_name, 'author', user)
-
 def get_raw_data(article_id, user=None):
     article=Paper.objects.get_single_paper_data(article_id, user)
     if not article:
@@ -259,8 +258,60 @@ def get_raw_data(article_id, user=None):
     fulljson=json.dumps(raw_data, default=str)
 
     return article, fulljson, raw_data
-def exportris(papers):
-
+def exportris(papers: List[Paper]):
+    '''
+    this is how the ris fields are imported in Pure
+    mapping_ris_to_pure = {
+        'T1': 'Title',
+        'T2': 'Subtitle or Event name',
+        'AU': 'Contributor',
+        'N1': 'Bibliographic Note',
+        'PY': 'Publication Date',
+        'Y1': 'Publication Date',
+        'Y2': 'Event Date',
+        'AB': 'Abstract',
+        'N2': 'Abstract',
+        'KW': 'Keyword',
+        'UR': 'Other Links',
+        'U2': 'DOI',
+        'DO': 'DOI',
+        'M3': 'Research Output Type',
+        'AN': 'Publication Import ID',
+        'VL': 'Volume',
+        'JO': 'Journal name',
+        'JF': 'Journal name',
+        'SN': 'ISSN or ISBN',
+        'IS': 'Issue',
+        'M1': 'Article Number',
+        'SP': 'Pages (begin)',
+        'EP': 'Pages (end)',
+        'BT': 'Host Publication',
+        'CY': 'Place of Publication',
+    }
+    this is the mus data that is used to build the ris file
+    mapping_ris_to_mus = {
+        "TY",itemtypekey[paper.itemtype],
+        "TI",paper.title,
+        "AU",[(author.last_name+', '+author.first_name) for author in paper.authors.all().only('last_name','first_name').values()],
+        "PY",paper.date,
+        "Y1",paper.year,
+        'N2',paper.abstract,
+        'N1',paper.abstract,
+        'KW',[keyword.get('keyword') for keyword in paper.keywords] if paper.keywords else '',
+        'UR',[link.landing_page_url for link in paper.locations.all()],
+        'U2',paper.doi.replace('https://doi.org/',''),
+        'DO',paper.doi.replace('https://doi.org/',''),
+        'M3',paper.itemtype,
+        'VL',paper.volume,
+        'JO',paper.journal.name,
+        'JF',paper.journal.name,
+        'SN',paper.journal.issn,
+        'IS',paper.issue,
+        'M1',paper.pages,
+        'SP',paper.pages.split('-')[0],
+        'EP',paper.pages.split('-')[1],
+        #'BT', get host publication name from locations -> is primary -> source -> name or something; or from journal name?
+    }'''
 
     itemtypekey = {
         'journal-article':'JOUR',
@@ -282,60 +333,6 @@ def exportris(papers):
     }
     fullrisdata = []
     for paper in papers:
-        # this is how the ris fields are imported in Pure
-        mapping_ris_to_pure = {
-            'T1': 'Title',
-            'T2': 'Subtitle or Event name',
-            'AU': 'Contributor',
-            'N1': 'Bibliographic Note',
-            'PY': 'Publication Date',
-            'Y1': 'Publication Date',
-            'Y2': 'Event Date',
-            'AB': 'Abstract',
-            'N2': 'Abstract',
-            'KW': 'Keyword',
-            'UR': 'Other Links',
-            'U2': 'DOI',
-            'DO': 'DOI',
-            'M3': 'Research Output Type',
-            'AN': 'Publication Import ID',
-            'VL': 'Volume',
-            'JO': 'Journal name',
-            'JF': 'Journal name',
-            'SN': 'ISSN or ISBN',
-            'IS': 'Issue',
-            'M1': 'Article Number',
-            'SP': 'Pages (begin)',
-            'EP': 'Pages (end)',
-            'BT': 'Host Publication',
-            'CY': 'Place of Publication',
-        }
-        #this is the mus data that is used to build the ris file
-        mapping_ris_to_mus = {
-            "TY",itemtypekey[paper.itemtype],
-            "TI",paper.title,
-            "AU",[(author.last_name+', '+author.first_name) for author in paper.authors.all().only('last_name','first_name').values()],
-            "PY",paper.date,
-            "Y1",paper.year,
-            'N2',paper.abstract,
-            'N1',paper.abstract,
-            'KW',[keyword.get('keyword') for keyword in paper.keywords] if paper.keywords else '',
-            'UR',[link.landing_page_url for link in paper.locations.all()],
-            'U2',paper.doi.replace('https://doi.org/',''),
-            'DO',paper.doi.replace('https://doi.org/',''),
-            'M3',paper.itemtype,
-            'VL',paper.volume,
-            'JO',paper.journal.name,
-            'JF',paper.journal.name,
-            'SN',paper.journal.issn,
-            'IS',paper.issue,
-            'M1',paper.pages,
-            'SP',paper.pages.split('-')[0],
-            'EP',paper.pages.split('-')[1],
-            #'BT', get host publication name from locations -> is primary -> source -> name or something; or from journal name?
-        }
-
-
         risdata =[
             ["TY",itemtypekey[paper.itemtype]],
             ["T1",paper.title]
@@ -343,10 +340,11 @@ def exportris(papers):
 
         for author in paper.authors.all():
             risdata.append(['AU',author.last_name+', '+author.first_name])
-        risdata.append(["PY",paper.year])
+        risdata.append(["PY",paper.date])
         risdata.append(["Y1",paper.year])
-        risdata.append(["N2",paper.abstract])
-        risdata.append(["AB",paper.abstract])
+        if paper.abstract:
+            risdata.append(["N2",paper.abstract])
+            risdata.append(["AB",paper.abstract])
 
         if paper.keywords != []:
             for keyword in paper.keywords:
@@ -355,26 +353,48 @@ def exportris(papers):
         for location in paper.locations.all():
             if location.landing_page_url and location.landing_page_url != '':
                 risdata.append(['UR',location.landing_page_url])
-
+            if location.is_primary:
+                publisherloc=location.source.host_org
 
         risdata.append(["U2",paper.doi.replace('https://doi.org/', '')])
         risdata.append(["DO",paper.doi.replace('https://doi.org/', '')])
         risdata.append(["M3",paper.itemtype])
         if paper.journal:
-
-            risdata.append(["VL",paper.volume])
             risdata.append(["JO",paper.journal.name])
             risdata.append(["JF",paper.journal.name])
-            risdata.append(["SN",paper.journal.issn])
+            if paper.journal.issn:
+                risdata.append(["SN",paper.journal.issn])
+            if paper.volume:
+                risdata.append(["VL",paper.volume])
+            if paper.issue:
+                risdata.append(["IS",paper.issue])
+            if paper.journal.publisher:
+                publisherjournal=paper.journal.publisher
+            if paper.journal.host_org:
+                hostorgjournal=paper.journal.host_org
 
-            if paper.pages:
-                if '-' in paper.pages:
-                    pages = paper.pages.split('-')[0]
+        if paper.pages:
+            if '-' in paper.pages:
+                pages = paper.pages.split('-')
+                if len(pages) == 2:
+                    if pages[0] != pages[1]:
+                        risdata.append(["SP",pages[0]])
+                        risdata.append(["EP",pages[1]])
+                    else:
+                        risdata.append(["M1",pages[0]])
                 else:
-                    pages = paper.pages
-                risdata.append(["M1",pages])
+                    risdata.append(["M1",pages[0]])
+            else:
+                risdata.append(["M1",paper.pages])
 
-        risdata.append(["ER",''])
+        if publisherjournal:
+            risdata.append(["BT",publisherjournal])
+        elif hostorgjournal:
+            risdata.append(["BT",hostorgjournal])
+        elif publisherloc:
+            risdata.append(["BT",publisherloc])
+
+        risdata.append(["ER",'\n'])
         fullrisdata.append(risdata)
 
     content = StringIO()
@@ -383,4 +403,3 @@ def exportris(papers):
             for item in risentry:
                 f.write(str(item[0])+'  - '+str(item[1])+'\n')
         return content.getvalue()
-
