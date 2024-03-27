@@ -1,7 +1,7 @@
 from collections import defaultdict
 from django.conf import settings
 from loguru import logger
-from PureOpenAlex.models import DBUpdate
+from PureOpenAlex.models import DBUpdate, Paper, Author, Journal, UTData, PureEntry, Location, DealData, viewPaper
 from .get_from_api import getCrossrefWorks, getOpenAlexWorks, getOpenAlexAuthorData, getDataCiteItems, getPureItems, addItemsFromOpenAire
 from .get_from_file import getfrompurereport, getdblp
 from .get_from_scraper import fillJournalData, fillUTPeopleData
@@ -30,14 +30,14 @@ def clean_all():
                 requests.append(DeleteOne({'_id': id}))
         coll.bulk_write(requests)
         return len(requests), documents
-    
+
     logger.info('cleaning duplicates in mongo collection api_responses_authors_openalex')
     try:
         cleanedauthors, numauths = clean_duplicates(db['api_responses_authors_openalex'])
         logger.info(f'removed {cleanedauthors} duplicate entries for {numauths} authors')
     except InvalidOperation:
         logger.info('no duplicate entries found in mongo collection api_responses_authors_openalex')
-    
+
     logger.info('cleaning duplicates in mongo collection api_responses_works_openalex')
     try:
         cleanedworks, numworks = clean_duplicates(db['api_responses_works_openalex'])
@@ -45,8 +45,22 @@ def clean_all():
     except InvalidOperation:
         logger.info('no duplicate entries found in mongo collection api_responses_works_openalex')
 
+    logger.info('now running cleaning functions for models:')
+    logger.info('paper.link_journals()')
+    Paper.objects.link_journals()
+    logger.info('pureentry.link_mongo_pure_reports()')
+    PureEntry.objects.link_with_mongo_pure_reports()
+    logger.info('pureentry.link_papers()')
+    PureEntry.objects.link_papers()
+    logger.info('pureentry.add_authors()')
+    PureEntry.objects.add_authors()
+    logger.info('author.fix_affiliations()')
+    Author.objects.fix_affiliations()
+    logger.info('author.fix_avatars()')
+    Author.objects.fix_avatars()
+
 def update_all():
-    years=[2019,2020,2021,2022,2023,2024,2025]
+    years=[2016,2017,2018,2019,2020,2021,2022,2023,2024,2025]
     processpapers=defaultdict(list)
     logger.info('running updateAll()')
 
@@ -65,7 +79,7 @@ def update_all():
             logger.info(f'{len(addedfromcrossref["dois"])} updated works retrieved from Crossref')
 
     getOpenAlexAuthorData()
-    fillJournalData() 
+    fillJournalData()
     fillUTPeopleData()
 
     addedfromdatacite = getDataCiteItems(years)
@@ -94,7 +108,7 @@ def update_all():
         if len(addedfromopenaire['dois'])>0:
             processpapers['openaire'].extend(addedfromopenaire['dois'])
             logger.info(f'{len(addedfromopenaire['dois'])} updated works retrieved from OpenAire')
-    
+
 
 
 
@@ -102,6 +116,6 @@ def update_all():
 
         logger.info('processing retrieved OA/Crossref works')
         addOpenAlexWorksFromMongo(processpapers['works'])
-    
+
     addPureWorksFromMongo()
     addOpenAireWorksFromMongo()

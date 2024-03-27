@@ -45,6 +45,7 @@ ALLOWED_HOSTS = [
     ".localhost",
     "*.samuelmok.cc",
     "[::1]" "*",
+    'mus.samuelmok.cc',
 ]
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 CSRF_TRUSTED_ORIGINS = [
@@ -53,6 +54,8 @@ CSRF_TRUSTED_ORIGINS = [
     "https://127.0.0.1",
     "https://openalex.samuelmok.cc/api",
     'https://openalex.samuelmok.cc/api/docs',
+    'https://mus.samuelmok.cc',
+
 
 ]
 
@@ -82,10 +85,10 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     "django.middleware.security.SecurityMiddleware",
     #"debug_toolbar.middleware.DebugToolbarMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
-    'corsheaders.middleware.CorsMiddleware',
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
@@ -97,10 +100,14 @@ MIDDLEWARE = [
 CORS_ALLOWED_ORIGINS = [
     "https://openalex.samuelmok.cc",
     "https://samuelmok.cc",
-    "https://127.0.0.1:9000",
+    "https://127.0.0.1:9000"
+    "https://127.0.0.1:3000",
+    'https://mus.samuelmok.cc',
 ]
-
+CORS_ALLOW_ALL_ORIGINS = True
 ROOT_URLCONF = "mus.urls"
+CORS_ALLOW_CREDENTIALS = True
+
 
 TEMPLATES = [
     {
