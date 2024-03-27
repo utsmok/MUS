@@ -8,6 +8,8 @@ from django.apps import apps
 import re
 from django.conf import settings
 import pymongo
+from rapidfuzz import process, fuzz, utils
+
 
 MONGOURL = getattr(settings, "MONGOURL")
 client=pymongo.MongoClient(MONGOURL)
@@ -15,15 +17,112 @@ db=client['mus']
 
 
 class AuthorManager(models.Manager):
+    # possible TODO
     # Deduplicate authors
     # Check if author is UT or not
-    # repair/manage affiliations & utdata
+    # repair/manage utdata
     # repair/manage authorships
-    # repair/manage avatars (now in utdata)
 
-    # TODO more data_repair.fixavatars and data_repair.fixMissingAffils here
+    @transaction.atomic
+    def fix_avatars(self):
+        UTData = apps.get_model('PureOpenAlex', 'UTData')
+        data = UTData.objects.all()
+        for entry in data:
+            url = entry.avatar.url
+            entry.avatar_path = url.replace('https://people.utwente.nl/','author_avatars/')
+            entry.save()
 
-    ...
+    def fix_affiliations(self):
+        def getorgs(affils):
+            Organization = apps.get_model('PureOpenAlex', 'Organization')
+            affiliations=[]
+            for org in affils:
+                # get affiliation info into a list of dicts, check for is_ut along the way
+                if not org:
+                    continue
+                if org.get('institution'):
+                    orgsrc = org.get('institution')
+                else:
+                    orgsrc = org
+
+                orgdata = {
+                    'name':orgsrc.get('display_name'),
+                    'openalex_url':orgsrc.get('id'),
+                    'ror':orgsrc.get('ror'),
+                    'type':orgsrc.get('type'),
+                    'country_code':orgsrc.get('country_code') if orgsrc.get('country_code') else '',
+                    'data_source':'openalex'
+                }
+
+                if org.get('years'):
+                    years = org.get('years')
+                else:
+                    years = []
+
+                # if org is already in db, either
+                if Organization.objects.filter(Q(ror=orgdata['ror']) & Q(name=orgdata['name']) & Q(openalex_url=orgdata['openalex_url'])).exists():
+                    found_org  = Organization.objects.filter(Q(ror=orgdata['ror']) & Q(name=orgdata['name']) & Q(openalex_url=orgdata['openalex_url'])).first()
+                    if found_org.type != orgdata['type'] or found_org.country_code != orgdata['country_code']:
+                        #for now, assumed that the new data is better... might be a bad assumption
+                        if orgdata['type'] and orgdata['type'] != '':
+                            found_org.type = orgdata['type']
+                        if orgdata['country_code'] and orgdata['country_code'] != '':
+                            found_org.country_code = orgdata['country_code']
+                        found_org.save()
+                    org = found_org
+                try:
+                    if not isinstance(org, Organization):
+                        org, created = Organization.objects.get_or_create(**orgdata)
+                        if created:
+                            org.save()
+                except Exception as e:
+                    logger.error(f'error adding org, skipping. Error: {e}')
+                    pass
+                affiliations.append([org, years])
+            return affiliations
+
+        authorlist = self.filter(affils__isnull=True).distinct()
+        logger.info(f"Adding affils for {len(authorlist)} authors")
+        api_responses_authors_openalex = db['api_responses_authors_openalex']
+        added=0
+        checked=0
+        failed=0
+        for author in authorlist:
+            with transaction.atomic():
+                logger.debug("adding affils for author "+str(author.name))
+                raw_affildata = None
+                oa_data = api_responses_authors_openalex.find_one({"id":author.openalex_url})
+                try:
+                    raw_affildata = oa_data.get('affiliations')
+                except Exception:
+                    pass
+                if not oa_data or not raw_affildata:
+                    oa_data = api_responses_authors_openalex.find_one({"id":author.openalex_url})
+                try:
+                    raw_affildata = oa_data.get('affiliations')
+                except Exception:
+                    pass
+                if not oa_data or not raw_affildata:
+                    logger.warning(f"Cannot find data for author {author.openalex_url} | {author.name} in MongoDB")
+                    failed+=1
+                else:
+                    checked+=1
+                    affiliations = getorgs(raw_affildata)
+                    for aff in affiliations:
+                        try:
+                            with transaction.atomic():
+                                author.affils.add(aff[0],through_defaults={'years':aff[1]})
+                                author.save()
+                                added+1
+                        except Exception as e:
+                            logger.error(f'error adding affil for {author.name}: {e}')
+                    logger.debug(f"added {len(affiliations)} affils to Mongo for author {author.openalex_url} | {author.name}")
+        amount = self.filter(affils__isnull=True).distinct().count()
+        logger.info(f"{amount} authors still have no affils.")
+        DBUpdate = apps.get_model('PureOpenAlex', 'DBUpdate')
+        with transaction.atomic():
+            dbu = DBUpdate.objects.create(update_source='OpenAlex', update_type='Author.objects.fix_affiliations()', details={'amount_without_affils_after':amount, 'amount_new':added, 'amount_failed':failed, 'amount_checked':checked})
+            dbu.save()
 class AuthorQuerySet(models.QuerySet):
     # simplify getting names/name combinations
     # filter by group/faculty/affil/authorship data/etc
@@ -33,21 +132,178 @@ class AuthorQuerySet(models.QuerySet):
 
 
 class PureEntryManager(models.Manager):
-    # TODO: move data_repair.matchPurePilotWithPureEntry and data_repair.addPureEntryAuthors here
+
+    def add_authors(self):
+        allentries = self.all()
+        Author = apps.get_model('PureOpenAlex', 'Author')
+        dbauthordata = Author.objects.order_by('last_name','first_name').only('id','openalex_url','name','first_name','last_name','known_as', 'initials')
+        matchlist = []
+        idnamemapping = defaultdict(set)
+        i = 0
+        api_responses_pure = db['api_responses_pure']
+        for author in dbauthordata:
+            i += 1
+            id = author.id
+            matchlist.append(author.name)
+            idnamemapping[author.name].add(id)
+            if author.known_as != {} and author.known_as is not None:
+                for name in author.known_as:
+                    matchlist.append(name)
+                    idnamemapping[name].add(id)
+            for name in [f'{author.first_name} {author.last_name}', f'{author.last_name}, {author.first_name}', f'{author.initials} {author.last_name}', f'{author.last_name}, {author.initials}']:
+                matchlist.append(name)
+                idnamemapping[name].add(id)
+        faillist = []
+        donelist = []
+        matched = 0
+        failed = 0
+        total = 0
+        for entry in allentries:
+            num_authors = entry.authors.count()
+            mongodata = api_responses_pure.find_one({'title':entry.title})
+
+            if not mongodata:
+                mongodata = api_responses_pure.find_one({'identifier':{'ris_file':entry.risutwente}})
+            if not mongodata:
+                mongodata = api_responses_pure.find_one({'identifier':{'researchutwente':entry.researchutwente}})
+            if not mongodata:
+                mongodata = api_responses_pure.find_one({'identifier':{'doi':entry.doi}})
+            if not mongodata:
+                logger.error(f'no mongodata found for {entry.id} - {entry.title} - {entry.doi} - {entry.researchutwente} - {entry.risutwente}')
+                faillist.append(entry.id)
+                continue
+
+            authorlist = []
+            if mongodata.get('contributor'):
+                if isinstance(mongodata.get('contributor'),list):
+                    authorlist.extend(mongodata.get('contributor'))
+                if isinstance(mongodata.get('contributor'),str):
+                    authorlist.append(mongodata.get('contributor'))
+            if mongodata.get('creator'):
+                if isinstance(mongodata.get('creator'),list):
+                    authorlist.extend(mongodata.get('creator'))
+                if isinstance(mongodata.get('creator'),str):
+                    authorlist.append(mongodata.get('creator'))
+            if len(authorlist) == 0:
+                logger.error(f'no authors found for {entry.id} - {entry.doi} - {entry.researchutwente} - {entry.risutwente}')
+                faillist.append(entry.id)
+                continue
+            if num_authors == len(authorlist):
+                logger.info(f'no missing authors for {entry.id}')
+                continue
+
+            total += len(authorlist) - len(authorlist)
+            logger.info(f'{num_authors - len(authorlist)} new authors found for {entry.id}')
+
+            with transaction.atomic():
+                for author in authorlist:
+                    matches = process.extract(author,matchlist, processor=utils.default_process, scorer=fuzz.QRatio, score_cutoff=90)
+                    if len(matches) == 0 or not matches:
+                        failed += 1
+                        logger.warning(f'no matches for {author}')
+                    else:
+                        matchname=matches[0][0]
+                        authorid=idnamemapping[matchname]
+                        if isinstance(authorid, set):
+                            matched += 1
+                            id = max(authorid)
+                            authorobj = Author.objects.get(id=id)
+                            if authorobj:
+                                logger.debug(f'match: {author} == {authorobj.name} ({authorobj.id}) | score {matches[0][1]}')
+                                if authorobj not in entry.authors.all():
+                                    entry.authors.add(authorobj)
+                                    entry.save()
+                                else:
+                                    logger.info(f'{authorobj.name} already linked with entry')
+                        else:
+                            failed += 1
+                            logger.error(f'failed to process matches for {author}')
+            donelist.append(entry.id)
+
+        details = {
+            'failed_pureentry_ids':faillist,
+            'success_pureentry_ids':donelist,
+            'new_matches':matched,
+            'failed_to_match':failed,
+            'total_checked_names':total
+        }
+        logger.info(f'Authors: new matches: {matched} | failed to match: {failed} | total checked: {total}')
+        logger.info(f'{len(faillist)} pureentries failed  | {len(donelist)} pureentries successfully checked')
+        DBUpdate = apps.get_model('PureOpenAlex', 'DBUpdate')
+        dbu = DBUpdate.objects.create(details=details,update_source='OpenAlex', update_type='PureEntry.objects.add_authors()')
+        dbu.save()
+    def link_with_mongo_pure_reports(self):
+        mongocols = [db['pure_report_ee'], db['pure_report_start_tcs']]
+        resultdict={}
+        logger.info(f'Linking these mongodb pure report collections with PureEntries: {[x.name for x in mongocols]}')
+        for group in mongocols:
+            resultdict[group.name]={'items_checked':0,'new_matches':0,'no_doi':0,'already_matched':0,'no_match_other':0, 'matched_pure_entry_ids':[]}
+            logger.info(f'Checking {group.count_documents()} items in {group.name}')
+            for item in group.find().sort('year', pymongo.DESCENDING):
+                resultdict[group.name]['items_checked']+=1
+                if item.get('pure_entry_id'):
+                    resultdict[group.name]['already_matched']=resultdict[group.name]['already_matched']+1
+                    continue
+                if not item.get('dois'):
+                    resultdict[group.name]['no_doi']+=1
+                    group.update_one({'pureid': item['pureid']}, {'$set': {'pure_entry_id': None}})
+                    continue
+                doi = item.get('dois')
+                if isinstance(doi, list):
+                    logger.warning(f"more than 1 doi found while matching {item['title']}/{item['pureid']}, picked first in list. List: {doi}")
+                    doi=doi[0]
+                if isinstance(doi, str):
+                    if doi.startswith('https://doi.org/'):
+                        pass
+                    else:
+                        doi = 'https://doi.org/' + doi
+                pureentry = self.filter(doi=doi)
+                if not pureentry:
+                    pureentry = self.filter(doi=doi.lower())
+                if not pureentry:
+                    if item.get('other_links'):
+                        if isinstance(item['other_links'], list):
+                            for link in item['other_links']:
+                                if 'scopus' in link:
+                                    scopuslink = link
+                        elif isinstance(item['other_links'], str):
+                            if 'scopus' in item['other_links']:
+                                scopuslink = item['other_links']
+
+                        if scopuslink:
+                            pureentry = self.filter(scopus=scopuslink)
+                if not pureentry:
+                    pureid = item.get('pureid')
+                    pureentry = self.filter(risutwente__icontains=pureid)
+                if pureentry.count()>0:
+
+                    if pureentry.count == 1:
+                        pure_entry_id = pureentry[0].id
+                        group.update_one({'pureid': item['pureid']}, {'$set': {'pure_entry_id': pure_entry_id}})
+                        resultdict[group.name]['new_matches']+=1
+                        resultdict[group.name]['matched_pure_entry_ids'].append(pure_entry_id)
+                    else:
+                        pure_entry_ids=[]
+                        for pureentry in pureentry:
+                            pure_entry_ids.append(pureentry.id)
+                            resultdict[group.name]['matched_pure_entry_ids'].append(pureentry.id)
+                            resultdict[group.name]['new_matches']+=1
+                        group.update_one({'pureid': item['pureid']}, {'$set': {'pure_entry_id': pure_entry_ids}})
+                else:
+                    resultdict[group.name]['no_match_other']+=1
+                    group.update_one({'pureid': item['pureid']}, {'$set': {'pure_entry_id': None}})
+
+
+        DBUpdate = apps.get_model('PureOpenAlex', 'DBUpdate')
+        with transaction.atomic():
+            dbu = DBUpdate.objects.create(update_source='PureReportsMongoDB', update_type='PureEntry.objects.link_with_mongo_pure_reports()', details=resultdict)
+            dbu.save()
+        logger.info(f"Done matching. Results: {resultdict}")
 
     def link_papers(self, advanced = True):
         """
         For every PureEntry, try to find a matching paper in the database and mark them as such.
         """
-
-        def update(paperlist,entrylist):
-            Paper = apps.get_model('PureOpenAlex', 'Paper')
-            PureEntry = apps.get_model('PureOpenAlex', 'PureEntry')
-            with transaction.atomic():
-                Paper.objects.bulk_update(paperlist, fields=["has_pure_oai_match"])
-                PureEntry.objects.bulk_update(entrylist, fields=["paper"])
-            logger.info(str(len(paperlist)), "papers linked, total amount of new linked papers: ", str(len(paperlist)))
-
         paperlist = []
         entrylist = []
         i=0
@@ -124,9 +380,15 @@ class PureEntryManager(models.Manager):
                 logger.debug("no paper found for entry %s", entry.id) #no match or no new match
 
 
-        update(paperlist, entrylist)
+        with transaction.atomic():
+            Paper.objects.bulk_update(paperlist, fields=["has_pure_oai_match"])
+            self.bulk_update(entrylist, fields=["paper"])
+
         logger.info(f"Linked {len(paperlist)} papers with {len(entrylist)} PureEntries after checking {checkedentries} PureEntries")
 
+        DBUpdate = apps.get_model('PureOpenAlex', 'DBUpdate')
+        dbu = DBUpdate.objects.create(update_source='PureEntries', update_type='PureEntry.objects.link_papers()', details={'new_linked_papers':[x.id for x in paperlist],'linked_to_entries':[x.id for x in entrylist],'amount_checked':checkedentries})
+        dbu.save()
 
 class JournalManager(models.Manager):
     api_responses_journals_dealdata_scraped = db["api_responses_journals_dealdata_scraped"]
@@ -214,6 +476,12 @@ class JournalManager(models.Manager):
             journal.dealdata=deal
             logger.info(f'dealdata for journal {journal.name} / {journal.openalex_url} added in mus db')
             journal.save()
+
+
+        DBUpdate = apps.get_model('PureOpenAlex', 'DBUpdate')
+        dbu = DBUpdate.objects.create(update_source='OpenAlex', update_type='Journal.objects.get_or_make_from_api_data()', details={'journal':journal.__dict__})
+        dbu.save()
+
         return journal, created
 class PaperManager(models.Manager):
     api_responses_works_openalex = db["api_responses_works_openalex"]

@@ -97,8 +97,6 @@ def getPapers(name, filter="all", user=None):
     listpapers = filterpapers.get_table_data(filter,user)
     stats = listpapers.get_stats()
     return facultyname, stats, listpapers
-
-
 def open_alex_autocomplete(query, types=['works','authors'], amount=5):
     '''
     Uses the OpenAlex autocomplete API to fetch data
@@ -261,7 +259,6 @@ def get_raw_data(article_id, user=None):
     fulljson=json.dumps(raw_data, default=str)
 
     return article, fulljson, raw_data
-
 def exportris(papers):
 
 
