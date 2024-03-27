@@ -129,7 +129,27 @@ class AuthorQuerySet(models.QuerySet):
     def get_affiliations(self, author_id):
         author = self.filter(id=author_id).prefetch_related('affiliations').first()
         return author.affiliations.all().prefetch_related('organization').all().order_by('-years__-1')
-
+    def get_ut_groups(self, grouplist=None, unique=True):
+        '''
+        Returns all UT groups for the authors in the queryset
+        parameter grouplist: return only groups in this list
+        '''
+        groups=[]
+        UTData = apps.get_model('PureOpenAlex', 'UTData')
+        allutdata = UTData.objects.filter(employee__in=self.all())
+        for utdata in allutdata:
+            tmpgroups=[]
+            tmpgroups.append(utdata.current_group)
+            if utdata.employment_data:
+                for entry in utdata.employment_data:
+                    tmpgroups.append(entry.get('group'))
+            if grouplist:
+                for group in tmpgroups:
+                    if group in grouplist:
+                        groups.append(group)
+        if unique:
+            return list(set(groups))
+        return groups
 
 class PureEntryManager(models.Manager):
 
