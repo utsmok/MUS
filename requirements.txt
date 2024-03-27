@@ -37,3 +37,5 @@ python-Levenshtein
 pyzotero
 aiohttp
 aiodns
+orjson
+django-cors-headers

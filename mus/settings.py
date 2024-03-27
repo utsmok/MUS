@@ -29,20 +29,12 @@ SCRAPEOPSKEY = str(os.getenv('SCRAPEOPSKEY'))
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-
-
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 SECRET_KEY = str(os.getenv('DJANGOSECRETKEY'))
-
 ACCOUNT_ADAPTER = "accounts.adapter.NoNewUsersAccountAdapter"
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
-
-
+DEBUG = False
 LOGLEVEL = "DEBUG"
-
 LOGFMT = "{time:[%m %d] %H:%M:%S} | {name}>{function}() [{level}] |> {message}"
 logger.remove()
 logger.add('log_mus.log', format=LOGFMT, level=LOGLEVEL)
@@ -59,6 +51,9 @@ CSRF_TRUSTED_ORIGINS = [
     "https://openalex.samuelmok.cc",
     "https://*.samuelmok.cc",
     "https://127.0.0.1",
+    "https://openalex.samuelmok.cc/api",
+    'https://openalex.samuelmok.cc/api/docs',
+
 ]
 
 # Application definition
@@ -77,6 +72,7 @@ INSTALLED_APPS = [
     "allauth.socialaccount.providers.github",
     "accounts",
     'mus_backend',
+    'corsheaders',
     "data_browser",
     "django_extensions",
     "ajax_datatable",
@@ -89,12 +85,19 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     #"debug_toolbar.middleware.DebugToolbarMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    'corsheaders.middleware.CorsMiddleware',
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "allauth.account.middleware.AccountMiddleware",
+]
+
+CORS_ALLOWED_ORIGINS = [
+    "https://openalex.samuelmok.cc",
+    "https://samuelmok.cc",
+    "https://127.0.0.1:9000",
 ]
 
 ROOT_URLCONF = "mus.urls"
