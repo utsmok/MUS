@@ -82,7 +82,6 @@ def addOpenAlexWorksFromMongo(updatelist=[]):
             processMongoPaper(dataset, update=update)
         except Exception as e:
             failed.append(id)
-            print(e)
             logger.exception('exception {e} while adding work with doi {doi}',doi=id,e=e)
             if 'value too long' in str(e):
                 logger.warning("continuing because exception is of type: value too long")
@@ -184,7 +183,6 @@ def addOpenAireWorksFromMongo(updatelist=None):
         if i % 500 == 0:
             message=f"processing batch of {len(datasets)} OpenAire works"
             logger.info(message)
-            print(message)
             for dataset in datasets:
                 try:
                     updated = processMongoOpenAireEntry(dataset)
@@ -192,17 +190,14 @@ def addOpenAireWorksFromMongo(updatelist=None):
                         h=h+1
                 except Exception as e:
                     logger.exception('exception {e} while adding OpenAire item {id}', e=e, id=dataset['id'])
-                    print(f'exception {e} while adding OpenAire item {dataset['id']}')
                     continue
                 k=k+1
                 if k%100==0:
                     message=f"processed {k} entries, {h} updated"
                     logger.info(message)
-                    print(message)
             datasets=[]
     message=f"final batch: processing {len(datasets)} works"
     logger.info(message)
-    print(message)
     for dataset in datasets:
         try:
             updated = processMongoOpenAireEntry(dataset)
@@ -210,13 +205,11 @@ def addOpenAireWorksFromMongo(updatelist=None):
                 h=h+1
         except Exception as e:
             logger.exception('exception {e} while adding OpenAire item {id}', e=e, id=dataset['id'])
-            print(f'exception {e} while adding OpenAire item {dataset['id']}')
             continue
         k=k+1
 
     message=f"processed {k} entries, {h} updated"
     logger.info(message)
-    print(message)
 
 def addPureReportWorksFromMongo(group):
     datasets=[]
@@ -232,7 +225,6 @@ def addPureReportWorksFromMongo(group):
         i=i+1
         if i % 500 == 0:
             message=f"processing batch of {len(datasets)} TCS pure entries"
-            print(message)
             for dataset in datasets:
                 entry = processMongoPureReportEntry(dataset)
                 if entry:
@@ -241,11 +233,9 @@ def addPureReportWorksFromMongo(group):
                 if k%100==0:
                     message=f"processed {k} entries, {h} updated"
                     logger.info(message)
-                    print(message)
             datasets=[]
     message=f"final batch: processing {len(datasets)} works"
     logger.info(message)
-    print(message)
     for dataset in datasets:
         entry = processMongoPureReportEntry(dataset)
         if entry:
@@ -254,7 +244,6 @@ def addPureReportWorksFromMongo(group):
 
     message=f"processed {k} entries, {h} updated"
     logger.info(message)
-    print(message)
 
 def addPaper(doi, user):
     # TODO: Move to PaperManager
