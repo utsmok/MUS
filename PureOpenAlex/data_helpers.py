@@ -10,7 +10,7 @@ from .models import UTData, DealData
 from django.db import transaction
 from loguru import logger
 import re
-from .constants import TCSGROUPS, TCSGROUPSABBR, EEGROUPS, EEGROUPSABBR, LICENSESOA
+from .constants import  LICENSESOA
 
 ORCID_RECORD_API = "https://pub.orcid.org/v3.0/"
 APILOCK = threading.Lock()
@@ -74,7 +74,7 @@ def determineIsInPure(paper):
             return True
     return False
 
-def processDOI(doi: str) -> str|None:
+def processDOI(doi: str):
     doi_pattern = re.compile(r'10.\d{4,9}/[-._;()/:A-Z0-9]+', re.IGNORECASE)
     doi = str(doi).replace(' ', '').replace(r'%20','').replace(r'%2F','/').replace(',','.')
     if doi.endswith('/'):

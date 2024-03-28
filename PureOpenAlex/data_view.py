@@ -1,8 +1,6 @@
 from .models import (
     Paper,
-    Location
 )
-from django.db.models import Prefetch, Exists, OuterRef
 from .constants import FACULTYNAMES
 from loguru import logger
 from io import StringIO

@@ -258,7 +258,7 @@ class PureEntryManager(models.Manager):
         logger.info(f'Linking these mongodb pure report collections with PureEntries: {[x.name for x in mongocols]}')
         for group in mongocols:
             resultdict[group.name]={'items_checked':0,'new_matches':0,'no_doi':0,'already_matched':0,'no_match_other':0, 'matched_pure_entry_ids':[]}
-            logger.info(f'Checking {group.count_documents()} items in {group.name}')
+            logger.info(f'Checking {group.count_documents({})} items in {group.name}')
             for item in group.find().sort('year', pymongo.DESCENDING):
                 resultdict[group.name]['items_checked']+=1
                 if item.get('pure_entry_id'):
@@ -326,7 +326,6 @@ class PureEntryManager(models.Manager):
         """
         paperlist = []
         entrylist = []
-        i=0
         checkedentries=0
         Paper = apps.get_model('PureOpenAlex', 'Paper')
 
@@ -432,11 +431,11 @@ class JournalManager(models.Manager):
         DealData=apps.get_model('PureOpenAlex', 'DealData')
         data=locdata.get('source')
         if not data:
-            logger.error(f'no data received, returning None')
+            logger.error('no data received, returning None')
             return None, None
         if self.filter(openalex_url=data.get('id')).exists():
             logger.info(f'journal {data.get("id")} already exists in mus db, updating & returning it')
-            journal = self.objects.filter(openalex_url=data.get('id')).first()
+            journal = self.filter(openalex_url=data.get('id')).first()
             host_org = data.get('host_organization_lineage_names','')
             if isinstance(host_org, list) and len(host_org) > 0:
                 host_org = host_org[0]
@@ -444,7 +443,7 @@ class JournalManager(models.Manager):
                 journal.host_org = host_org
                 journal.save()
             if not journal.dealdata:
-                dealdata, keywords, publisher = get_deal_data(journal.openalex_url)
+                dealdata, keywords, publisher = get_deal_data(self, journal.openalex_url)
                 if dealdata:
                     deal, ddcreated = DealData.objects.get_or_create(**dealdata)
                     if ddcreated:
@@ -535,12 +534,12 @@ class PaperManager(models.Manager):
                 if data.get('primary_location'):
                     if data.get('primary_location').get('source'):
                         if data.get('primary_location').get('source').get('type') == 'journal':
-                            journal, created = Journal.objects.get_or_make_from_api_data(item, data.get('primary_location'))
+                            journal, created = Journal.objects.get_or_make_from_api_data(data.get('primary_location'))
                 if not journal:
                     for loc in data.get('locations'):
                         if loc.get('source'):
                             if loc.get('source').get('type') == 'journal':
-                                journal, created = Journal.objects.get_or_make_from_api_data(item, loc)
+                                journal, created = Journal.objects.get_or_make_from_api_data(loc)
                                 if journal:
                                     cat = '[Info]'
                                     msg = 'Journal found in loc but not in primary loc.'
@@ -896,3 +895,10 @@ class PaperQuerySet(models.QuerySet):
             else 0
         )
         return stats
+    
+
+
+
+
+
+    

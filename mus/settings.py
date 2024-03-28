@@ -33,7 +33,7 @@ SECRET_KEY = str(os.getenv('DJANGOSECRETKEY'))
 ACCOUNT_ADAPTER = "accounts.adapter.NoNewUsersAccountAdapter"
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False
+DEBUG = True
 LOGLEVEL = "DEBUG"
 LOGFMT = "{time:[%m %d] %H:%M:%S} | {name}>{function}() [{level}] |> {message}"
 logger.remove()
@@ -55,7 +55,6 @@ CSRF_TRUSTED_ORIGINS = [
     "https://openalex.samuelmok.cc/api",
     'https://openalex.samuelmok.cc/api/docs',
     'https://mus.samuelmok.cc',
-
 
 ]
 
@@ -100,11 +99,11 @@ MIDDLEWARE = [
 CORS_ALLOWED_ORIGINS = [
     "https://openalex.samuelmok.cc",
     "https://samuelmok.cc",
-    "https://127.0.0.1:9000"
+    "https://127.0.0.1:9000",
     "https://127.0.0.1:3000",
     'https://mus.samuelmok.cc',
 ]
-CORS_ALLOW_ALL_ORIGINS = True
+
 ROOT_URLCONF = "mus.urls"
 CORS_ALLOW_CREDENTIALS = True
 
