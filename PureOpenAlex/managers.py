@@ -333,6 +333,9 @@ class PureEntryManager(models.Manager):
         paperpreload = Paper.objects.all().only("doi","title",'locations','id').prefetch_related('locations')
         logger.info('Trying to find matches for ' + str(allentries.count()) + ' PureEntries in ' + str(paperpreload.count()) + 'unmatched papers')
         for entry in allentries:
+            if checkedentries % 100  == 0:
+                logger.info(f'matched {len(entrylist)}/{checkedentries} entries to {len(paperlist)} papers. {len(allentries)-checkedentries} entries left to check.')
+            
             checkedentries=checkedentries+1
             found=False
             paper = None
@@ -392,11 +395,11 @@ class PureEntryManager(models.Manager):
                 paperlist.append(paper)
                 entrylist.append(entry)
                 if not found:
-                    logger.debug("found initial paper for entry %s", entry.id)
+                    logger.debug(f"found initial paper for entry {entry.id}")
                 else:
-                    logger.debug("found new paper for entry %s", entry.id)
+                    logger.debug(f"found new paper for entry {entry.id}")
             else:
-                logger.debug("no paper found for entry %s", entry.id) #no match or no new match
+                logger.debug(f"no paper found for entry {entry.id}") #no match or no new match
 
 
         with transaction.atomic():
