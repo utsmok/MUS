@@ -25,12 +25,15 @@ class AuthorManager(models.Manager):
 
     @transaction.atomic
     def fix_avatars(self):
+    
         UTData = apps.get_model('PureOpenAlex', 'UTData')
         data = UTData.objects.all()
+        logger.info(f'adding avatar paths for {data.count()} UTData entries')
         for entry in data:
             url = entry.avatar.url
             entry.avatar_path = url.replace('https://people.utwente.nl/','author_avatars/')
             entry.save()
+        logger.info('done with author.objects.fix_avatars()')
 
     def fix_affiliations(self):
         def getorgs(affils):

@@ -11,6 +11,8 @@ from pymongo import DeleteOne,MongoClient
 from pymongo.collection import Collection
 from pymongo.errors import InvalidOperation
 import datetime
+import asyncio
+
 MONGOURL = getattr(settings, "MONGOURL", None)
 client = MongoClient(MONGOURL)
 db = client['mus']
@@ -136,7 +138,7 @@ def update_works(years, processpapers):
 def update_people_page_data():
     logger.info('running update_people_page_data()')
     logger.info('running fillUTPeopleData()')
-    fillUTPeopleData()
+    asyncio.run(fillUTPeopleData())
     logger.info('done running fillUTPeopleData()')
 
 def update_all():

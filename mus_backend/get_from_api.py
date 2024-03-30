@@ -397,7 +397,7 @@ def getOpenAlexAuthorData():
         for article in api_responses_openalex.find():
             i=i+1
             if i%1000==0:
-                print(f'authors for {i} articles processed in {int(time.time()-start)}s')
+                logger.info(f'authors for {i} articles processed in {int(time.time()-start)}s')
             for authorship in article['authorships']:
                 id=authorship['author']['id']
                 if not authors_openalex.find_one({'id':id}):
@@ -408,17 +408,17 @@ def getOpenAlexAuthorData():
                                 ut=True
                                 print('Found UT author that wasnt in DB:', id, authorship['author']['display_name'])
                                 break
-                        if ut:
+                        if ut and id not in utauthorids:
                             utauthorids.append(id)
-                        if id not in authorids:
+                        elif id not in authorids:
                             authorids.append(id)
                 else:
                     alreadyadded.append(id)
 
 
-        print(f'{len(utauthorids)} UT authors')
-        print(f'{len(authorids)} other authors')
-        print(f'{len(alreadyadded)} already in DB')
+        logger.info(f'{len(utauthorids)} UT authors')
+        logger.info(f'{len(authorids)} other authors')
+        logger.info(f'{len(alreadyadded)} already in DB')
         return authorids, utauthorids
 
     result={'total':0,'non-ut':0,'ut':0,'non_ut_openalex_urls':[], 'ut_openalex_urls':[]}
@@ -431,8 +431,8 @@ def getOpenAlexAuthorData():
     result['ut']=len(utauthors)
     result['non_ut_openalex_urls']=authors
     result['ut_openalex_urls']=utauthors
-    print(f'adding {len(authors)} non-UT authors')
-    print(f'of which {len(utauthors)} UT authors')
+    logger.info(f'adding {len(authors)} non-UT authors')
+    logger.info(f'and {len(utauthors)} UT authors')
     batch=[]
     total=0
     i=0
@@ -449,7 +449,7 @@ def getOpenAlexAuthorData():
                 for author in batched(chain(*query.paginate(per_page=100, n_max=None)),100):
                     authors_openalex.insert_many(author)
                 total=total+50
-                print(f'added {total} {grouptype} authors')
+                logger.info(f'added {total} {grouptype} authors')
                 batch=[]
                 authorids=""
 
@@ -464,6 +464,7 @@ def getOpenAlexAuthorData():
         if result['total']>0:
             dbupdate = DBUpdate.objects.create(update_source="OpenAlex", update_type="getOpenAlexAuthorData", details=result)
             dbupdate.save()
+
 def getOpenAlexJournalData():
     def getJournalListFromDB():
         journals={}

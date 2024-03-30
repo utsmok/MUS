@@ -22,95 +22,32 @@ from pymongo import MongoClient
 from PureOpenAlex.models import DBUpdate
 from django.conf import settings
 from loguru import logger
+from typing import Coroutine, List, Sequence
+
+def _limit_concurrency(
+    coroutines: Sequence[Coroutine], concurrency: int
+) -> List[Coroutine]:
+    """
+    Decorate coroutines to limit concurrency.
+    Enforces a limit on the number of coroutines that can run concurrently in higher
+    level asyncio-compatible concurrency managers like asyncio.gather(coroutines) and
+    asyncio.as_completed(coroutines).
+    from https://gist.github.com/benfasoli/650a57923ab1951e1cb6355f033cbc8b
+    """
+    semaphore = asyncio.Semaphore(concurrency)
+
+    async def with_concurrency_limit(coroutine: Coroutine) -> Coroutine:
+        async with semaphore:
+            return await coroutine
+
+    return [with_concurrency_limit(coroutine) for coroutine in coroutines]
+
 MONGOURL = getattr(settings, "MONGOURL")
 
 MONGODB = MongoClient(MONGOURL)
 db=MONGODB["mus"]
 
-async def getUTPeoplePageData(authors):
-    """
-    Asynchronous function to scrape UT people page data for the given authors.
-    Parameters:
-    - authors: A dictionary where each key is the author's openalex ID and the value is a list of known names.
-
-    Returns:
-    A list of data retrieved for each author, with each entry containing the details for the best match found.
-    """
-
-    async def getData(author,names):
-        """
-        Asynchronous function to fetch data from UT people page for a single author.
-        Params:
-            author: author's openalex ID
-            names: List[str] - list of names associated with this author
-        Returns:
-            dict or None - details for the best matched name, or None if no match is found
-        """
-
-        url = "https://people.utwente.nl/data/search"
-        headers = {
-            "X-Requested-With": "XMLHttpRequest",
-            "Host": "people.utwente.nl",
-            "Referer": "https://people.utwente.nl",
-            "Accept": "*/*",
-            "Accept-Encoding": "gzip, deflate, br",
-        }
-        results=[]
-
-        for name in names:
-            try:
-                async with httpx.AsyncClient() as client:
-                    r = await client.get(url, params={"query": name}, headers=headers)
-            except Exception:
-                continue
-            try:
-                data = r.json()
-            except Exception:
-                continue
-            try:
-                tmp = await processUTPeoplePageData(author, name, data["data"])
-                results.append(tmp)
-            except Exception:
-                continue
-
-        foundnames={}
-        for result in results:
-            for item in result:
-                if item["foundname"] not in foundnames.keys():
-                    foundnames[item["foundname"]]=item
-        score=0
-        foundname=None
-        hname=HumanName(unidecode(names[0]))
-        checkname=f"{hname.last}, {hname.initials} ({hname.first})"
-        for name in names:
-            hname=HumanName(unidecode(name))
-            checkname=f"{hname.last}, {hname.initials() } ({hname.first})"
-            try:
-                matchdata=process.extractOne(checkname, foundnames.keys())
-                if matchdata[1]>score and matchdata[1]>80:
-                    cname=HumanName(matchdata[0])
-                    if fuzz.token_set_ratio(cname.last,hname.last)>95:
-                        score=matchdata[1]
-                        foundname=matchdata[0]
-                    else:
-                        ... # matchscore above 80 but secondary score below 95: 'maybe' match?
-                            # left blank: possible to add fallback matching options here.
-
-                else:
-                    ... # matchscore below 80 OR there is already a higher score
-                        # left blank; probably not needed to add code here.
-
-
-            except Exception:
-                # this is here mostly to cases where there is no match found at all
-                continue
-
-
-        if foundname is not None:
-            foundnames[foundname]["score"]=score
-            return foundnames[foundname]
-        else:
-            return None
+async def getUTPeoplePageData(author, names):
 
 
     async def processUTPeoplePageData(author,searchname,data):
@@ -153,18 +90,81 @@ async def getUTPeoplePageData(authors):
             foundnames.append(name)
             output.append(tmp)
         return output
+    
+    """
+    Asynchronous function to fetch data from UT people page for a single author.
+    Params:
+        author: author's openalex ID
+        names: List[str] - list of names associated with this author
+    Returns:
+        dict or None - details for the best matched name, or None if no match is found
+    """
+    authors_ut_people = db["api_responses_UT_authors_peoplepage"]
 
-    # This is a wrapper function to enable asynchronous scraping and processing
-    tasks = []
-    logger.info(f'Scraping ut people page data for {len(authors.keys())} authors')
-    for author, names in authors.items():
-        task = asyncio.create_task(getData(author,names))
-        tasks.append(task)
+    url = "https://people.utwente.nl/data/search"
+    headers = {
+        "X-Requested-With": "XMLHttpRequest",
+        "Host": "people.utwente.nl",
+        "Referer": "https://people.utwente.nl",
+        "Accept": "*/*",
+        "Accept-Encoding": "gzip, deflate, br",
+    }
+    results=[]
 
-    results = await asyncio.gather(*tasks)
-    return results
+    for name in names:
+        try:
+            async with httpx.AsyncClient() as client:
+                r = await client.get(url, params={"query": name}, headers=headers)
+        except Exception:
+            continue
+        try:
+            data = r.json()
+        except Exception:
+            continue
+        try:
+            tmp = await processUTPeoplePageData(author, name, data["data"])
+            results.append(tmp)
+        except Exception:
+            continue
+    if not results:
+        return None
+    
+    foundnames={}
+    for result in results:
+        for item in result:
+            if item["foundname"] not in foundnames.keys():
+                foundnames[item["foundname"]]=item    
+    score=0
+    foundname=None
 
-def fillUTPeopleData():
+    for name in names:
+        hname=HumanName(unidecode(name))
+        checkname=f"{hname.last}, {hname.initials()} ({hname.first})"
+        try:
+            matchdata=process.extractOne(checkname, foundnames.keys())
+            if matchdata[1]>score and matchdata[1]>80:
+                cname=HumanName(matchdata[0])
+                if fuzz.token_set_ratio(cname.last,hname.last)>95:
+                    score=matchdata[1]
+                    foundname=matchdata[0]
+                else:
+                    ... # matchscore above 80 but secondary score below 95: 'maybe' match?
+                        # left blank: possible to add fallback matching options here.
+            else:
+                ... # matchscore below 80 OR there is already a higher score
+                    # left blank; probably not needed to add code here.
+        except Exception:
+            # this is here for cases where there is no match found at all -- or if there's another error
+            continue
+    if not foundname:
+        return None
+    if foundname is not None:
+        foundnames[foundname]["score"]=score
+        logger.info(f'found match for {foundname}')
+        authors_ut_people.insert_one(foundnames[foundname])
+        return True
+
+async def fillUTPeopleData():
     """
     This function fills the UT people data by:
     retrieving all unique authors from the 'api_responses_authors_openalex' collection
@@ -180,42 +180,34 @@ def fillUTPeopleData():
     authors_ut_people = db["api_responses_UT_authors_peoplepage"]
 
     authors={}
-    total=0
-    batch=50
-    batchtotal=0
+    added=0
     already_added=0
     for author in authors_openalex.find():
         if author['id'] not in authors.keys():
             authors[author['id']]=author['display_name_alternatives']
 
-    logger.info(f'adding {len(authors.keys())} rows of UT people page data')
-    authorbatch={}
+    logger.info(f'checking {len(authors.keys())} ut authors if they already have UT people page data')
+    finallist={}
     for key, value in authors.items():
         if not authors_ut_people.find_one({'id':key}):
-            authorbatch[key]=value
+            finallist[key]=value
         else:
             already_added=already_added+1
-        if len(authorbatch.keys())==batch:
-                result=asyncio.run(getUTPeoplePageData(authorbatch))
-                for item in result:
-                    if item is not None and isinstance(item,dict):
-                        authors_ut_people.insert_one(item)
-                        total=total+1
-                batchtotal=batchtotal+batch
-                logger.debug(f'added {total}/{batchtotal} rows of UT data')
-                authorbatch={}
-    if len(authorbatch.keys())>0:
-        result=asyncio.run(getUTPeoplePageData(authorbatch))
-        for item in result:
-            if item is not None and isinstance(item,dict):
-                authors_ut_people.insert_one(item)
-                total=total+1
-        batchtotal=batchtotal+len(authors.keys())
-        logger.debug(f'added {total}/{batchtotal} rows of UT data')
-        authors={}
-    logger.info(f"Done scraping people page. Skipped (already in DB): {already_added} Added: {total} Failures: {batchtotal-total}")
-    dbu = DBUpdate.objects.create(update_source="UTPeoplePage", update_type="fillUTPeopleData", details={'added_count':total,'skipped_count':already_added,'failed_count':batchtotal-total})
+    logger.info(f'{already_added} ut authors already have UT people page data')
+    logger.info(f'scraping data for {len(finallist.keys())} ut authors ')
+    tasks=[]
+
+    for author, names in finallist.items():
+        tasks.append(getUTPeoplePageData(author,names))
+        
+    result = await asyncio.gather(*_limit_concurrency(tasks, concurrency=50))
+    result = [item for item in result if item]
+    added = len(result)
+        
+    logger.info(f"Done scraping people page. Already in db: {already_added}. Added: {added}. Failed: {len(finallist.keys())-added}")
+    dbu = DBUpdate.objects.create(update_source="UTPeoplePage", update_type="fillUTPeopleData", details={'added_count':added,'skipped_count':already_added,'failed_count':len(finallist.keys())-added})
     dbu.save()
+
 async def getJournalBrowserData(journals):
     async def getOADealData(journalid, journaldata):
         """
