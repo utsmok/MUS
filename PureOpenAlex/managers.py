@@ -9,7 +9,8 @@ import re
 from django.conf import settings
 import pymongo
 from rapidfuzz import process, fuzz, utils
-
+import os
+import requests
 
 MONGOURL = getattr(settings, "MONGOURL")
 client=pymongo.MongoClient(MONGOURL)
@@ -24,16 +25,46 @@ class AuthorManager(models.Manager):
     # repair/manage authorships
 
     @transaction.atomic
-    def fix_avatars(self):
-    
+    def fix_avatars(self, download=False):
         UTData = apps.get_model('PureOpenAlex', 'UTData')
         data = UTData.objects.all()
         logger.info(f'adding avatar paths for {data.count()} UTData entries')
+        all_paths = []
+        urlmapping = {}
         for entry in data:
             url = entry.avatar.url
-            entry.avatar_path = url.replace('https://people.utwente.nl/','author_avatars/')
+            entry.avatar_path = url.replace(r'/https%3A/people.utwente.nl/','author_avatars/').replace(r'/picture','')
+            all_paths.append(entry.avatar_path)
+            urlmapping[entry.avatar_path] = url
             entry.save()
+
+        if download:
+            if getattr(settings, "DEBUG"):
+                root = getattr(settings, "BASE_DIR", None)
+                avatardir = 'author_avatars'
+                fullpath = os.path.join(root,'static', avatardir)
+            else:
+                root = getattr(settings, "STATIC_ROOT", None)
+                avatardir = 'author_avatars'
+                fullpath = os.path.join(root, avatardir)
+            logger.info(f'checking which avatars are not yet downloaded to {fullpath}')
+            # get list of all avatars in fullpath
+            avatars = [f for f in os.listdir(fullpath) if os.path.isfile(os.path.join(fullpath, f))]
+            # from all_paths, remove all avatars that are in avatars and get the corresponding urls
+            download_avatars = [f for f in all_paths if f.split('/')[-1] not in avatars]
+            urls = [urlmapping[f] for f in download_avatars]
+            # download all urls to avatardir
+            logger.info(f'downloading {len(urls)} avatars to {fullpath}')
+            for url in urls:
+                r = requests.get(url.replace(r'/https%3A/','https://'))
+                avpath = os.path.join(fullpath, url.replace(r'/https%3A/people.utwente.nl/','').replace(r'/picture',''))
+                with open(avpath, 'wb') as f:
+                    f.write(r.content)
+
+                logger.debug(f'downloaded {url} to {avpath}')
+
         logger.info('done with author.objects.fix_avatars()')
+
 
     def fix_affiliations(self):
         def getorgs(affils):
@@ -347,7 +378,7 @@ class PureEntryManager(models.Manager):
                             pureentry = self.get(id=id)
                             if not pureentry.pilot_pure_data:
                                 pilotdata = PilotPureData.objects.get(pureid=item.get('pureid'))
-                                with transaction.atomic():        
+                                with transaction.atomic():
                                     pureentry.pilot_pure_data = pilotdata
                                     pureentry.save()
                                     resultdict[group.name]['new_matches']=resultdict[group.name]['new_matches']+1
@@ -355,11 +386,11 @@ class PureEntryManager(models.Manager):
                         pureentry = self.get(id=int(item.get('pure_entry_id')))
                         if not pureentry.pilot_pure_data:
                             pilotdata = PilotPureData.objects.get(pureid=item.get('pureid'))
-                            with transaction.atomic():        
+                            with transaction.atomic():
                                 pureentry.pilot_pure_data = pilotdata
                                 pureentry.save()
                                 resultdict[group.name]['new_matches']=resultdict[group.name]['new_matches']+1
-        
+
         DBUpdate = apps.get_model('PureOpenAlex', 'DBUpdate')
         with transaction.atomic():
             dbu = DBUpdate.objects.create(update_source='PureReportsMongoDB', update_type='PureEntry.objects.link_with_postgres_pure_reports()', details=resultdict)
@@ -381,7 +412,7 @@ class PureEntryManager(models.Manager):
         for entry in allentries:
             if checkedentries % 100  == 0:
                 logger.info(f'matched {len(entrylist)}/{checkedentries} entries to {len(paperlist)} papers. {len(allentries)-checkedentries} entries left to check.')
-            
+
             checkedentries=checkedentries+1
             found=False
             paper = None
@@ -570,44 +601,36 @@ class PaperManager(models.Manager):
             .filter(title_count__gt=1)
         )
         duplicate_openalex_urls = duplicate_papers_oa.values_list('openalex_url', flat=True)
-        print(f'Found {duplicate_papers_doi.count()+duplicate_papers_oa.count()} duplicate papers with {len(duplicate_dois)} duplicate dois {len(duplicate_openalex_urls)} duplicate openalex_urls')
+        logger.info(f'Found {duplicate_papers_doi.count()+duplicate_papers_oa.count()} duplicate papers with {len(duplicate_dois)} duplicate dois {len(duplicate_openalex_urls)} duplicate openalex_urls')
         c = 0
+        if len(duplicate_openalex_urls) > 0:
+            logger.warning(f'function will run, but it is not implemented yet so it wont delete anything')
         for url in duplicate_openalex_urls:
             c+=1
             papers = Paper.objects.filter(openalex_url=url).order_by('-modified')
-            print(f'Removing dupes with OA url {url}')
+            logger.debug(f'Removing dupes with OA url {url}')
             i=0
             for paper in papers:
-                print(f'{paper.id} pure entries:')
                 if paper.pure_entries.count() > 0:
                     i+=1
                     for entry in paper.pure_entries.all():
                         print(entry.id)
-                else:
-                    print('none')
+
             if papers.filter(pure_entries_isnull=True).count() == papers.count():
                 keep_paper = papers.latest('modified')
-                print("no pure entries found for any paper")
-                if i == 0:
-                    print('checks out')
-                else:
-                    print('seems wrong...')
+                if not i == 0:
+                    logger.warning(f'Possible error while running paper.remove_duplicates() with paper {paper.id}')
             elif papers.filter(pure_entries__isnull=False).count() == 1:
                 keep_paper = papers.filter(pure_entries__isnull=False).first()
-                print('1 paper found with pure entries')
-                if i == 1:
-                    print('checks out')
-                else:
-                    print('seems wrong...')
+
+                if not i == 1:
+                    logger.warning(f'Possible error while running paper.remove_duplicates() with paper {paper.id}')
             else:
                 keep_paper = papers.annotate(num_pure_entries=Count('pure_entries')).order_by('-num_pure_entries', '-modified').first()
-                print('multiple papers with pure entries')
-                if i > 1:
-                    print('checks out')
-                else:
-                    print('seems wrong...')
+                if not i > 1:
+                    logger.warning(f'Possible error while running paper.remove_duplicates() with paper {paper.id}')
             #papers.exclude(id=keep_paper.id).delete()
-            print(f'Keeping: {keep_paper.id}. Deleting: {[paper.id for paper in papers.exclude(id=keep_paper.id).all()]}')
+            logger.info(f'Keeping: {keep_paper.id}. Deleting: {[paper.id for paper in papers.exclude(id=keep_paper.id).all()]}')
             if c == 5:
                 break
 
@@ -1018,7 +1041,7 @@ class PaperQuerySet(models.QuerySet):
             else 0
         )
         return stats
-    
+
 
 
     def create_csv(self, groups=None):
@@ -1032,7 +1055,7 @@ class PaperQuerySet(models.QuerySet):
         mus_url = 'https://openalex.samuelmok.cc/'
         mus_api_url = 'https://openalex.samuelmok.cc/api/'
         logger.info(f'Creating list with data for CSV for {self.count()} papers')
-        
+
         for paper in self.all().distinct():
             paperauthors=paper.authors.filter(utdata__isnull=False)
             authorgroups = paperauthors.get_ut_groups(groups)
@@ -1095,7 +1118,7 @@ class PaperQuerySet(models.QuerySet):
                 for pure_entry in paper.pure_entries.all():
                     if pureentrylist != '':
                         pureentrylist = ' | '.join([pureentrylist, mus_api_url+'pureentry/'+str(pure_entry.id)])
-                    else: 
+                    else:
                         pureentrylist = mus_api_url+'pureentry/'+str(pure_entry.id)
                     if pure_entry.pilot_pure_data:
                         if pilotpuredatalist != '':
@@ -1106,11 +1129,10 @@ class PaperQuerySet(models.QuerySet):
             mapping['mus_api_url_pure_entry']=pureentrylist
             mapping['mus_api_url_pure_report_details']=pilotpuredatalist
             data.append(mapping)
-        
+
         return data
 
 
 
 
 
-    

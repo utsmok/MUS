@@ -191,7 +191,7 @@ def get_raw_data(article_id, user=None):
     article=Paper.objects.get_single_paper_data(article_id, user)
     if not article:
         return None, None, None
-
+    article = article.first()
     openalexid=article.openalex_url
     doi = article.doi
     title = article.title
@@ -405,7 +405,7 @@ def exportris(papers: List[Paper]):
             for item in risentry:
                 f.write(str(item[0])+'  - '+str(item[1])+'\n')
         return content.getvalue()
-    
+
 
 def generate_chart(parameters, user):
     '''

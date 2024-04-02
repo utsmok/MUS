@@ -297,7 +297,7 @@ def processMongoPaper(dataset, user=None, update=False):
             if created:
                 paper.save()
             logger.info("paper created with id {id} ", id=paper.id)
-    
+
     with transaction.atomic():
         paper = add_authorships(oa_work['full'],paper)
     with transaction.atomic():
@@ -433,7 +433,7 @@ def add_authorships(data, paper):
                 'employee': authorobject,
                 'email': peoplepage_data.get('email'),
                 'employment_data': peoplepage_data.get('grouplist'),
-                'avatar_path': peoplepage_data.get('avatar_url').replace('https://people.utwente.nl/','author_avatars/').replace('/picture',''),
+                'avatar_path': peoplepage_data.get('avatar_url').replace(r'https://people.utwente.nl/','author_avatars/').replace(r'/picture',''),
             }
             ut, created = UTData.objects.update_or_create(**utdata)
             if created:
@@ -450,7 +450,7 @@ def add_authorships(data, paper):
             authorobject = Author.objects.filter(openalex_url=author.get('id')).get()
         else:
             authorobject, ut_author_year_match = makefullauthor(author, authorship)
-        
+
         if not ut_author_year_match:
             for affil in authorobject.affiliations.all():
                 if 'twente' in affil.organization.name.lower():
@@ -483,8 +483,8 @@ def add_locations(data, paper):
             return dealdata, dealdatacontents.get('keywords'), dealdatacontents.get('publisher')
         else:
             return None, None, None
-        
-    
+
+
     primary_location = ""
     best_oa_location = ""
     if data.get('primary_location'):
@@ -649,7 +649,7 @@ def processMongoPureEntry(puredata):
     pureentry = add_pureentry_ids(puredata.get('identifier', None), pureentry)
     pureentry = match_paper(pureentry)
     logger.debug("pureentry {entryid} created for title {title}", title=puredata.get('title'), entryid=pureentry.id)
-    
+
 def add_pureentry_journal(ispartof, pureentry):
     if not ispartof:
         return pureentry
