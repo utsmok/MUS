@@ -7,7 +7,7 @@ from django.core.cache.backends.base import DEFAULT_TIMEOUT
 from django.db.models import Q
 from django.core.exceptions import ObjectDoesNotExist
 from .data_add import addPaper
-from .data_view import generateMainPage, getPapers, getAuthorPapers, open_alex_autocomplete, exportris, get_raw_data, generate_chart
+from .data_view import generateMainPage, getPapers, getAuthorPapers, open_alex_autocomplete, get_raw_data, generate_chart
 from django.conf import settings
 from .data_helpers import processDOI
 from django.views.decorators.cache import cache_page
@@ -21,14 +21,13 @@ from rich import print
 CACHE_TTL = getattr(settings, "CACHE_TTL", DEFAULT_TIMEOUT)
 
 
-# TODO: remove duplicate paper entries
 
 # TODO: Add caching
 # TODO: implement messaging system to frontend -- with history?
 
 # TODO: Fix articlenumber / pagenumber stuff
-
 # TODO: Fix available locations/pdf
+# TODO: Fix PureEntries view template
 
 # TODO: run scheduled updates
 
@@ -252,10 +251,11 @@ def getris(request):
     viewpapers = viewPaper.objects.filter(user=user)
     paperids = viewpapers.values_list('displayed_paper_id', flat=True)
     papers = Paper.objects.filter(pk__in=paperids)
-    rislist = exportris(papers)
-    response = HttpResponse(rislist, headers={
+    risfile = papers.exportris()
+    contentdisp = f'attachment; filename="mus_ris_export_{user.username}_{datetime.now().strftime("%Y-%m-%d")}.ris"'
+    response = HttpResponse(risfile, headers={
         "Content-Type": 'application/x-research-info-systems',
-        "Content-Disposition": 'attachment; filename="mus_ris_output.ris"',
+        "Content-Disposition": contentdisp,
     })
 
     return response
