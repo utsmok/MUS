@@ -53,6 +53,8 @@ def clean_all():
     Paper.objects.link_journals()
     logger.info('pureentry.link_mongo_pure_reports()')
     PureEntry.objects.link_with_mongo_pure_reports()
+    logger.info('pureentry.link_with_postgres_pure_reports()') 
+    PureEntry.objects.link_with_postgres_pure_reports()
     logger.info('pureentry.add_authors()')
     PureEntry.objects.add_authors()
     logger.info('author.fix_affiliations()')
@@ -138,21 +140,34 @@ def update_works(years, processpapers):
 def update_people_page_data():
     logger.info('running update_people_page_data()')
     logger.info('running fillUTPeopleData()')
-    asyncio.run(fillUTPeopleData())
+    dbupdatepeoplepage = asyncio.run(fillUTPeopleData())
+    if dbupdatepeoplepage:
+        dbu=DBUpdate.objects.create(**dbupdatepeoplepage)
+        dbu.save()
     logger.info('done running fillUTPeopleData()')
 
-def update_all():
+def update_all(clean=False, people=False, get_dbupdates=False):
     years=[2016,2017,2018,2019,2020,2021,2022,2023,2024,2025]
     processpapers=defaultdict(list)
     logger.info('running updateAll()')
-    logger.info('getting all works from dbupdates modified between now and 1 days ago')
-    dbupdates = DBUpdate.objects.filter(Q(update_type="getOpenAlexWorks")&Q(modified__gte=datetime.datetime.now() - datetime.timedelta(days=1)))
-    if dbupdates:
-        logger.info(f'found {dbupdates.count()} dbupdates to process')
-    for dbupdate in dbupdates:
-        updatedata=dbupdate.details
-        if len(updatedata['dois'])>0:
-            processpapers['works'].extend(updatedata['dois'])
+    if get_dbupdates:
+        logger.info('getting all works from dbupdates modified between now and 1 days ago')
+        dbupdates = DBUpdate.objects.filter(Q(update_type="getOpenAlexWorks")&Q(modified__gte=datetime.datetime.now() - datetime.timedelta(days=1)))
+        if dbupdates:
+            logger.info(f'found {dbupdates.count()} dbupdates to process')
+        for dbupdate in dbupdates:
+            updatedata=dbupdate.details
+            if len(updatedata['dois'])>0:
+                processpapers['works'].extend(updatedata['dois'])
     processpapers = update_works(years, processpapers)
     processpapers = update_pure_items(years, processpapers)
     logger.info('done with updateAll()')
+
+
+    if clean:
+        logger.info('clean = True, running cleandb()')
+        clean_all()
+    if people:
+        logger.info('people = True, running update_people_page_data()')
+        update_people_page_data()
+        logger.info('done running update_people_page_data()')

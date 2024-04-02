@@ -153,7 +153,14 @@ class AuthorQuerySet(models.QuerySet):
         if unique:
             return list(set(groups))
         return groups
-
+    def get_ut_corresponding_authors(self, paper):
+        utauthors = self.filter(utdata__isnull=False).distinct()
+        returnlist = []
+        for authorship in paper.authorships.all():
+            if authorship.corresponding:
+                if authorship.author in utauthors:
+                    returnlist.append(authorship.author)
+        return returnlist
 class PureEntryManager(models.Manager):
 
     def add_authors(self):
@@ -320,6 +327,42 @@ class PureEntryManager(models.Manager):
         DBUpdate = apps.get_model('PureOpenAlex', 'DBUpdate')
         with transaction.atomic():
             dbu = DBUpdate.objects.create(update_source='PureReportsMongoDB', update_type='PureEntry.objects.link_with_mongo_pure_reports()', details=resultdict)
+            dbu.save()
+        logger.info(f"Done matching. Results: {resultdict}")
+
+    def link_with_postgres_pure_reports(self):
+        PilotPureData = apps.get_model('PureOpenAlex', 'PilotPureData')
+        mongocols = [db['pure_report_ee'], db['pure_report_start_tcs']]
+        resultdict={}
+        logger.info(f'Linking PilotPureData entries to PureEntries using data from these mongodb collections: {[x.name for x in mongocols]}')
+        for group in mongocols:
+            resultdict[group.name]={'items_checked':0,'with_pure_entry_id':0,'new_matches':0}
+            logger.info(f'Checking {group.count_documents({})} items in {group.name}')
+            for item in group.find().sort('year', pymongo.DESCENDING):
+                resultdict[group.name]['items_checked']+=1
+                if item.get('pure_entry_id'):
+                    resultdict[group.name]['with_pure_entry_id']=resultdict[group.name]['with_pure_entry_id']+1
+                    if isinstance(item.get('pure_entry_id'), list):
+                        for id in item.get('pure_entry_id'):
+                            pureentry = self.get(id=id)
+                            if not pureentry.pilot_pure_data:
+                                pilotdata = PilotPureData.objects.get(pureid=item.get('pureid'))
+                                with transaction.atomic():        
+                                    pureentry.pilot_pure_data = pilotdata
+                                    pureentry.save()
+                                    resultdict[group.name]['new_matches']=resultdict[group.name]['new_matches']+1
+                    elif isinstance(item.get('pure_entry_id'), str):
+                        pureentry = self.get(id=int(item.get('pure_entry_id')))
+                        if not pureentry.pilot_pure_data:
+                            pilotdata = PilotPureData.objects.get(pureid=item.get('pureid'))
+                            with transaction.atomic():        
+                                pureentry.pilot_pure_data = pilotdata
+                                pureentry.save()
+                                resultdict[group.name]['new_matches']=resultdict[group.name]['new_matches']+1
+        
+        DBUpdate = apps.get_model('PureOpenAlex', 'DBUpdate')
+        with transaction.atomic():
+            dbu = DBUpdate.objects.create(update_source='PureReportsMongoDB', update_type='PureEntry.objects.link_with_postgres_pure_reports()', details=resultdict)
             dbu.save()
         logger.info(f"Done matching. Results: {resultdict}")
 
@@ -512,6 +555,63 @@ class PaperManager(models.Manager):
     api_responses_works_openalex = db["api_responses_works_openalex"]
     api_responses_journals_openalex = db["api_responses_journals_openalex"]
 
+    def remove_duplicates(self):
+        # for django object Paper, remove all duplicates from the database (based on openalex_url)
+        Paper = apps.get_model('PureOpenAlex', 'Paper')
+        duplicate_papers_doi = (
+            Paper.objects.values("doi")
+            .annotate(title_count=Count("id"))
+            .filter(title_count__gt=1)
+        )
+        duplicate_dois = duplicate_papers_doi.values_list('doi', flat=True)
+        duplicate_papers_oa = (
+            Paper.objects.values("openalex_url")
+            .annotate(title_count=Count("id"))
+            .filter(title_count__gt=1)
+        )
+        duplicate_openalex_urls = duplicate_papers_oa.values_list('openalex_url', flat=True)
+        print(f'Found {duplicate_papers_doi.count()+duplicate_papers_oa.count()} duplicate papers with {len(duplicate_dois)} duplicate dois {len(duplicate_openalex_urls)} duplicate openalex_urls')
+        c = 0
+        for url in duplicate_openalex_urls:
+            c+=1
+            papers = Paper.objects.filter(openalex_url=url).order_by('-modified')
+            print(f'Removing dupes with OA url {url}')
+            i=0
+            for paper in papers:
+                print(f'{paper.id} pure entries:')
+                if paper.pure_entries.count() > 0:
+                    i+=1
+                    for entry in paper.pure_entries.all():
+                        print(entry.id)
+                else:
+                    print('none')
+            if papers.filter(pure_entries_isnull=True).count() == papers.count():
+                keep_paper = papers.latest('modified')
+                print("no pure entries found for any paper")
+                if i == 0:
+                    print('checks out')
+                else:
+                    print('seems wrong...')
+            elif papers.filter(pure_entries__isnull=False).count() == 1:
+                keep_paper = papers.filter(pure_entries__isnull=False).first()
+                print('1 paper found with pure entries')
+                if i == 1:
+                    print('checks out')
+                else:
+                    print('seems wrong...')
+            else:
+                keep_paper = papers.annotate(num_pure_entries=Count('pure_entries')).order_by('-num_pure_entries', '-modified').first()
+                print('multiple papers with pure entries')
+                if i > 1:
+                    print('checks out')
+                else:
+                    print('seems wrong...')
+            #papers.exclude(id=keep_paper.id).delete()
+            print(f'Keeping: {keep_paper.id}. Deleting: {[paper.id for paper in papers.exclude(id=keep_paper.id).all()]}')
+            if c == 5:
+                break
+
+
     def link_journals(self):
         articles_with_missing_journals = self.get_queryset().get_all_without_journal().get_articles()
         other_items_with_missing_journals = self.get_queryset().get_all_without_journal().get_other_itemtypes()
@@ -609,7 +709,7 @@ class PaperQuerySet(models.QuerySet):
     def get_table_prefetches(self):
         Location = apps.get_model('PureOpenAlex', 'Location')
         Author = apps.get_model('PureOpenAlex', 'Author')
-
+        PureEntry = apps.get_model('PureOpenAlex', 'PureEntry')
         location_prefetch = Prefetch(
             "locations",
             queryset=Location.objects.filter(papers__in=self.all()).select_related('source'),
@@ -620,7 +720,12 @@ class PaperQuerySet(models.QuerySet):
             queryset=Author.objects.filter(authorships__paper__in=self.all()).distinct().select_related('utdata'),
             to_attr="pref_authors",
         )
-        return self.select_related('journal').prefetch_related(location_prefetch, authors_prefetch)
+        pureentry_prefetch = Prefetch(
+            'pure_entries',
+            queryset=PureEntry.objects.filter(paper__in=self.all()).select_related('pilot_pure_data'),
+            to_attr="pref_pure_entries",
+        )
+        return self.select_related('journal').prefetch_related(location_prefetch, authors_prefetch, pureentry_prefetch)
     def get_detailed_prefetches(self):
         Location = apps.get_model('PureOpenAlex', 'Location')
         Author = apps.get_model('PureOpenAlex', 'Author')
@@ -770,15 +875,21 @@ class PaperQuerySet(models.QuerySet):
                     ))
 
             if filter == 'author':
-                author = Author.objects.get(name = value)
-                finalfilters['authors'].append(Q(
-                    authorships__author=author
-                ))
+                if isinstance(value, str):
+                    value = [value]
+                for item in value:
+                    author = Author.objects.get(name = item)
+                    finalfilters['authors'].append(Q(
+                        authorships__author=author
+                    ))
             if filter == 'group':
-                group = value
-                finalfilters['groups'].append(Q(
-                    authorships__author__utdata__current_group=group
-                ))
+                if isinstance(value, str):
+                    value = [value]
+                for item in value:
+                    group = item
+                    finalfilters['groups'].append(Q(
+                        authorships__author__utdata__current_group=group
+                    ))
 
             if filter == 'start_date':
                 start_date = value
@@ -804,28 +915,34 @@ class PaperQuerySet(models.QuerySet):
                     raise ValueError("Invalid end_date format")
 
             if filter == 'type':
-                itemtype = value
-                ITEMTYPES = ['journal-article', 'proceedings', 'proceedings-article','book', 'book-chapter']
-                if itemtype != 'other':
-                    if itemtype == 'book' or itemtype == 'book-chapter':
-                        finalfilters['types'].append(Q(Q(itemtype='book')|Q(itemtype='book-chapter')))
+                if isinstance(value, str):
+                    value = [value]
+                for item in value:
+                    itemtype = item
+                    ITEMTYPES = ['journal-article', 'proceedings', 'proceedings-article','book', 'book-chapter']
+                    if itemtype != 'other':
+                        if itemtype == 'book' or itemtype == 'book-chapter':
+                            finalfilters['types'].append(Q(Q(itemtype='book')|Q(itemtype='book-chapter')))
+                        else:
+                            finalfilters['types'].append(Q(itemtype=itemtype))
                     else:
-                        finalfilters['types'].append(Q(itemtype=itemtype))
-                else:
-                    finalfilters['types'].append(~Q(
-                        itemtype__in=ITEMTYPES
-                    ))
+                        finalfilters['types'].append(~Q(
+                            itemtype__in=ITEMTYPES
+                        ))
 
             if filter == 'faculty':
-                faculty=value
-                if faculty in FACULTYNAMES:
-                    faculty = faculty.upper()
-                    finalfilters['faculties'].append(Q(
-                        authorships__author__utdata__current_faculty=faculty
-                    ))
-                else:
-                    authors = Author.objects.filter(utdata__isnull=False).filter(~Q(utdata__current_faculty__in=FACULTYNAMES)).select_related('utdata')
-                    finalfilters['faculties'].append(Q(authorships__author__in=authors))
+                if isinstance(value, str):
+                    value = [value]
+                for item in value:
+                    faculty=item
+                    if faculty in FACULTYNAMES:
+                        faculty = faculty.upper()
+                        finalfilters['faculties'].append(Q(
+                            authorships__author__utdata__current_faculty=faculty
+                        ))
+                    else:
+                        authors = Author.objects.filter(utdata__isnull=False).filter(~Q(utdata__current_faculty__in=FACULTYNAMES)).select_related('utdata')
+                        finalfilters['faculties'].append(Q(authorships__author__in=authors))
 
             if filter == 'taverne_passed':
                 date = datetime.today().strftime('%Y-%m-%d')
@@ -902,6 +1019,95 @@ class PaperQuerySet(models.QuerySet):
         )
         return stats
     
+
+
+    def create_csv(self, groups=None):
+        '''
+        Returns a list containing a dict with data for each paper in the current queryset.
+        Not only data from the paper object -- also from related tables like authors, pure entries, etc.
+        Param:
+        groups: filter the groups included in the 'ut_groups' column. Defaults to 'None': all ut groups are shown.
+        '''
+        data=[]
+        mus_url = 'https://openalex.samuelmok.cc/'
+        mus_api_url = 'https://openalex.samuelmok.cc/api/'
+        logger.info(f'Creating list with data for CSV for {self.count()} papers')
+        
+        for paper in self.all().distinct():
+            paperauthors=paper.authors.filter(utdata__isnull=False)
+            authorgroups = paperauthors.get_ut_groups(groups)
+            ut_corresponding_author = paperauthors.get_ut_corresponding_authors(paper)
+            if ut_corresponding_author!=[]:
+                if isinstance(ut_corresponding_author, list):
+                    if len(ut_corresponding_author)>1:
+                        ut_corresponding_author = ' | '.join([author.name for author in ut_corresponding_author])
+                    else:
+                        ut_corresponding_author = ut_corresponding_author[0].name
+            best_oa, oa_list = paper.get_oa_links()
+            mapping = {
+                'title':paper.title,
+                'doi':paper.doi,
+                'year':paper.year,
+                'itemtype':paper.itemtype,
+                'isbn':paper.pure_entries.first().isbn if paper.pure_entries.first() else '',
+                'topics':' | '.join([topic.get('display_name') for topic in paper.topics]) if paper.topics else '',
+                'Authorinfo ->':'',
+                'ut_authors':' | '.join([author.name for author in paperauthors]) if paperauthors else '',
+                'ut_groups': ' | '.join(authorgroups) if authorgroups else '',
+                'is_eemcs?': paperauthors.filter(Q(utdata__current_faculty__iexact='EEMCS') | Q(utdata__employment_data__contains=[{'faculty':'EEMCS'}])).exists() ,
+                'is_ee?': paperauthors.filter(Q(utdata__current_group__in=EEGROUPSABBR)).exists() ,
+                'is_tcs?':paperauthors.filter(Q(utdata__current_group__in=TCSGROUPSABBR)).exists(),
+                'ut_corresponding_author':ut_corresponding_author if ut_corresponding_author != [] else '',
+                'all_authors':' | '.join([author.name for author in paper.authors.all()]),
+                'Openaccessinfo ->':'',
+                'is_openaccess':paper.is_oa,
+                'openaccess_type':paper.openaccess,
+                'found_as_green':paper.is_in_pure,
+                'present_in_pure':paper.has_pure_oai_match,
+                'license':paper.license,
+                'URLs ->':'',
+                'primary_link':paper.primary_link,
+                'pdf_link_primary':paper.pdf_link_primary,
+                'best_oa_link':best_oa['landing_page_url'],
+                'pdf_link_best_oa':best_oa['pdf_url'],
+                'other_oa_links':' | '.join(oa_list) if oa_list else '',
+                'openalex_url':paper.openalex_url,
+                'pure_page_link':paper.pure_entries.first().researchutwente if paper.pure_entries.first() else '',
+                'pure_file_link':paper.pure_entries.first().risutwente if paper.pure_entries.first() else '',
+                'scopus_link':paper.pure_entries.first().scopus if paper.pure_entries.first() else '',
+                'Journalinfo ->':'',
+                'journal':paper.journal.name if paper.journal else '',
+                'journal_issn':paper.journal.issn if paper.journal else '',
+                'journal_e_issn':paper.journal.e_issn if paper.journal else '',
+                'journal_publisher':paper.journal.publisher if paper.journal else '',
+                'volume':paper.volume,
+                'issue':paper.issue,
+                'pages':paper.pages,
+                'pagescount':paper.pagescount,
+                'MUS links ->':'',
+                'mus_paper_details':mus_url+'paper/'+str(paper.id),
+                'mus_api_url_paper':mus_api_url+'paper/'+str(paper.id),
+            }
+            pureentrylist=''
+            pilotpuredatalist=''
+
+            if paper.pure_entries.first():
+                for pure_entry in paper.pure_entries.all():
+                    if pureentrylist != '':
+                        pureentrylist = ' | '.join([pureentrylist, mus_api_url+'pureentry/'+str(pure_entry.id)])
+                    else: 
+                        pureentrylist = mus_api_url+'pureentry/'+str(pure_entry.id)
+                    if pure_entry.pilot_pure_data:
+                        if pilotpuredatalist != '':
+                            pilotpuredatalist = ' | '.join([pilotpuredatalist, mus_api_url+'pilotpure/'+str(pure_entry.pilot_pure_data.id)])
+                        else:
+                            pilotpuredatalist = mus_api_url+'pilotpure/'+str(pure_entry.pilot_pure_data.id)
+
+            mapping['mus_api_url_pure_entry']=pureentrylist
+            mapping['mus_api_url_pure_report_details']=pilotpuredatalist
+            data.append(mapping)
+        
+        return data
 
 
 

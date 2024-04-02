@@ -7,20 +7,21 @@ from django.core.cache.backends.base import DEFAULT_TIMEOUT
 from django.db.models import Q
 from django.core.exceptions import ObjectDoesNotExist
 from .data_add import addPaper
-from .data_view import generateMainPage, getPapers, getAuthorPapers, open_alex_autocomplete, exportris, get_raw_data
+from .data_view import generateMainPage, getPapers, getAuthorPapers, open_alex_autocomplete, exportris, get_raw_data, generate_chart
 from django.conf import settings
 from .data_helpers import processDOI
 from django.views.decorators.cache import cache_page
 from loguru import logger
 from datetime import datetime
 from io import StringIO
-import pandas as pd
 import plotly.graph_objects as go
 from rich import print
-from .constants import TCSGROUPSABBR,  EEGROUPSABBR
-from collections import defaultdict
+
 
 CACHE_TTL = getattr(settings, "CACHE_TTL", DEFAULT_TIMEOUT)
+
+
+# TODO: remove duplicate paper entries
 
 # TODO: Add caching
 # TODO: implement messaging system to frontend -- with history?
@@ -368,150 +369,9 @@ def chart(request):
     '''
     TODO: make modular (see func 'customchart' below), move logic to other file
     '''
-    dataoa = []
-    datatypes = []
-    oatypes = ['green', 'bronze', 'closed', 'hybrid', 'gold']
-    years = ['2016','2017','2018', '2019', '2020', '2021', '2022', '2023']
-    faculties = ['EEMCS', 'BMS', 'ET', 'ITC', 'TNW']
-    groups = ['EEMCS', 'all']
-    groups.extend(EEGROUPSABBR)
-    groups.extend(TCSGROUPSABBR)
-    groups=list(set(groups))
-    types = ['proceedings-article', 'journal-article']
-    baseline=defaultdict(int)
-    baseline_eemcs=defaultdict(int)
-    baseline_tcs= defaultdict()
-    baseline_ee= defaultdict()
-    for year in years:
-        baseline_tcs[year]=defaultdict(int)
-        baseline_ee[year]=defaultdict(int)
-
-    for faculty in groups:
-        print('=========================')
-        if faculty == 'EEMCS':
-            filters= [['start_date','2016-01-01'],['end_date', '2024-12-31'],['faculty',faculty]]
-        elif faculty == 'all':
-            filters= [['start_date','2016-01-01'],['end_date', '2023-12-31']]
-        else:
-            filters= [['start_date','2016-01-01'],['end_date', '2023-12-31'],['group',faculty]]
-        facultyname, stats, listpapers = getPapers('all', filters, request.user)
-        print(faculty)
-        print(stats)
-        for year in years:
-            immediate=0
-            delayed=0
-            total=0
-
-            yearpapers=listpapers.filter(year=year)
-            for oatype in oatypes:
-                count = yearpapers.filter(openaccess=oatype).count()
-                if oatype in ['gold', 'hybrid', 'bronze']:
-                    immediate += count
-                else:
-                    delayed += count
-                #dataoa.append({'faculty':faculty, 'year':year,'counttype':oatype,'count':count})
-            #for type in types:
-            #    count = yearpapers.filter(itemtype=type).count()
-            #    datatypes.append({'faculty':faculty, 'year':year,'counttype':type,'count':count})
-            value = round(immediate*100/(immediate+delayed),0)
-            total = immediate+delayed
-            #value = delayed*100/(immediate+delayed)
-            dept=''
-            if faculty in TCSGROUPSABBR :
-                baseline_tcs[year]['count'] += value
-                baseline_tcs[year]['amount'] += immediate
-                baseline_tcs[year]['total'] += total
-                dept = 'TCS'
-            elif faculty in EEGROUPSABBR :
-                baseline_ee[year]['count'] += value
-                baseline_ee[year]['amount'] += immediate
-                baseline_ee[year]['total'] += total
-                dept='EE'
-            if faculty == 'EEMCS':
-                baseline_eemcs[year] += value
-
-            elif faculty == 'all':
-                baseline[year] += value
-
-            else:
-                dataoa.append({'faculty':faculty, 'dept':dept,'year':year,'counttype':'immediate','count':value, 'amount':immediate, 'total':total})
-
-    for year in years:
-        baseline_tcs[year]['count']/=len(TCSGROUPSABBR)
-        baseline_ee[year]['count']/=len(EEGROUPSABBR)
-        baseline_tcs[year]['count']=round(baseline_tcs[year]['count'],0)
-        baseline_ee[year]['count']=round(baseline_ee[year]['count'],0)
-    print(baseline_ee)
-    print(baseline_tcs)
-    dfoa = pd.DataFrame(dataoa)
-    dfoa=dfoa.sort_values(by=['year','dept'])
-    #dftypes= pd.DataFrame(datatypes)
-    print(dfoa.info(verbose=True))
-
-    fig = go.Figure()
-    for faculty in groups:
-        if faculty in EEGROUPSABBR and faculty in TCSGROUPSABBR:
-            color='#474967'
-        elif faculty in TCSGROUPSABBR:
-            color='#337357'
-        elif faculty in EEGROUPSABBR:
-            color='#5E1675'
-        else:
-            color='#FFD23F'
-
-        curdata=dfoa[dfoa['faculty']==faculty]
-        fig.add_trace(go.Bar(x=curdata['year'],
-                y=curdata['count'],
-                name=faculty,
-                text=faculty,
-                textposition='auto',
-                hoverinfo='text',
-                hovertext=' ['+faculty+'] '+curdata['count'].astype(str)+'% '+curdata['counttype'].astype(str)+' - '+curdata['amount'].astype(str)+'/'+curdata['total'].astype(str)+' total',
-                marker_color=color,
-                ))
-
-    fig.add_trace(go.Scatter(
-        x=[*baseline_ee.keys()],
-        y=[year['count'] for year in [*baseline_ee.values()]],
-        mode='lines+markers',
-        name='EE average',
-        marker_color='#5E1675',
-        marker_size=[year['amount'] for year in [*baseline_ee.values()]],
-
-        ))
-
-    fig.add_trace(go.Scatter(
-        x=[*baseline_tcs.keys()],
-        y=[year['count'] for year in [*baseline_tcs.values()]],
-        mode='lines+markers',
-        name='TCS average',
-        marker_color='#337357',
-        marker_size=[year['amount'] for year in [*baseline_tcs.values()]],
-        ))
-    fig.update_layout(barmode='group', uniformtext_minsize=8, uniformtext_mode='hide', )
-    fig.update_yaxes(range=[0,100], ticksuffix="%")
-    fig.update_xaxes(type='category')
-    fig.add_hline(y=baseline_eemcs[years[-1]], line_dash="dashdot",
-            annotation_text=f"EEMCS avg {years[-1]}",
-            annotation_position="top left",
-            line_color='#FFD23F')
-    fig.add_hline(y=baseline[years[-1]], line_dash="dashdot",
-                annotation_text=f"UT avg {years[-1]}",
-                annotation_position="top left",
-                line_color='crimson')
-    if False:
-        fig.add_hline(y=baseline_tcs[years[-1]], line_dash="solid",
-                annotation_text=f"TCS avg {years[-1]}",
-                annotation_position="top left",
-                line_color='#337357')
-        fig.add_hline(y=baseline_ee[years[-1]], line_dash="solid",
-            annotation_text=f"EE avg {years[-1]}",
-            annotation_position="top left",
-            line_color='#5E1675')
-
-
-    chart = fig.to_html()
-    print('rendering chart')
+    parameters = request.POST
+    user = request.user
+    chart = generate_chart(parameters, user)
     return render(request, "chart.html", {"chart": chart})
 
 def customchart(request):

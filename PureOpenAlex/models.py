@@ -163,7 +163,7 @@ class Paper(TimeStampedModel, models.Model):
     citations = models.IntegerField(blank=True, null=True)
     primary_link = models.CharField(max_length=1024)
     itemtype = models.CharField(max_length=256)
-    date = models.CharField(max_length=256)
+    date = models.DateField()
     openaccess = models.CharField(max_length=256, blank=True, null=False)
     language = models.CharField(max_length=256, blank=True, null=False)
     abstract = models.TextField()
@@ -197,11 +197,30 @@ class Paper(TimeStampedModel, models.Model):
     published_online = models.DateField(blank=True, null=True)
     published = models.DateField(blank=True, null=True)
     issued = models.DateField(blank=True, null=True)
-    taverne_date = models.DateField(blank=True, null=True)
     ut_keyword_suggestion = models.CharField(max_length=256, blank=True, null=True)
     topics = models.JSONField(blank=True, null=True)
-
+    taverne_date = models.DateField(blank=True, null=True)
+    calc_taverne_date = models.DateField(blank=True, null=True)
+    
     objects = PaperManager().from_queryset(PaperQuerySet)()
+
+    def get_oa_links(self):
+        urls = []
+        bestoa = {'landing_page_url': '', 'pdf_url': ''}
+        for loc in self.locations.all():
+            if loc.is_best_oa:
+                bestoa['landing_page_url'] = loc.landing_page_url
+                bestoa['pdf_url'] = loc.pdf_url
+            elif loc.is_oa:
+                if loc.landing_page_url:
+                    if loc.landing_page_url not in urls:
+                        urls.append(loc.landing_page_url)
+                if loc.pdf_url:
+                    if loc.pdf_url not in urls:
+                        urls.append(loc.pdf_url)
+        else:
+            return bestoa, urls
+        
     class Meta:
         ordering = ['-year', 'doi']
         indexes = [
@@ -218,27 +237,7 @@ class Paper(TimeStampedModel, models.Model):
                                 ]),
         ]
 
-class MUSPDF(TimeStampedModel, models.Model):
-    paper = models.ForeignKey(
-        Paper, on_delete=models.DO_NOTHING, related_name="pdfs"
-    )
-    location = models.ForeignKey(
-        Location, on_delete=models.DO_NOTHING, related_name="pdfs"
-    )
-    doi = models.CharField(max_length=256, blank=True, null=False)
-    openalex_url = models.CharField(max_length=256, blank=True, null=False)
-    url = models.CharField(max_length=256, blank=True, null=False)
-    is_oa = models.BooleanField(null=True)
-    from_pure = models.BooleanField(null=True)
-    year = models.CharField(max_length=256, blank=True, null=False)
-    filename = models.CharField(max_length=256, blank=True, null=False)
 
-    class Meta:
-        indexes = [
-            models.Index(fields=["paper",
-                                "location",
-                                ]),
-        ]
 class Authorship(models.Model):
     author = models.ForeignKey(
         Author, on_delete=models.CASCADE, related_name="authorships"
@@ -270,6 +269,28 @@ class viewPaper(TimeStampedModel, models.Model):
     class Meta:
         ordering = ['-user']
 
+class MUSPDF(TimeStampedModel, models.Model):
+    paper = models.ForeignKey(
+        Paper, on_delete=models.DO_NOTHING, related_name="pdfs"
+    )
+    location = models.ForeignKey(
+        Location, on_delete=models.DO_NOTHING, related_name="pdfs"
+    )
+    doi = models.CharField(max_length=256, blank=True, null=False)
+    openalex_url = models.CharField(max_length=256, blank=True, null=False)
+    url = models.CharField(max_length=256, blank=True, null=False)
+    is_oa = models.BooleanField(null=True)
+    from_pure = models.BooleanField(null=True)
+    year = models.CharField(max_length=256, blank=True, null=False)
+    filename = models.CharField(max_length=256, blank=True, null=False)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["paper",
+                                "location",
+                                ]),
+        ]
+        
 class PilotPureData(models.Model):
     pureid = models.IntegerField()
     title = models.CharField(max_length=1024)
@@ -338,7 +359,7 @@ class PureEntry(TimeStampedModel, models.Model):
         Journal, on_delete=models.DO_NOTHING, related_name="pure_entries", blank=True, null=True
     )
     keywords = models.JSONField(blank=True, null=True)
-    pilot_pure_data = models.OneToOneField(PilotPureData, on_delete=models.DO_NOTHING, related_name="pure_entries", blank=True, null=True)
+    pilot_pure_data = models.ForeignKey(PilotPureData, on_delete=models.DO_NOTHING, related_name="pure_entries", blank=True, null=True)
     objects = PureEntryManager()
     class Meta:
         ordering = ['-year', 'doi']

@@ -73,7 +73,7 @@ INSTALLED_APPS = [
     "allauth.socialaccount",
     "allauth.socialaccount.providers.github",
     "accounts",
-    'mus_backend',
+    'mus_backend.apps.MusBackendConfig',
     'corsheaders',
     "data_browser",
     "django_extensions",

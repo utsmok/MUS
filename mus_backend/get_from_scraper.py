@@ -205,8 +205,16 @@ async def fillUTPeopleData():
     added = len(result)
         
     logger.info(f"Done scraping people page. Already in db: {already_added}. Added: {added}. Failed: {len(finallist.keys())-added}")
-    dbu = DBUpdate.objects.create(update_source="UTPeoplePage", update_type="fillUTPeopleData", details={'added_count':added,'skipped_count':already_added,'failed_count':len(finallist.keys())-added})
-    dbu.save()
+    return {
+        'update_source': "UTPeoplePage",
+        'update_type': "fillUTPeopleData",
+        'details': {
+            'added_count': added,
+            'skipped_count': already_added,
+            'failed_count': len(finallist.keys()) - added
+        }
+    }
+
 
 async def getJournalBrowserData(journals):
     async def getOADealData(journalid, journaldata):

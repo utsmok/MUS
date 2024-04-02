@@ -815,9 +815,7 @@ def processMongoPureReportEntry(entrydata):
                 entrydict['ut_keyword'] = entrydata.get('keywords')
 
     entry = PilotPureData.objects.create(**entrydict)
-    if entrydata.get('pure_entry_id') and entry:
-        pureentry = PureEntry.objects.filter(pureid=entrydata.get('pure_entry_id')).first().pilot_pure_data = entry
-        pureentry.save()
+
     return entry
 
 @transaction.atomic

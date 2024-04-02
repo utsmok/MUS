@@ -6,4 +6,4 @@ class Command(BaseCommand):
 
     def handle(self, *args, **kwargs):
         print('running the command!')
-        update_all()
+        update_all(True, True, False)

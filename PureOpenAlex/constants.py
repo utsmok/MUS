@@ -1,23 +1,12 @@
-FACULTYNAMES = ["EEMCS", "BMS", "ET", "ITC", "TNW", 'eemcs', 'bms', 'et', 'itc','tnw']
-TAGLIST = ["UT-Hybrid-D", "UT-Gold-D", "NLA", "N/A OA procedure"]
-LICENSESOA = [
-    "cc-by-sa",
-    "cc-by-nc-sa",
-    "publisher-specific-oa",
-    "cc-by-nc-nd",
-    "cc-by-nc",
-    "cc0",
-    "cc-by",
-    "public-domain",
-    "cc-by-nd",
-    "pd",
-]
-OTHERLICENSES = [
-    "publisher-specific,authormanuscript",
-    "unspecified-oa",
-    "implied-oa",
-    "elsevier-specific",
-]
+FACULTYNAMES = [
+    "EEMCS",
+    "BMS",
+    "ET",
+    "ITC",
+    "TNW",
+    ]
+FACULTYNAMES.extend([item.lower() for item in FACULTYNAMES])
+
 TCSGROUPS = [
     "Design and Analysis of Communication Systems",
     "Formal Methods and Tools",
@@ -27,7 +16,6 @@ TCSGROUPS = [
     "Semantics",
     "Human Media Interaction",
 ]
-
 TCSGROUPSABBR = [
     "DACS",
     "FMT",
@@ -52,7 +40,6 @@ EEGROUPS = [
     'Design and Analysis of Communication Systems',
     'Datamanagement & Biometrics',
 ]
-
 EEGROUPSABBR = [
     'AMBER',
     'BSS',
@@ -66,25 +53,30 @@ EEGROUPSABBR = [
     'DACS',
     'DMB',
 ]
-start_year = 2000
-end_year = 2030
 
-for year in range(start_year, end_year + 1):
+LICENSESOA = [
+    "cc-by-sa",
+    "cc-by-nc-sa",
+    "publisher-specific-oa",
+    "cc-by-nc-nd",
+    "cc-by-nc",
+    "cc0",
+    "cc-by",
+    "public-domain",
+    "cc-by-nd",
+    "pd",
+]
+OTHERLICENSES = [
+    "publisher-specific,authormanuscript",
+    "unspecified-oa",
+    "implied-oa",
+    "elsevier-specific",
+]
+
+TAGLIST = ["UT-Hybrid-D", "UT-Gold-D", "NLA", "N/A OA procedure"]
+for year in range(2000, 2031):
     TAGLIST.append(f"{year} OA procedure")
 
-# Now TAGLIST has all the OA procedures up till 2030
-TWENTENAMESDELETE = [
-    "university of twente",
-    "University of Twente / Apollo Tyres Global R&D",
-    "University of Twente Faculty of Engineering Technology",
-    "University of Twente, Faculty of Geo-Information Science and Earth Observation",
-    "University of Twente Faculty of Geo-Information Science and Earth Observation ITC",
-    "University of Twente, Faculty of Geo-Information Science and Earth Observation (ITC)",
-    "University of Twente - Faculty of ITC",
-    "University of Twente, faculty of Science and Technology",
-    "University of Twente,ITC",
-    "University of Twenty, Netherlands",
-]
 TWENTENAMES = [
     "university of twente",
     "University of Twente",
@@ -98,4 +90,51 @@ TWENTENAMES = [
     "University of Twente, faculty of Science and Technology",
     "University of Twente,ITC",
     "University of Twenty, Netherlands",
+]
+
+CSV_EXPORT_KEYS = [
+    'title',
+    'doi',
+    'year',
+    'itemtype',
+    'isbn',
+    'topics',
+    'Authorinfo ->',
+    'ut_authors',
+    'ut_groups',
+    'is_eemcs?',
+    'is_ee?',
+    'is_tcs?',
+    'ut_corresponding_author',
+    'all_authors',
+    'Openaccessinfo ->',
+    'is_openaccess',
+    'openaccess_type',
+    'found_as_green',
+    'present_in_pure',
+    'license',
+    'URLs ->',
+    'primary_link',
+    'pdf_link_primary',
+    'best_oa_link',
+    'pdf_link_best_oa',
+    'other_oa_links',
+    'openalex_url',
+    'pure_page_link',
+    'pure_file_link',
+    'scopus_link',
+    'Journalinfo ->',
+    'journal',
+    'journal_issn',
+    'journal_e_issn',
+    'journal_publisher',
+    'volume',
+    'issue',
+    'pages',
+    'pagescount',
+    'MUS links ->',
+    'mus_paper_details',
+    'mus_api_url_paper',
+    'mus_api_url_pure_entry',
+    'mus_api_url_pure_report_details'
 ]

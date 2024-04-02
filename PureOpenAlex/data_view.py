@@ -1,7 +1,7 @@
 from .models import (
     Paper,
 )
-from .constants import FACULTYNAMES
+from .constants import FACULTYNAMES, TCSGROUPSABBR, EEGROUPSABBR
 from loguru import logger
 from io import StringIO
 from rich import print
@@ -9,6 +9,10 @@ from pymongo import MongoClient
 from django.conf import settings
 import json
 from typing import List
+from collections import defaultdict
+import pandas as pd
+import plotly.graph_objects as go
+
 def generateMainPage(user):
     """
     returns:
@@ -401,3 +405,125 @@ def exportris(papers: List[Paper]):
             for item in risentry:
                 f.write(str(item[0])+'  - '+str(item[1])+'\n')
         return content.getvalue()
+    
+
+def generate_chart(parameters, user):
+    '''
+    returns a html chart with given params for user
+
+    '''
+    dataoa = []
+    oatypes = ['green', 'bronze', 'closed', 'hybrid', 'gold']
+    years = ['2016','2017','2018', '2019', '2020', '2021', '2022', '2023']
+    groups = []
+    groups.extend(EEGROUPSABBR)
+    groups.extend(TCSGROUPSABBR)
+    groups=list(set(groups))
+    types = ['proceedings-article', 'journal-article']
+    baseline=defaultdict(int)
+    baseline_eemcs=defaultdict(int)
+    baseline_tcs= defaultdict()
+    baseline_ee= defaultdict()
+    for year in years:
+        baseline_tcs[year]=defaultdict(int)
+        baseline_ee[year]=defaultdict(int)
+
+    for group in groups:
+        print('=========================')
+        filters= [['start_date','2016-01-01'],['end_date', '2023-12-31'],['group',group], ['itemtype', types]]
+        facultyname, stats, listpapers = getPapers('all', filters, user)
+        print(group)
+        print(stats)
+        for year in years:
+            immediate=0
+            delayed=0
+            total=0
+
+            yearpapers=listpapers.filter(year=year)
+            for oatype in oatypes:
+                count = yearpapers.filter(openaccess=oatype).count()
+                if oatype in ['gold', 'hybrid', 'bronze']:
+                    immediate += count
+                else:
+                    delayed += count
+                #dataoa.append({'faculty':faculty, 'year':year,'counttype':oatype,'count':count})
+            #for type in types:
+            #    count = yearpapers.filter(itemtype=type).count()
+            #    datatypes.append({'faculty':faculty, 'year':year,'counttype':type,'count':count})
+            value = round(immediate*100/(immediate+delayed),0)
+            total = immediate+delayed
+            #value = delayed*100/(immediate+delayed)
+            dept=''
+            if group in EEGROUPSABBR and group in TCSGROUPSABBR:
+                dept = 'Mixed'
+            elif group in TCSGROUPSABBR:
+                dept = 'TCS'
+            elif group in EEGROUPSABBR:
+                dept = 'EE'
+            if group in TCSGROUPSABBR :
+                baseline_tcs[year]['count'] += value
+                baseline_tcs[year]['amount'] += immediate
+                baseline_tcs[year]['total'] += total
+            elif group in EEGROUPSABBR :
+                baseline_ee[year]['count'] += value
+                baseline_ee[year]['amount'] += immediate
+                baseline_ee[year]['total'] += total
+
+            dataoa.append({'group':group, 'dept':dept,'year':year,'counttype':'gold/hybrid/bronze','count':value, 'amount':immediate, 'total':total})
+
+    for year in years:
+        baseline_tcs[year]['count']/=len(TCSGROUPSABBR)
+        baseline_ee[year]['count']/=len(EEGROUPSABBR)
+        baseline_tcs[year]['count']=round(baseline_tcs[year]['count'],0)
+        baseline_ee[year]['count']=round(baseline_ee[year]['count'],0)
+    dfoa = pd.DataFrame(dataoa)
+    dfoa=dfoa.sort_values(by=['year', 'dept', 'count'], ascending=[True, True, False])
+    #dftypes= pd.DataFrame(datatypes)
+    print(dfoa.info(verbose=True))
+
+    fig = go.Figure()
+    for group in groups:
+        if group in EEGROUPSABBR and group in TCSGROUPSABBR:
+            color='#474967'
+        elif group in TCSGROUPSABBR:
+            color='#337357'
+        elif group in EEGROUPSABBR:
+            color='#5E1675'
+        else:
+            color='#FFD23F'
+
+        curdata=dfoa[dfoa['group']==group]
+        dept=dfoa[dfoa['group']==group]['dept'].values[0]
+        fig.add_trace(go.Bar(x=curdata['year'],
+                y=curdata['amount'],
+                name=group,
+                text=group,
+                textposition='auto',
+                hoverinfo='text',
+                hovertext=' ['+dept+']['+group+'] '+curdata['count'].astype(str)+'% '+curdata['counttype'].astype(str)+' - '+curdata['amount'].astype(str)+'/'+curdata['total'].astype(str)+' total',
+                marker_color=color,
+                ))
+    if False:
+        fig.add_trace(go.Scatter(
+            x=[*baseline_ee.keys()],
+            y=[year['amount'] for year in [*baseline_ee.values()]],
+            mode='lines+markers',
+            name='EE total gold/hybrid/bronze',
+            marker_color='#5E1675',
+            marker_size=[year['count'] for year in [*baseline_ee.values()]],
+
+            ))
+
+        fig.add_trace(go.Scatter(
+            x=[*baseline_tcs.keys()],
+            y=[year['amount'] for year in [*baseline_tcs.values()]],
+            mode='lines+markers',
+            name='TCS total gold/hybrid/bronze',
+            marker_color='#337357',
+            marker_size=[year['count'] for year in [*baseline_tcs.values()]],
+            ))
+    fig.update_layout(barmode='group', uniformtext_minsize=8, uniformtext_mode='hide', )
+    fig.update_xaxes(type='category')
+
+
+    return fig.to_html()
