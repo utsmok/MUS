@@ -26,6 +26,7 @@ db=client['mus']
 mongo_dblp_raw=db['file_dblp_raw']
 mongo_pure_report_start_tcs=db['pure_report_start_tcs']
 mongo_pure_report_ee=db['pure_report_ee']
+mongo_pure_xmls=db['pure_xmls']
 global added
 global processed
 added = 0
@@ -150,7 +151,18 @@ def getfrompurereport(group):
     return result if result['total']>0 else None
 
 
-
+def getfrompurexml():
+    file = 'eemcs_output_2023_2024q1cerif.xml'
+    with open(file, encoding='utf-8') as f:
+        xmldict = xmltodict.parse(f.read())
+    recordlist = xmldict.get('OAI-PMH').get('ListRecords').get('record')
+    recordlist = [entry['metadata'] for entry in recordlist]
+    products = [entry.get('cerif:Product') for entry in recordlist if entry.get('cerif:Product')]
+    patents = [entry.get('cerif:Patent') for entry in recordlist if entry.get('cerif:Patent')]
+    publications = [entry.get('cerif:Publication') for entry in recordlist if entry.get('cerif:Publication')]
+    mongo_pure_xmls.insert_many(products)
+    mongo_pure_xmls.insert_many(patents)
+    mongo_pure_xmls.insert_many(publications)
 def addfromfiles():
     result = getfrompurereport('ee')
     if result:

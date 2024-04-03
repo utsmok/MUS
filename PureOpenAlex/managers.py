@@ -1279,8 +1279,157 @@ class PaperQuerySet(models.QuerySet):
                     f.write(str(item[0])+'  - '+str(item[1])+'\n')
             return content.getvalue()
 
+    def exportxmldata(self)-> list[dict]:
+        '''
+        returns a list with dicts containing all the info to export a CERIF xml file
+        result is handled by export_paper_data_to_cerif_xml in PureOpenAlex.data_export
+        List of fields for xml:
+'pubt:Type': {
+        '@xmlns:pure': 'https://pure.elsevier.com/schema/extensions/oai_cerif_openaire', # keep this
+        '@pure:peerReviewed': 'true' or 'false',depends on itemtype (?)
+        '@pure:publicationCategory': '/dk/atira/pure/researchoutput/category/academic', # change this
+        '#text': 'http://purl.org/coar/resource_type/c_6501' for journal, see https://vocabularies.coar-repositories.org/resource_types/
+    },
+    'cerif:Language': 'en', #change if needed
+    'cerif:Title': {
+        '@xml:lang': 'en',#change if needed
+        '#text': paper.title
+    },
 
+    'cerif:PublishedIn': {
+        'cerif:Publication': {
+            '@id': '8e6e6598-5be4-4568-96c7-b881ab45994c', # process all ids from pure to make lookup list for ids like these, and use that data to fill this
+            'pubt:Type': 'http://purl.org/coar/resource_type/c_0640',
+            'cerif:Title': [
+                {
+                    '@xml:lang': 'en',
+                    '#text': 'Computers & mathematics with applications'
+                },
+                {
+                    '@xml:lang': 'en',
+                    '#text': 'Computers and Mathematics with Applications'
+                }
+            ]
+        }
+    },
+    'cerif:PublicationDate': paper.date, YYYY-MM-DD
+    'cerif:Volume': str(paper.volume),
+    'cerif:Issue': str(paper.issue),
+    'cerif:StartPage': paper.pages.split('-')[0],
+    'cerif:EndPage': paper.pages.split('-')[1],
+    'cerif:DOI': paper.doi.replace('https://doi.org/', ''),
+    'cerif:SCP-Number': for pureentry in paper.pure_entries.all(): if pureentry.scopus: return str(pureentry.scopus).split('scp=')[1].split('&')[0]
+    'cerif:ISSN': [  # also look up just like publishedIn
+        {
+            '@medium': 'http://issn.org/vocabularies/Medium#Print',
+            '#text': '0898-1221'
+        },
+        {
+            '@medium': 'http://issn.org/vocabularies/Medium#Online',
+            '#text': '1873-7668'
+        }
+    ],
+    'cerif:URL': 'https://research.utwente.nl/en/publications/c99a1b0d-3070-4f77-bf45-a78e294fbeda', #only include if pure_entry exists
+    'cerif:Authors': { # same as publishedIn: make list of all authors with this data and look em up
+        'cerif:Author': [
+            {
+                'cerif:Person': {
+                    '@id': 'd267d6ad-e0a2-40f9-84e6-3e2df54f3f21',
+                    'cerif:PersonName': {
+                        'cerif:FamilyNames': 'Anderson',
+                        'cerif:FirstNames': 'Thomas G.'
+                    }
+                },
+                'cerif:Affiliation': {
+                    'cerif:OrgUnit': {
+                        '@id': 'f518c321-5d73-47e8-a6a5-736560731c28',
+                        'cerif:Name': {
+                            '@xml:lang': 'en',
+                            '#text': 'Rice University'
+                        }
+                    }
+                }
+            },
+            {
+                'cerif:Person': {
+                    '@id': '9de34bd3-f13d-4a35-9cf3-d4440a890234',
+                    'cerif:PersonName': {
+                        'cerif:FamilyNames': 'Bonnet',
+                        'cerif:FirstNames': 'Marc'
+                    }
+                },
+                'cerif:Affiliation': {
+                    'cerif:OrgUnit': {
+                        '@id': '6d252b57-6116-4a64-a97f-0f5313600b9b',
+                        'cerif:Name': {
+                            '@xml:lang': 'en',
+                            '#text': 'INRIA Institut National de Recherche en Informatique et en Automatique'
+                        }
+                    }
+                }
+            },
+            # etc
+        ]
+    },
+    'cerif:Publishers': { #look this up as well? seems a bit weird with the orgunit field
+        'cerif:Publisher': {
+            'cerif:OrgUnit': {
+                'cerif:Name': {
+                    '@xml:lang': 'en',
+                    '#text': 'Elsevier'
+                }
+            }
+        }
+    },
+    'cerif:License': { # use paper.license and look up atira scheme
+        '@scheme': '/dk/atira/pure/core/document/licenses',
+        '#text': 'taverne'
+    },
+    'cerif:Keyword': { #skip this
+        '@xml:lang': 'en',
+        '#text': '2024 OA procedure'
+    },
+    'cerif:Abstract': {
+        '@xml:lang': 'en',
+        '#text': paper.abstract
+    },
+    'cerif:Status': { # take a better look at this field
+        '@scheme': '/dk/atira/pure/researchoutput/status',
+        '#text': 'epub'
+    },
+    'ar:Access': 'http://purl.org/coar/access_right/c_f1cf', #check this field
+    'cerif:FileLocations': { #use paper.locations.all()
+        'cerif:Medium': {
+            'cerif:Type': {
+                '@scheme': '/dk/atira/pure/researchoutput/electronicversion/versiontype',
+                '#text': 'publishersversion'
+            },
+            'cerif:Title': {
+                '@xml:lang': 'en',
+                '#text': '1-s2.0-S0898122124000907-main.pdf'
+            },
+            'cerif:URI': 'https://research.utwente.nl/files/359113971/1-s2.0-S0898122124000907-main.pdf',
+            'cerif:MimeType': 'application/pdf',
+            'cerif:Size': '555738',
+            'ar:Access': 'http://purl.org/coar/access_right/c_f1cf',
+            'cerif:License': {
+                '@scheme': '/dk/atira/pure/core/document/licenses',
+                '#text': 'taverne'
+            }
+        }
+    }
+}
+        '''
 
+        result=[]
+        for paper in self.all().distinct():
+            # first check type
+            if paper.itemtype in ['other','posted-content','reference-entry','monograph','dataset']:
+                logger.warning(f'skipping {paper.id} as it is of type {paper.itemtype}')
+                continue
+            filldict = {}
 
+            paperdict = {'cerif:Publication':filldict}
+            result.append(paperdict)
 
-
+        return result

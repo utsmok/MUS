@@ -1,3 +1,4 @@
+from datetime import datetime
 FACULTYNAMES = [
     "EEMCS",
     "BMS",
@@ -138,3 +139,31 @@ CSV_EXPORT_KEYS = [
     'mus_api_url_pure_entry',
     'mus_api_url_pure_report_details'
 ]
+
+def get_cerif_header():
+    time = datetime.now().strftime('%Y-%m-%dT%H:%M:%SZ')
+    return f'''
+    <?xml version="1.0" encoding="UTF-8"?>
+        <OAI-PMH xmlns="http://www.openarchives.org/OAI/2.0/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.openarchives.org/OAI/2.0/ http://www.openarchives.org/OAI/2.0/OAI-PMH.xsd https://www.openaire.eu/cerif-profile/1.2/ https://www.openaire.eu/schema/cris/current/openaire-cerif-profile.xsd">
+        <responseDate>{time}</responseDate>
+        <request metadataPrefix="oai_cerif_openaire" verb="ListRecords" set="openaire_cris_publications"></request>
+        <ListRecords>
+    '''
+
+CERIF_CLOSER = '''
+    </ListRecords>
+</OAI-PMH>
+'''
+RECORD_HEADER = '''
+        <record>
+            <header>
+                <identifier></identifier>
+                <datestamp></datestamp>
+                <setSpec></setSpec>
+            </header>
+            <metadata>
+'''
+RECORD_CLOSER = '''
+            </metadata>
+        </record>
+'''
