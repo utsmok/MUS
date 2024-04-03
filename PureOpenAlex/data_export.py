@@ -70,7 +70,10 @@ def export_paper_data_to_cerif_xml(requests: dict) -> list[str]:
     '''
     Exports CERIF XML files based on the request.
     see https://rawgit.com/EuroCRIS/CERIF-DataModel/8743066b/documentation/MInfo.html
-
+    and https://openaire-guidelines-for-cris-managers.readthedocs.io/en/latest/cerif_xml_publication_entity.html
+    and https://github.com/EuroCRIS/CERIF-Vocabularies/blob/master/IdentifierTypes.xml
+    and https://vocabularies.coar-repositories.org/resource_types/
+    and https://adk.elsevierpure.com/ws/api/documentation/index.html
         Requests is a dict defined as follows:
         requests = {
 
