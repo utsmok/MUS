@@ -19,6 +19,7 @@ import csv
 from time import time
 from PureOpenAlex.models import DBUpdate
 from collections import defaultdict
+from datetime import datetime
 MONGOURL = getattr(settings, "MONGOURL")
 APIEMAIL = getattr(settings, "APIEMAIL", "no@email.com")
 client=MongoClient(MONGOURL)
@@ -27,6 +28,11 @@ mongo_dblp_raw=db['file_dblp_raw']
 mongo_pure_report_start_tcs=db['pure_report_start_tcs']
 mongo_pure_report_ee=db['pure_report_ee']
 mongo_pure_xmls=db['pure_xmls']
+pure_cerif_authors = db['pure_cerif_authors']
+pure_cerif_works = db['pure_cerif_works']
+pure_cerif_journals = db['pure_cerif_journals']
+pure_cerif_categories = db['pure_cerif_categories']
+pure_org_mapping = db['pure_org_mapping']
 global added
 global processed
 added = 0
@@ -150,6 +156,86 @@ def getfrompurereport(group):
 
     return result if result['total']>0 else None
 
+def import_pure_author_csv(filename='eemcs_author_details.csv'):
+    with open(filename, encoding='utf-8') as f:
+        data = csv.DictReader(f)
+        matched = 0
+        nomatch = 0
+        total = 0
+        for row in data:
+            authordict = dict()
+            total += 1
+            for key, value in row.items():
+                if '|' in value:
+                    value = value.split('|')
+                    value = [v.strip() for v in value]
+                    if 'date' in key:
+                        value = [datetime.fromisoformat(v).date().strftime('%Y-%m-%d') for v in value]
+                    row[key] = value
+                if '//' in value:
+                    value = value.split('//')
+                    value = [v.strip() for v in value]
+                    if 'date' in key:
+                        value = [datetime.fromisoformat(v).date().strftime('%Y-%m-%d') for v in value]
+                    row[key] = value
+
+            authordict['pureid'] = row['author_pureid']
+            authordict['id'] = row['author_uuid']
+            authordict['name'] = row['author_name']
+            authordict['lastname'] = row['author_last_name']
+            authordict['firstname'] = row['author_first_names']
+            authordict['known_as'] = row['author_known_as_name']
+            authordict['default_publishing_name'] = row['author_default_publishing_name']
+            authordict['orcid'] = row['author_orcid']
+            authordict['isni'] = row['author_isni']
+            authordict['scopus_id'] = row['author_scopus_id']
+            authordict['links'] = row['author_links']
+            authordict['org_names'] = row['org_names']
+            orgdata = []
+            if isinstance(row['org_uuids'], list) and len(row['org_uuids']) > 1:
+                if len(row['org_uuids']) == len(row['org_names']):
+                    orgdatazip = zip(row['affl_start_date'], row['affl_end_date'], row['org_names'], row['org_uuids'], row['org_pureids'])
+                    for start_date, end_date, orgname, uuid, pureid in orgdatazip:
+                        orgdata.append({
+                            'start_date': start_date,
+                            'end_date': end_date,
+                            'uuid': uuid,
+                            'pureid': pureid,
+                            'name': orgname,
+                        })
+                else:
+                    orgdatazip = zip(row['affl_start_date'], row['affl_end_date'], row['org_uuids'], row['org_pureids'])
+                    for start_date, end_date, uuid, pureid in orgdatazip:
+                        orgdata.append({
+                            'start_date': start_date,
+                            'end_date': end_date,
+                            'uuid': uuid,
+                            'pureid': pureid,
+                            'name':None
+                        })
+            elif (isinstance(row['org_uuids'], list) and len(row['org_uuids']) == 1) or isinstance(row['org_uuids'], str):
+                orgdata = [{
+                    'start_date': row['affl_start_date'],
+                    'end_date': row['affl_end_date'],
+                    'uuid': row['org_uuids'],
+                    'pureid': row['org_pureids']
+                }]
+                if (isinstance(row['org_uuids'], list) and isinstance(row['org_names'], list) and len(row['org_uuids']) == len(row['org_names'])) or isinstance(row['org_uuids'], str) and isinstance(row['org_names'], str):
+                    orgdata[0]['name'] = row['org_names']
+                else:
+                    orgdata[0]['name'] = None
+            else:
+                orgdata = []
+
+            authordict['affiliation_details'] = orgdata
+            authordict['faculty'] = row['faculty_name']
+            authordict['faculty_uuid']= row['faculty_uuid']
+            if pure_cerif_authors.find_one({'id':authordict['id']}):
+                pure_cerif_authors.update_one({'id':authordict['id']}, {'$set':authordict})
+                matched += 1
+            else:
+                nomatch +=1
+    print(f'Total: {total}, matched: {matched}, nomatch: {nomatch}')
 
 def importpurexml(file='eemcs_output_2023_2024q1cerif.xml', replace=False):
     logger.info(f'importing from cerif xml file {file}')
@@ -181,13 +267,13 @@ def importpurexml(file='eemcs_output_2023_2024q1cerif.xml', replace=False):
                     mongo_pure_xmls.delete_one({'@id':item.get('@id')})
                 except Exception as e:
                     logger.warning(f'error removing {item.get("@id")} from collection: {e}')
-    
+
     mongo_pure_xmls.insert_many(products) if products else None
     mongo_pure_xmls.insert_many(patents) if patents else None
     mongo_pure_xmls.insert_many(publications) if publications else None
     if any([products, patents, publications]):
-        process_data_from_xmls()
-def process_data_from_xmls():
+        process_data_from_pure_xmls()
+def process_data_from_pure_xmls():
     '''
     Read in the import raw xml data and process it to create formatted data.
     Data will be used to:
@@ -220,10 +306,7 @@ def process_data_from_xmls():
     ['cerif:FileLocations'][n]['cerif:Medium']['cerif:Type']['@scheme']: publication type scheme atira
     ['cerif:FileLocations'][n]['cerif:Medium'] -> also has ['cerif:License']['@scheme'], ['ar:Access'], ['cerif:MimeType']
     '''
-    pure_cerif_authors = db['pure_cerif_authors']
-    pure_cerif_works = db['pure_cerif_works']
-    pure_cerif_journals = db['pure_cerif_journals']
-    pure_cerif_categories = db['pure_cerif_categories']
+
 
     def process_authors(item:dict)->list[dict]:
         authors = []
@@ -241,7 +324,7 @@ def process_data_from_xmls():
             elif isinstance(item.get('cerif:Authors').get('cerif:Author'), dict):
                 authorrawlist.append(item.get('cerif:Authors').get('cerif:Author'))
         for author in authorrawlist:
-            
+
             authorid = author.get('cerif:Person').get('@id') if author.get('cerif:Person') else None
             if not authorid:
                 continue
@@ -256,7 +339,7 @@ def process_data_from_xmls():
                             'id': affiliation.get('@id'),
                             'name': affiliation.get('cerif:Name').get('#text'),
                         })
-                        
+
                 elif isinstance(author.get('cerif:Affiliation'), dict):
                         affiliation = author.get('cerif:Affiliation').get('cerif:OrgUnit')
                         authoraffiliations.append({
@@ -278,6 +361,7 @@ def process_data_from_xmls():
 
         return authors
     def process_journal(item: dict) -> list[dict]:
+
         results = []
         if not item.get('cerif:PublishedIn'):
             return results
@@ -292,7 +376,7 @@ def process_data_from_xmls():
             if item.get('cerif:PublishedIn').get('cerif:Publication'):
                 if isinstance(item.get('cerif:PublishedIn').get('cerif:Publication'), list):
                     for publication in item.get('cerif:PublishedIn').get('cerif:Publication'):
-                        journalsraw.append(publication)    
+                        journalsraw.append(publication)
                 elif isinstance(item.get('cerif:PublishedIn').get('cerif:Publication'), dict):
                     process_journal(item.get('cerif:PublishedIn').get('cerif:Publication'))
                 else:
@@ -315,15 +399,15 @@ def process_data_from_xmls():
         result['id'] = item.get('@id')
         if item.get('pubt:Type'):
             result['category'] = item.get('pubt:Type').get('@pure:publicationCategory')
-            result['type'] = item.get('pubt:Type').get('#text') 
+            result['type'] = item.get('pubt:Type').get('#text')
         elif item.get('prot:Type'):
             result['category'] = item.get('prot:Type').get('@pure:publicationCategory')
-            result['type'] = item.get('prot:Type').get('#text') 
+            result['type'] = item.get('prot:Type').get('#text')
         if item.get('cerif:License'):
             if isinstance(item.get('cerif:License'), list):
                 result['license'] = [{lic['@scheme']:lic['#text']} for lic in item.get('cerif:License')]
             else:
-                result['license'] = {item['cerif:License']['@scheme']:item['cerif:License']['#text']} 
+                result['license'] = {item['cerif:License']['@scheme']:item['cerif:License']['#text']}
         else:
             result['license'] = None
         result['status'] = {item.get('cerif:Status').get('@scheme'):item.get('cerif:Status').get('#text')} if item.get('cerif:Status') else None
@@ -339,7 +423,7 @@ def process_data_from_xmls():
                         if isinstance(location.get('cerif:License'), list):
                             license = [{lic['@scheme']:lic['#text']} for lic in location.get('cerif:License')]
                         else:
-                            license = {location['cerif:License']['@scheme']:location['cerif:License']['#text']} 
+                            license = {location['cerif:License']['@scheme']:location['cerif:License']['#text']}
                     else:
                         license = None
                     result['locations'].append({
@@ -355,7 +439,7 @@ def process_data_from_xmls():
                         if isinstance(location.get('cerif:License'), list):
                             license = [{lic['@scheme']:lic['#text']} for lic in location.get('cerif:License')]
                         else:
-                            license = {location['cerif:License']['@scheme']:location['cerif:License']['#text']} 
+                            license = {location['cerif:License']['@scheme']:location['cerif:License']['#text']}
                     else:
                         license = None
                     access = location['ar:Access'] if location.get('ar:Access') else None
@@ -395,7 +479,7 @@ def process_data_from_xmls():
                         })
             elif isinstance(item.get('cerif:OriginatesFrom'), dict):
                     funding = item.get('cerif:OriginatesFrom').get('cerif:Funding') if item.get('cerif:OriginatesFrom').get('cerif:Funding') else None
-                    if funding: 
+                    if funding:
                         ftype = funding.get('funt:Type') if funding.get('funt:Type') else None
                         if isinstance(funding.get('cerif:Identifier'), list):
                             fid = [{ident.get('@type'):ident.get('#text')} for ident in funding.get('cerif:Identifier')] if funding.get('cerif:Identifier') else None
@@ -411,26 +495,26 @@ def process_data_from_xmls():
                             }
                         else:
                             funder = None
-                    
+
                         result['funding'].append({
                             'type': ftype,
                             'id': fid,
                             'description': description,
                             'funder': funder
                         })
-        
+
 
         if pure_cerif_categories.find_one({'id':result['id']}):
             pure_cerif_categories.update_one({'id':result['id']}, {'$set':result})
-        else:    
+        else:
             pure_cerif_categories.insert_one(result)
-        
+
         return result
-    
+
     def process_work(item:dict):
         try:
             categories = process_categories(item)
-        except Exception as e:            
+        except Exception as e:
             categories = None
             logger.error(f'[{item.get("id")}] Error processing categories: {e}', exc_info=True)
         try:
@@ -489,18 +573,86 @@ def process_data_from_xmls():
             pure_cerif_works.update_one({'id':result['id']}, {'$set':result})
         else:
             pure_cerif_works.insert_one(result)
-    
+
     #main loop
     for item in mongo_pure_xmls.find():
         logger.info(f'processing item with @id {item.get("@id")}')
-        
+
         try:
             process_work(item)
         except Exception as e:
             logger.error(f'error for itemid {item.get("@id")}: {e}', exc_info=True)
 
 
-        
+def process_pure_uuids():
+    # import uuid fields from authors, works
+    faculties = {}
+    orgid_to_name = {}
+    names_to_orgid = {}
+
+
+    iorg = []
+
+    for item in pure_cerif_authors.find({'pureid': {'$exists': True}}):
+        ifac = {}
+        if item.get('faculty_uuid'):
+            ifac = {'name':item.get('faculty'), 'uuid':item.get('faculty_uuid')}
+            if not isinstance(item.get('faculty_uuid'), list):
+                if item.get('faculty_uuid') not in faculties.keys():
+                    faculties[item.get('faculty_uuid')] = item.get('faculty')
+            else:
+                for faculty_uuid in item.get('faculty_uuid'):
+                    if faculty_uuid not in faculties.keys():
+                        faculties[faculty_uuid] = item.get('faculty')
+        if item.get('affiliation_details'):
+            for affl in item.get('affiliation_details'):
+                uuid = affl.get('uuid')
+                name = affl.get('name')
+                if not name:
+                    for org in item.get('affiliations'):
+                        if org.get('id') == uuid:
+                            name = org.get('name')
+                if not name and not uuid in orgid_to_name.keys():
+                    orgid_to_name[uuid] = None
+
+                elif name:
+                    if not orgid_to_name.get(uuid):
+                        orgid_to_name[uuid] = {name}
+                    else:
+                        orgid_to_name[uuid].add(name)
+                    if not names_to_orgid.get(name):
+                        names_to_orgid[name] = {name}
+                    else:
+                        names_to_orgid[name].add(uuid)
+
+                iorg.append({'name':name, 'uuid':uuid, 'faculty':ifac})
+    print(len(iorg))
+    for item in iorg:
+        if not item.get('name'):
+            if orgid_to_name.get(item.get('uuid')):
+                item['name'] = orgid_to_name[item.get('uuid')]
+
+
+    uniqueorgs = list({item['uuid']:item for item in iorg if item.get('name')}.values())
+    print(len(uniqueorgs))
+    input('...')
+    print(uniqueorgs)
+
+    for org in uniqueorgs:
+        if isinstance(org.get('name'), set):
+            org['name'] = list(org.get('name'))
+        if pure_org_mapping.find_one({'uuid':org.get('uuid')}):
+            pure_org_mapping.update_one({'uuid':org.get('uuid')}, {'$set':org})
+        else:
+            pure_org_mapping.insert_one(org)
+
+
+
+
+
+
+
+
 
 def addfromfiles():
     result = getfrompurereport('ee')
