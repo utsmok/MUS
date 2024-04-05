@@ -47,13 +47,13 @@ def clean_all():
         logger.info(f'removed {cleanedworks} duplicate entries for {numworks} works')
     except InvalidOperation:
         logger.info('no duplicate entries found in mongo collection api_responses_works_openalex')
-    
+
     logger.info('now running cleaning functions for models:')
     logger.info('paper.link_journals()')
     Paper.objects.link_journals()
     logger.info('pureentry.link_mongo_pure_reports()')
     PureEntry.objects.link_with_mongo_pure_reports()
-    logger.info('pureentry.link_with_postgres_pure_reports()') 
+    logger.info('pureentry.link_with_postgres_pure_reports()')
     PureEntry.objects.link_with_postgres_pure_reports()
     logger.info('pureentry.add_authors()')
     PureEntry.objects.add_authors()
@@ -75,7 +75,7 @@ def update_pure_items(years, processpapers):
         pureupdate.save()
         if len(addedfrompure['ris_file'])>0:
             processpapers['pure'].extend({'ris_files':addedfrompure['ris_file'],'ris_pages':addedfrompure['ris_page']})
-            logger.info(f'{len(addedfrompure['ris_file'])} updated works retrieved from Pure OAI-PMH')
+            logger.info(f"{len(addedfrompure['ris_file'])} updated works retrieved from Pure OAI-PMH")
             addPureWorksFromMongo(processpapers['pure'])
 
     return processpapers
@@ -89,7 +89,7 @@ def update_works(years, processpapers):
         if len(result_oaworks['dois'])>0:
             processpapers['works'].extend(result_oaworks['dois'])
             logger.info(f'{len(result_oaworks["dois"])} updated works retrieved from OpenAlex')
-    
+
     logger.info('running addItemsFromOpenAire()')
     addedfromopenaire = addItemsFromOpenAire()
     logger.info('done running addItemsFromOpenAire()')
@@ -98,7 +98,7 @@ def update_works(years, processpapers):
         oaire.save()
         if len(addedfromopenaire['dois'])>0:
             processpapers['openaire'].extend(addedfromopenaire['dois'])
-            logger.info(f'{len(addedfromopenaire['dois'])} updated works retrieved from OpenAire')
+            logger.info(f'{len(addedfromopenaire["dois"])} updated works retrieved from OpenAire')
     logger.info('running getCrossrefWorks()')
     addedfromcrossref = getCrossrefWorks(years)
     logger.info('done running getCrossrefWorks()')

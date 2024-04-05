@@ -18,6 +18,7 @@ from .views import (
     chart,
     load_affils,
     customchart,
+    getcsv,
 )
 
 app_name = "PureOpenAlex"
@@ -37,6 +38,7 @@ urlpatterns = [
     path('customfilter/',customfilter, name='customfilter'),
     path('pure_entries/<int:article_id>/', single_article_pure_view, name='pure_entries'),
     path('getris/', getris, name='getris'),
+    path('getcsv/', getcsv, name='getcsv'),
     path('dbinfo/', dbinfo, name='dbinfo'),
     path('filtertools/', filtertoolpage, name='filtertools'),
     path('rawdata/<int:article_id>/', single_article_raw_data, name='rawdata'),

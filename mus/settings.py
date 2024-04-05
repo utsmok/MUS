@@ -33,7 +33,7 @@ SECRET_KEY = str(os.getenv('DJANGOSECRETKEY'))
 ACCOUNT_ADAPTER = "accounts.adapter.NoNewUsersAccountAdapter"
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 LOGLEVEL = "DEBUG"
 LOGFMT = "{time:[%m %d] %H:%M:%S} | {name}>{function}() [{level}] |> {message}"
 logger.remove()

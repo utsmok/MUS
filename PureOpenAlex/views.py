@@ -241,11 +241,8 @@ def addmark(request, id):
 
 @login_required
 def getris(request):
-
     '''
     returns a ris file with data for all papers marked by the user -> can be used to import data into pure.
-    Needs testing.
-    TODO: move to viewPaperManager/paper manager or other place
     '''
     user = request.user
     viewpapers = viewPaper.objects.filter(user=user)
@@ -255,6 +252,22 @@ def getris(request):
     contentdisp = f'attachment; filename="mus_ris_export_{user.username}_{datetime.now().strftime("%Y-%m-%d")}.ris"'
     response = HttpResponse(risfile, headers={
         "Content-Type": 'application/x-research-info-systems',
+        "Content-Disposition": contentdisp,
+    })
+
+    return response
+def getcsv(request):
+    '''
+    returns a csv file with data for all papers marked by the user
+    '''
+    user = request.user
+    viewpapers = viewPaper.objects.filter(user=user)
+    paperids = viewpapers.values_list('displayed_paper_id', flat=True)
+    papers = Paper.objects.filter(pk__in=paperids)
+    csvfile = papers.get_csv(papers=papers)
+    contentdisp = f'attachment; filename="mus_csv_export_{user.username}_{datetime.now().strftime("%Y-%m-%d")}.csv"'
+    response = HttpResponse(csvfile, headers={
+        "Content-Type": 'text/csv',
         "Content-Disposition": contentdisp,
     })
 

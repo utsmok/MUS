@@ -371,6 +371,49 @@ CSV_EXPORT_KEYS = [
     'Authorinfo ->',
     'ut_authors',
     'ut_groups',
+    'ut_corresponding_author',
+    'all_authors',
+    'Openaccessinfo ->',
+    'is_openaccess',
+    'openaccess_type',
+    'found_as_green',
+    'present_in_pure',
+    'license',
+    'URLs ->',
+    'primary_link',
+    'pdf_link_primary',
+    'best_oa_link',
+    'pdf_link_best_oa',
+    'other_oa_links',
+    'openalex_url',
+    'pure_page_link',
+    'pure_file_link',
+    'scopus_link',
+    'Journalinfo ->',
+    'journal',
+    'journal_issn',
+    'journal_e_issn',
+    'journal_publisher',
+    'volume',
+    'issue',
+    'pages',
+    'pagescount',
+    'MUS links ->',
+    'mus_paper_details',
+    'mus_api_url_paper',
+    'mus_api_url_pure_entry',
+    'mus_api_url_pure_report_details'
+]
+CSV_EEMCS_KEYS = [
+    'title',
+    'doi',
+    'year',
+    'itemtype',
+    'isbn',
+    'topics',
+    'Authorinfo ->',
+    'ut_authors',
+    'ut_groups',
     'is_eemcs?',
     'is_ee?',
     'is_tcs?',
@@ -407,7 +450,6 @@ CSV_EXPORT_KEYS = [
     'mus_api_url_pure_entry',
     'mus_api_url_pure_report_details'
 ]
-
 def get_cerif_header():
     time = datetime.now().strftime('%Y-%m-%dT%H:%M:%SZ')
     return f'''

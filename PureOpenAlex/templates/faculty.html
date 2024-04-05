@@ -19,6 +19,9 @@
         <a type='button' class="btn btn-success fs-6" target="_blank" href="{% url 'PureOpenAlex:getris' %}">
         <i class="fas fa-file-export"></i> Export .ris file of all marked papers
         </a>
+        <a type='button' class="btn btn-primary fs-6" target="_blank" href="{% url 'PureOpenAlex:getcsv' %}">
+            <i class="fas fa-file-export"></i> Export .csv file with detailed data for all marked papers
+        </a>
     </div>
 
 {% else %}

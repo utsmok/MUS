@@ -2,7 +2,7 @@ from django.db import models, transaction
 from django.db.models import Q, Prefetch, Exists, OuterRef, Count
 from collections import defaultdict
 from loguru import logger
-from .constants import TCSGROUPS, TCSGROUPSABBR, EEGROUPS, EEGROUPSABBR, FACULTYNAMES
+from .constants import TCSGROUPS, TCSGROUPSABBR, EEGROUPS, EEGROUPSABBR, FACULTYNAMES, CSV_EXPORT_KEYS, CSV_EEMCS_KEYS
 from datetime import datetime
 from django.apps import apps
 import re
@@ -12,7 +12,7 @@ from rapidfuzz import process, fuzz, utils
 import os
 import requests
 from io import StringIO
-
+import csv
 MONGOURL = getattr(settings, "MONGOURL")
 client=pymongo.MongoClient(MONGOURL)
 db=client['mus']
@@ -1043,7 +1043,54 @@ class PaperQuerySet(models.QuerySet):
         )
         return stats
 
+    def get_csv(self, filters=[], papers=None):
+        if filters:
+            logger.info(f'Getting csv data using filters: {filters}')
+        else:
+            logger.info(f'Getting csv data for {papers.count()} papers')
 
+        if not papers:
+            papers =  self.all().filter_by(filters)
+        else:
+            papers = papers.filter_by(filters)
+
+        grouplist=[]
+        is_eemcs = False
+        if filters:
+            for filter in filters:
+                if filter[0] == 'EE':
+                    grouplist.extend(EEGROUPSABBR)
+                    is_eemcs = True
+                if filter[0] == 'TCS':
+                    grouplist.extend(TCSGROUPSABBR)
+                    is_eemcs = True
+                if filter[0] == 'group':
+                    grouplist.append(filter[1])
+        if is_eemcs:
+            keys = CSV_EEMCS_KEYS
+        else:
+            keys = CSV_EXPORT_KEYS
+
+        grouplist=list(set(grouplist))
+        raw_data=papers.create_csv(grouplist)
+        print(raw_data[0].keys())
+        if len(raw_data[0].keys()) != len(keys):
+            cleandata = []
+            for row in raw_data:
+                newrow = {}
+                for key in row:
+                    if key in keys:
+                        newrow[key] = row[key]
+                cleandata.append(newrow)
+            print(cleandata[0].keys())
+        else:
+            cleandata = raw_data
+        content = StringIO()
+        with content as f:
+            writer = csv.DictWriter(f, fieldnames=keys)
+            writer.writeheader()
+            writer.writerows(cleandata)
+            return content.getvalue()
 
     def create_csv(self, groups=None):
         '''
@@ -1109,7 +1156,7 @@ class PaperQuerySet(models.QuerySet):
                 'pages':paper.pages,
                 'pagescount':paper.pagescount,
                 'MUS links ->':'',
-                'mus_paper_details':mus_url+'paper/'+str(paper.id),
+                'mus_paper_details':mus_url+'article/'+str(paper.id),
                 'mus_api_url_paper':mus_api_url+'paper/'+str(paper.id),
             }
             pureentrylist=''
