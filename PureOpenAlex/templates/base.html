@@ -95,7 +95,10 @@
     <script type="text/javascript" src="{% static 'ajax_datatable/js/utils.js' %}"></script>
     <link href="{% static 'ajax_datatable/css/style.css' %}" rel="stylesheet" />
     <script src = "{% static 'svg.min.js' %}"></script>
-
+    <!-- Shoelace -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.0/cdn/themes/light.css" />
+    <script type="module" src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.0/cdn/shoelace-autoloader.js"></script>
+    
 </head>
 <body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}' hx-ext="debug, event-header">
   <!-- MDB --> <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mdb-ui-kit/7.1.0/mdb.umd.min.js" ></script>
