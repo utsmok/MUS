@@ -1,6 +1,6 @@
 {% block content %}
 
-<div>
+<div class='text-center'>
     <form action="{% url 'PureOpenAlex:getris' %}" method="post">
         {% csrf_token %}
         <input type="hidden" name="filters" value='{{filter}}'>

@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>log_mus.log contents</h1>
+
+{% for line in log %}
+    <pre><code class="language-log">{{line}}</code></pre>
+{% endfor %}
+{% endblock%}

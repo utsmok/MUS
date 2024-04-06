@@ -3,15 +3,16 @@ from .models import (
 )
 from .constants import FACULTYNAMES, TCSGROUPSABBR, EEGROUPSABBR
 from loguru import logger
-from io import StringIO
+
 from rich import print
 from pymongo import MongoClient
 from django.conf import settings
 import json
-from typing import List
+
 from collections import defaultdict
 import pandas as pd
 import plotly.graph_objects as go
+from datetime import datetime, timedelta
 
 def generateMainPage(user):
     """
@@ -382,3 +383,16 @@ def generate_chart(parameters, user):
 
 
     return fig.to_html()
+
+def read_log(filename='log_mus.log', days=3, maxlines=500):
+    lineset=[]
+    daylist = []
+    for day in range(days):
+        daylist.append('['+(datetime.now()-timedelta(days=day)).strftime("%m %d")+']')
+    print(daylist)
+    with open(filename, 'r') as f:
+        lineset = f.readlines()
+    lineset.reverse()
+    if len(lineset) > maxlines:
+        lineset = lineset[0:maxlines]
+    return lineset

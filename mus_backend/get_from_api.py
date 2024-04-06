@@ -172,7 +172,10 @@ def getPureItems(years):
         initial_url = (
             f"{base_url}?verb=ListRecords&metadataPrefix={metadata_prefix}&set={set_name}"
         )
-        root, xml = fetch_records(initial_url)
+        try:
+            root, xml = fetch_records(initial_url)
+        except Exception as e:
+            logger.error(f'Error retrieving Pure data: {e}')
 
         list_records = root.find("oai:ListRecords", namespace)
         try:
@@ -181,7 +184,7 @@ def getPureItems(years):
             result['ris_files'].extend(resultt['ris_files'])
             result['ris_pages'].extend(resultt['ris_pages'])
         except Exception as e:
-            ...
+            logger.error(f'Error retrieving Pure data: {e}')
         resumption_token = root.find("oai:ListRecords/oai:resumptionToken", namespace)
         i = 1
         while resumption_token is not None:
@@ -196,7 +199,7 @@ def getPureItems(years):
                 result['ris_files'].extend(resultt['ris_files'])
                 result['ris_pages'].extend(resultt['ris_pages'])
             except Exception as e:
-                ...
+                logger.error(f'Error retrieving Pure data: {e}')
             resumption_token = root.find("oai:ListRecords/oai:resumptionToken", namespace)
 
 
@@ -219,9 +222,12 @@ def getDataCiteItems(years):
     #The rest is not important for us; this query returns max 1000 items, and in feb 2024 there were 320 items total for this query.
     url = "https://api.datacite.org/dois?affiliation=true&query=creators.affiliation.affiliationIdentifier:%22https://ror.org/006hf6230%22&page[size]=1000"
     # retrieve json from url
-    response = requests.get(url)
-    if response.status_code != 200:
-        raise Exception(f"DataCite API response code {response.status_code}")
+    try:
+        response = requests.get(url)
+        if response.status_code != 200:
+            raise Exception(f"DataCite API response code {response.status_code}")
+    except Exception as e:
+        logger.error('error while retrieving DataCite items: %s', e)
     else:
         response_json = response.json()
         for item in response_json["data"]:
@@ -257,7 +263,11 @@ def getDataCiteItems(years):
 def getCrossrefWorks(years):
     api_responses_crossref = db["api_responses_crossref"]
     pagesize=100
-    results=cr.works(filter = {'from-pub-date':f'{years[-1]}-01-01','until-pub-date': f'{years[0]}-12-31'}, query_affiliation='twente', cursor = "*", limit = pagesize, cursor_max=100000)
+    try:
+        results=cr.works(filter = {'from-pub-date':f'{years[-1]}-01-01','until-pub-date': f'{years[0]}-12-31'}, query_affiliation='twente', cursor = "*", limit = pagesize, cursor_max=100000)
+    except Exception as e:
+        logger.error('error while retrieving Crossref works: %s', e)
+        return None
     result = {'dois':[], 'total':0}
     for page in results:
         articles=[]
@@ -284,7 +294,10 @@ def getOpenAlexWorks(years):
                 publication_year="|".join([str(x) for x in years]),
             )
     )
-    result = retrieveOpenAlexQuery(query)
+    try:
+        result = retrieveOpenAlexQuery(query)
+    except Exception as e:
+        logger.error('error while retrieving OpenAlex works (1st query): %s', e)
     query = (
             Works()
             .filter(
@@ -292,7 +305,13 @@ def getOpenAlexWorks(years):
                 publication_year="|".join([str(x) for x in years]),
             )
     )
-    result2= retrieveOpenAlexQuery(query)
+    try:
+        result2= retrieveOpenAlexQuery(query)
+    except Exception as e:
+        logger.error('error while retrieving OpenAlex works (2st query): %s', e)
+    if not (result and result2):
+        logger.error('no results for one or both OpenAlex queries!')
+        return None
     result['total']+=result2['total']
     result['openalex_url'].extend(result2['openalex_url'])
     result['new']+=result2['new']

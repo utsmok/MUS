@@ -7,7 +7,7 @@ from django.core.cache.backends.base import DEFAULT_TIMEOUT
 from django.db.models import Q
 from django.core.exceptions import ObjectDoesNotExist
 from .data_add import addPaper
-from .data_view import generateMainPage, getPapers, getAuthorPapers, open_alex_autocomplete, get_raw_data, generate_chart
+from .data_view import generateMainPage, getPapers, getAuthorPapers, open_alex_autocomplete, get_raw_data, generate_chart, read_log
 from django.conf import settings
 from .data_helpers import processDOI
 from django.views.decorators.cache import cache_page
@@ -245,6 +245,7 @@ def getris(request):
     '''
     returns a ris file with data for all papers marked by the user -> can be used to import data into pure.
     '''
+
     user = request.user
     filters = None
     if request.POST.items():
@@ -257,6 +258,9 @@ def getris(request):
         viewpapers = viewPaper.objects.filter(user=user)
         paperids = viewpapers.values_list('displayed_paper_id', flat=True)
         articles = Paper.objects.filter(pk__in=paperids)
+    if not filters:
+        filters='marked papers'
+    logger.info("getris [# papers] {} [filters] {} [user] {}", articles.count(), filters, request.user.username)
 
     risfile = articles.exportris()
     contentdisp = f'attachment; filename="mus_ris_export_{user.username}_{datetime.now().strftime("%Y-%m-%d")}.ris"'
@@ -266,6 +270,8 @@ def getris(request):
     })
 
     return response
+
+@login_required
 def getcsv(request):
     '''
     returns a csv file with data for all papers marked by the user
@@ -282,6 +288,10 @@ def getcsv(request):
         viewpapers = viewPaper.objects.filter(user=user)
         paperids = viewpapers.values_list('displayed_paper_id', flat=True)
         articles = Paper.objects.filter(pk__in=paperids)
+    if not filters:
+        filters='marked papers'
+
+    logger.info("getcsv [# papers] {} [filters] {} [user] {}", articles.count(), filters, request.user.username)
 
     csvfile = articles.get_csv(papers=articles)
     contentdisp = f'attachment; filename="mus_csv_export_{user.username}_{datetime.now().strftime("%Y-%m-%d")}.csv"'
@@ -294,8 +304,10 @@ def getcsv(request):
 
 @login_required
 def filtertoolpage(request):
-    _, stats, _ = getPapers('marked', 'all', request.user)
-    return render(request, "filtertools.html", {'stats': stats})
+    logger.info("filtertools [user] {}", request.user.username)
+    return render(request, "filtertools.html")
+
+
 @login_required
 def customfilter(request):
     '''
@@ -327,7 +339,6 @@ def customfilter(request):
         filters=[]
 
         for key, value in request.POST.items():
-            print(key, value)
             usetypes = []
             if key == 'csrfmiddlewaretoken':
                 continue
@@ -384,14 +395,12 @@ def customfilter(request):
 
         logger.info("customfilter [filters] {} [user] {}",filters, request.user.username)
         facultyname, stats, listpapers = getPapers('all', filters, request.user)
-        print('rendering...')
-        print(stats)
-        print(filters)
         return render(request, "faculty_table.html",{"faculty": facultyname, "stats": stats, "articles": listpapers, "filter":filters})
 
 @login_required
 def load_affils(request,author_id):
     affils = Author.objects.get_affiliations(author_id)
+    logger.info("load_affils [author_id] {} [user] {}",author_id, request.user.username)
     return render(request, "affiliations.html",{"affiliations": affils, "author_id": author_id})
 
 
@@ -404,8 +413,11 @@ def chart(request):
     parameters = request.POST
     user = request.user
     chart = generate_chart(parameters, user)
+    logger.info("chart [parameters] {} [user] {}",parameters, user.username)
+
     return render(request, "chart.html", {"chart": chart})
 
+@login_required
 def customchart(request):
     '''
     Make a custom chart based on the user's selections
@@ -440,3 +452,12 @@ def customchart(request):
     chart = fig.to_html()
 
     return render(request, "chart.html", {"chart": chart})
+
+@login_required
+def viewlog(request, file='log'):
+    logger.info("viewlog [user] {}",request.user.username)
+    if file=='cron':
+        filename = 'cron_update.log'
+    if file=='log':
+        filename = 'log_mus.log'
+    return render(request, "viewlog.html", {"log": read_log(filename)})

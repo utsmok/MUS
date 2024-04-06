@@ -945,7 +945,6 @@ class PaperQuerySet(models.QuerySet):
         for item in filter:
             filter=item[0]
             value=item[1]
-            logger.debug("[filter] {} [value] {}", filter, value)
             if filter == "pure_match" and value in ['yes', '']:
                 finalfilters['bools'].append(Q(has_pure_oai_match=True) )
             if filter == "no_pure_match" or (filter == "pure_match" and value == 'no'):
@@ -1147,7 +1146,7 @@ class PaperQuerySet(models.QuerySet):
             papers =  self.filter_by(filters)
         else:
             papers = papers.filter_by(filters)
-
+        papers=papers.distinct()
         grouplist=[]
         is_eemcs = False
         if filters:
@@ -1166,27 +1165,15 @@ class PaperQuerySet(models.QuerySet):
             keys = CSV_EXPORT_KEYS
 
         grouplist=list(set(grouplist))
-        raw_data=papers.create_csv(grouplist)
-        print(raw_data[0].keys())
-        if len(raw_data[0].keys()) != len(keys):
-            cleandata = []
-            for row in raw_data:
-                newrow = {}
-                for key in row:
-                    if key in keys:
-                        newrow[key] = row[key]
-                cleandata.append(newrow)
-            print(cleandata[0].keys())
-        else:
-            cleandata = raw_data
+        raw_data=papers.create_csv(grouplist, keys)
         content = StringIO()
         with content as f:
             writer = csv.DictWriter(f, fieldnames=keys)
             writer.writeheader()
-            writer.writerows(cleandata)
+            writer.writerows(raw_data)
             return content.getvalue()
 
-    def create_csv(self, groups=None):
+    def create_csv(self, groups=None, keys=[]):
         '''
         Returns a list containing a dict with data for each paper in the current queryset.
         Not only data from the paper object -- also from related tables like authors, pure entries, etc.
@@ -1209,53 +1196,95 @@ class PaperQuerySet(models.QuerySet):
                     else:
                         ut_corresponding_author = ut_corresponding_author[0].name
             best_oa, oa_list = paper.get_oa_links()
-            mapping = {
-                'title':paper.title,
-                'doi':paper.doi,
-                'year':paper.year,
-                'itemtype':paper.itemtype,
-                'isbn':paper.pure_entries.first().isbn if paper.pure_entries.first() else '',
-                'topics':' | '.join([topic.get('display_name') for topic in paper.topics]) if paper.topics else '',
-                'Authorinfo ->':'',
-                'ut_authors':' | '.join([author.name for author in paperauthors]) if paperauthors else '',
-                'ut_groups': ' | '.join(authorgroups) if authorgroups else '',
-                'is_eemcs?': paperauthors.filter(Q(utdata__current_faculty__iexact='EEMCS') | Q(utdata__employment_data__contains=[{'faculty':'EEMCS'}])).exists() ,
-                'is_ee?': paperauthors.filter(Q(utdata__current_group__in=EEGROUPSABBR)).exists() ,
-                'is_tcs?':paperauthors.filter(Q(utdata__current_group__in=TCSGROUPSABBR)).exists(),
-                'ut_corresponding_author':ut_corresponding_author if ut_corresponding_author != [] else '',
-                'all_authors':' | '.join([author.name for author in paper.authors.all()]),
-                'Openaccessinfo ->':'',
-                'is_openaccess':paper.is_oa,
-                'openaccess_type':paper.openaccess,
-                'found_as_green':paper.is_in_pure,
-                'present_in_pure':paper.has_pure_oai_match,
-                'license':paper.license,
-                'URLs ->':'',
-                'primary_link':paper.primary_link,
-                'pdf_link_primary':paper.pdf_link_primary,
-                'best_oa_link':best_oa['landing_page_url'],
-                'pdf_link_best_oa':best_oa['pdf_url'],
-                'other_oa_links':' | '.join(oa_list) if oa_list else '',
-                'openalex_url':paper.openalex_url,
-                'pure_page_link':paper.pure_entries.first().researchutwente if paper.pure_entries.first() else '',
-                'pure_file_link':paper.pure_entries.first().risutwente if paper.pure_entries.first() else '',
-                'scopus_link':paper.pure_entries.first().scopus if paper.pure_entries.first() else '',
-                'Journalinfo ->':'',
-                'journal':paper.journal.name if paper.journal else '',
-                'journal_issn':paper.journal.issn if paper.journal else '',
-                'journal_e_issn':paper.journal.e_issn if paper.journal else '',
-                'journal_publisher':paper.journal.publisher if paper.journal else '',
-                'volume':paper.volume,
-                'issue':paper.issue,
-                'pages':paper.pages,
-                'pagescount':paper.pagescount,
-                'MUS links ->':'',
-                'mus_paper_details':mus_url+'article/'+str(paper.id),
-                'mus_api_url_paper':mus_api_url+'paper/'+str(paper.id),
-            }
+            mapping = {}
+            for keyname in keys:
+                    if keyname == 'title':
+                        mapping[keyname] = paper.title
+                    if keyname == 'doi':
+                        mapping[keyname] = paper.doi
+                    if keyname == 'year':
+                        mapping[keyname] = paper.year
+                    if keyname == 'itemtype':
+                        mapping[keyname] = paper.itemtype
+                    if keyname == 'isbn':
+                        mapping[keyname] = paper.pure_entries.first().isbn if paper.pure_entries.first() else ''
+                    if keyname == 'topics':
+                        mapping[keyname] = ' | '.join([topic.get('display_name') for topic in paper.topics]) if paper.topics else ''
+                    if keyname == 'Authorinfo ->':
+                        mapping[keyname] = ''
+                    if keyname == 'ut_authors':
+                        mapping[keyname] = ' | '.join([author.name for author in paperauthors]) if paperauthors else ''
+                    if keyname == 'ut_groups':
+                        mapping[keyname] = ' | '.join(authorgroups) if authorgroups else ''
+                    if keyname == 'is_eemcs?':
+                        mapping[keyname] = paperauthors.filter(Q(utdata__current_faculty__iexact='EEMCS') | Q(utdata__employment_data__contains=[{'faculty':'EEMCS'}])).exists() 
+                    if keyname == 'is_ee?':
+                        mapping[keyname] = paperauthors.filter(Q(utdata__current_group__in=EEGROUPSABBR)).exists() ,
+                    if keyname == 'is_tcs?':
+                        mapping[keyname] = paperauthors.filter(Q(utdata__current_group__in=TCSGROUPSABBR)).exists(),
+                    if keyname == 'ut_corresponding_author':
+                        mapping[keyname] = ut_corresponding_author if ut_corresponding_author != [] else '',
+                    if keyname == 'all_authors':
+                        mapping[keyname] = ' | '.join([author.name for author in paper.authors.all()]),
+                    if keyname == 'Openaccessinfo ->':
+                        mapping[keyname] = '',
+                    if keyname == 'is_openaccess':
+                        mapping[keyname] = paper.is_oa,
+                    if keyname == 'openaccess_type':
+                        mapping[keyname] = paper.openaccess,
+                    if keyname == 'found_as_green':
+                        mapping[keyname] = paper.is_in_pure,
+                    if keyname == 'present_in_pure':
+                        mapping[keyname] = paper.has_pure_oai_match,
+                    if keyname == 'license':
+                        mapping[keyname] = paper.license,
+                    if keyname == 'URLs ->':
+                        mapping[keyname] = '',
+                    if keyname == 'primary_link':
+                        mapping[keyname] = paper.primary_link,
+                    if keyname == 'pdf_link_primary':
+                        mapping[keyname] = paper.pdf_link_primary,
+                    if keyname == 'best_oa_link':
+                        mapping[keyname] = best_oa['landing_page_url'],
+                    if keyname == 'pdf_link_best_oa':
+                        mapping[keyname] = best_oa['pdf_url'],
+                    if keyname == 'other_oa_links':
+                        mapping[keyname] = ' | '.join(oa_list) if oa_list else '',
+                    if keyname == 'openalex_url':
+                        mapping[keyname] = paper.openalex_url,
+                    if keyname == 'pure_page_link':
+                        mapping[keyname] = paper.pure_entries.first().researchutwente if paper.pure_entries.first() else '',
+                    if keyname == 'pure_file_link':
+                        mapping[keyname] = paper.pure_entries.first().risutwente if paper.pure_entries.first() else '',
+                    if keyname == 'scopus_link':
+                        mapping[keyname] = paper.pure_entries.first().scopus if paper.pure_entries.first() else '',
+                    if keyname == 'Journalinfo ->':
+                        mapping[keyname] = '',
+                    if keyname == 'journal':
+                        mapping[keyname] = paper.journal.name if paper.journal else '',
+                    if keyname == 'journal_issn':
+                        mapping[keyname] = paper.journal.issn if paper.journal else '',
+                    if keyname == 'journal_e_issn':
+                        mapping[keyname] = paper.journal.e_issn if paper.journal else '',
+                    if keyname == 'journal_publisher':
+                        mapping[keyname] = paper.journal.publisher if paper.journal else '',
+                    if keyname == 'volume':
+                        mapping[keyname] = paper.volume,
+                    if keyname == 'issue':
+                        mapping[keyname] = paper.issue,
+                    if keyname == 'pages':
+                        mapping[keyname] = paper.pages,
+                    if keyname == 'pagescount':
+                        mapping[keyname] = paper.pagescount,
+                    if keyname == 'MUS links ->':
+                        mapping[keyname] = '',
+                    if keyname == 'mus_paper_details':
+                        mapping[keyname] = mus_url+'article/'+str(paper.id),
+                    if keyname == 'mus_api_url_paper':
+                        mapping[keyname] = mus_api_url+'paper/'+str(paper.id),
+
             pureentrylist=''
             pilotpuredatalist=''
-
             if paper.pure_entries.first():
                 for pure_entry in paper.pure_entries.all():
                     if pureentrylist != '':

@@ -14,14 +14,9 @@
     </h4>
     <div class = 'text-center'>
         <a type='button' class="btn btn-danger fs-6" href="{% url 'PureOpenAlex:removeallmarks' %}">
-        <i class="fas fa-recycle"></i> Remove all current bookmarks
+            <i class="fas fa-recycle"></i> Remove all current bookmarks
         </a>
-        <a type='button' class="btn btn-success fs-6" target="_blank" href="{% url 'PureOpenAlex:getris' %}">
-        <i class="fas fa-file-export"></i> Export .ris file of all marked papers
-        </a>
-        <a type='button' class="btn btn-primary fs-6" target="_blank" href="{% url 'PureOpenAlex:getcsv' %}">
-            <i class="fas fa-file-export"></i> Export .csv file with detailed data for all marked papers
-        </a>
+
     </div>
 
 {% else %}
@@ -46,10 +41,9 @@
     </div>
 
 {% endif %}
-</div>
-<table id="facultytable" class='display' style="fill-opacity:0.5;">
+<div id="faculty_table" class='display' style="fill-opacity:0.5;">
 {% include 'faculty_table.html' %}
-</table>
+</div>
 {% if faculty != 'Marked papers' %}
 <form>
 {% csrf_token %}

@@ -19,6 +19,7 @@ from .views import (
     load_affils,
     customchart,
     getcsv,
+    viewlog,
 )
 
 app_name = "PureOpenAlex"
@@ -46,4 +47,6 @@ urlpatterns = [
     path('chart/', chart, name='chart'),
     path('customchart/', customchart, name='customchart'),
     path('affiliations/<int:author_id>/', load_affils, name='affiliations'),
+    path('log/<str:file>', viewlog, name='viewlog'),
+    
 ]
