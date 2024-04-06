@@ -16,6 +16,7 @@ from datetime import datetime
 from io import StringIO
 import plotly.graph_objects as go
 from rich import print
+import ast
 
 
 CACHE_TTL = getattr(settings, "CACHE_TTL", DEFAULT_TIMEOUT)
@@ -245,10 +246,19 @@ def getris(request):
     returns a ris file with data for all papers marked by the user -> can be used to import data into pure.
     '''
     user = request.user
-    viewpapers = viewPaper.objects.filter(user=user)
-    paperids = viewpapers.values_list('displayed_paper_id', flat=True)
-    papers = Paper.objects.filter(pk__in=paperids)
-    risfile = papers.exportris()
+    filters = None
+    if request.POST.items():
+        for key, value in request.POST.items():
+            if 'filters' in key:
+                filters = ast.literal_eval(value)
+    if filters:
+        articles = Paper.objects.filter_by(filters)
+    else:
+        viewpapers = viewPaper.objects.filter(user=user)
+        paperids = viewpapers.values_list('displayed_paper_id', flat=True)
+        articles = Paper.objects.filter(pk__in=paperids)
+
+    risfile = articles.exportris()
     contentdisp = f'attachment; filename="mus_ris_export_{user.username}_{datetime.now().strftime("%Y-%m-%d")}.ris"'
     response = HttpResponse(risfile, headers={
         "Content-Type": 'application/x-research-info-systems',
@@ -261,10 +271,19 @@ def getcsv(request):
     returns a csv file with data for all papers marked by the user
     '''
     user = request.user
-    viewpapers = viewPaper.objects.filter(user=user)
-    paperids = viewpapers.values_list('displayed_paper_id', flat=True)
-    papers = Paper.objects.filter(pk__in=paperids)
-    csvfile = papers.get_csv(papers=papers)
+    filters = None
+    if request.POST.items():
+        for key, value in request.POST.items():
+            if 'filters' in key:
+                filters = ast.literal_eval(value)
+    if filters:
+        articles = Paper.objects.filter_by(filters)
+    else:
+        viewpapers = viewPaper.objects.filter(user=user)
+        paperids = viewpapers.values_list('displayed_paper_id', flat=True)
+        articles = Paper.objects.filter(pk__in=paperids)
+
+    csvfile = articles.get_csv(papers=articles)
     contentdisp = f'attachment; filename="mus_csv_export_{user.username}_{datetime.now().strftime("%Y-%m-%d")}.csv"'
     response = HttpResponse(csvfile, headers={
         "Content-Type": 'text/csv',
@@ -367,7 +386,7 @@ def customfilter(request):
         facultyname, stats, listpapers = getPapers('all', filters, request.user)
         print('rendering...')
         print(stats)
-
+        print(filters)
         return render(request, "faculty_table.html",{"faculty": facultyname, "stats": stats, "articles": listpapers, "filter":filters})
 
 @login_required

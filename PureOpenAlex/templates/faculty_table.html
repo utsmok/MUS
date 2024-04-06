@@ -1,5 +1,24 @@
 {% block content %}
 
+<div>
+    <form action="{% url 'PureOpenAlex:getris' %}" method="post">
+        {% csrf_token %}
+        <input type="hidden" name="filters" value='{{filter}}'>
+
+        <button type='submit' class="btn btn-success fs-6" >
+            <i class="fas fa-file-export"></i> Export .ris file for all papers in this list
+        </button>
+    </form>
+    <form action="{% url 'PureOpenAlex:getcsv' %}" method="post">
+        {% csrf_token %}
+        <input type="hidden" name="filters" value='{{filter}}'>
+        <button type='submit' class="btn btn-primary fs-6" >
+            <i class="fas fa-file-export"></i> Export .csv file with detailed data for all papers in this list
+        </button>
+    </form>
+</div>
+
+<table id="facultytable" class="display" >
 <thead>
     <th>add/remove mark</th>
     <th>details</th>
@@ -101,7 +120,7 @@
         </tr>
     {% endfor %}
 </tbody>
-
+</table>
 <script>
     $(document).ready( function () {
         $('#facultytable').DataTable();

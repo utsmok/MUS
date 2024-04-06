@@ -16,7 +16,13 @@ import csv
 MONGOURL = getattr(settings, "MONGOURL")
 client=pymongo.MongoClient(MONGOURL)
 db=client['mus']
-
+pure_cerif_authors = db['pure_cerif_authors']
+pure_cerif_works = db['pure_cerif_works']
+pure_cerif_journals = db['pure_cerif_journals']
+pure_cerif_categories = db['pure_cerif_categories']
+pure_org_mapping = db['pure_org_mapping']
+pure_full_orgs_mapping = db['pure_full_orgs_mapping']
+pure_cerif_ut_authors = db['pure_cerif_ut_authors']
 
 class AuthorManager(models.Manager):
     # possible TODO
@@ -158,6 +164,93 @@ class AuthorManager(models.Manager):
         with transaction.atomic():
             dbu = DBUpdate.objects.create(update_source='OpenAlex', update_type='Author.objects.fix_affiliations()', details={'amount_without_affils_after':amount, 'amount_new':added, 'amount_failed':failed, 'amount_checked':checked})
             dbu.save()
+
+    def update_from_cerif(self):
+        def process_cerif_data(author, cerif_author_data):
+            if cerif_author_data.get('affiliation_details'):
+                    for affil in cerif_author_data.get('affiliation_details'):
+                        group = None
+                        faculty = None
+                        if affil.get('name'):
+                            group = affil.get('name')
+                            start = affil.get('start_date')
+                            end = affil.get('end_date')
+                            uuid = affil.get('uuid')
+                            pureid = affil.get('pureid')
+                            details = pure_full_orgs_mapping.find_one({'name':affil.get('name')})
+                            if details:
+                                faculty = details.get('faculty')
+                        if group and faculty:
+                            fullgroup = {
+                                'name':group,
+                                'uuid':uuid,
+                                'pureid':pureid,
+                                'start_date':start,
+                                'end_date':end,
+                                'faculty':faculty
+                            }
+
+                            utdata = UTData.objects.filter(employee=author).first()
+                            if utdata:
+                                if utdata.employment_data:
+                                    utdata.employment_data = utdata.employment_data.append(fullgroup)
+                                else:
+                                    utdata.employment_data = [fullgroup]
+                                if fullgroup.get('end_date') in ['2', ''] or fullgroup.get('end_date') is None or len(fullgroup.get('end_date')) < 6:
+                                    utdata.current_group = group
+                                    utdata.current_faculty = faculty
+                                utdata.pure_uuid = cerif_author_data.get('id')
+                                utdata.save()
+                            else:
+                                UTData.objects.create(employee=author, employment_data=[fullgroup], pure_uuid=cerif_author_data.get('id'), current_group=group, current_faculty=faculty)
+        UTData = apps.get_model('PureOpenAlex', 'UTData')
+        count=0
+        authors_with_orcid = self.filter(orcid__isnull=False)
+        for author in authors_with_orcid:
+            orcid = str(author.orcid).replace('http://orcid.org/','').replace('https://orcid.org/','')
+            cerif_author_data = pure_cerif_ut_authors.find_one({'orcid':orcid})
+            if cerif_author_data:
+                process_cerif_data(author, cerif_author_data)
+                count += 1
+
+        authors_without_orcid = self.filter(orcid__isnull=True)
+        for author in authors_without_orcid:
+            name = author.name
+            cerif_author_data = pure_cerif_ut_authors.find_one({'name':name})
+            if not cerif_author_data:
+                known_as = author.known_as
+                if known_as:
+                    for name in known_as:
+                        cerif_author_data = pure_cerif_ut_authors.find_one({'name':name})
+                        if cerif_author_data:
+                            break
+            if cerif_author_data:
+                count += 1
+                process_cerif_data(author, cerif_author_data)
+        print(count)
+    
+    def fix_abbrs(self):
+        UTData = apps.get_model('PureOpenAlex', 'UTData')
+        wrongabbrs = UTData.objects.exclude(current_faculty__in=FACULTYNAMES)
+        for data in wrongabbrs:
+            if 'Electrical' in data.current_faculty:
+                data.current_faculty = 'EEMCS'
+            elif 'Behavioral' in data.current_faculty:
+                data.current_faculty = 'BMS'
+            elif 'Science and Technology' in data.current_faculty:
+                data.current_faculty = 'TNW'
+            if len(data.current_group) > 6:
+                print(data.current_group)
+                short = ''.join(re.findall('[A-Z]+',data.current_group))
+                print(short)
+                conf = input('y/n')
+                if conf == 'y':
+                    data.current_group = short
+                else:
+                    new = input('new name: ')
+                    data.current_group = new
+            data.save()
+
 class AuthorQuerySet(models.QuerySet):
     # simplify getting names/name combinations
     # filter by group/faculty/affil/authorship data/etc
@@ -605,7 +698,7 @@ class PaperManager(models.Manager):
         logger.info(f'Found {duplicate_papers_doi.count()+duplicate_papers_oa.count()} duplicate papers with {len(duplicate_dois)} duplicate dois {len(duplicate_openalex_urls)} duplicate openalex_urls')
         c = 0
         if len(duplicate_openalex_urls) > 0:
-            logger.warning(f'function will run, but it is not implemented yet so it wont delete anything')
+            logger.warning('function will run, but it is not implemented yet so it wont delete anything')
         for url in duplicate_openalex_urls:
             c+=1
             papers = Paper.objects.filter(openalex_url=url).order_by('-modified')
@@ -632,6 +725,7 @@ class PaperManager(models.Manager):
                     logger.warning(f'Possible error while running paper.remove_duplicates() with paper {paper.id}')
             #papers.exclude(id=keep_paper.id).delete()
             logger.info(f'Keeping: {keep_paper.id}. Deleting: {[paper.id for paper in papers.exclude(id=keep_paper.id).all()]}')
+            logger.warning('Not implemented: so not actually deleting anything.')
             if c == 5:
                 break
 
@@ -1050,7 +1144,7 @@ class PaperQuerySet(models.QuerySet):
             logger.info(f'Getting csv data for {papers.count()} papers')
 
         if not papers:
-            papers =  self.all().filter_by(filters)
+            papers =  self.filter_by(filters)
         else:
             papers = papers.filter_by(filters)
 
@@ -1276,7 +1370,9 @@ class PaperQuerySet(models.QuerySet):
                 if location.landing_page_url and location.landing_page_url != '':
                     risdata.append(['UR',location.landing_page_url])
                 if location.is_primary:
-                    publisherloc=location.source.host_org
+                    if location.source:
+                        if location.source.host_org:
+                            publisherloc=location.source.host_org
 
             risdata.append(["U2",paper.doi.replace('https://doi.org/', '')])
             risdata.append(["DO",paper.doi.replace('https://doi.org/', '')])

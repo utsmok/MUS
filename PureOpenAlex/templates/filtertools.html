@@ -202,7 +202,7 @@
                     </div>
                     <div class="row justify-content-center text-center pt-3" id='applyfilter'>
                         <div>
-                            <button hx-post="/customfilter/" hx-trigger="click" hx-target="#facultytable" hx-push-url="true" class="btn btn-lg btn-danger">
+                            <button hx-post="/customfilter/" hx-trigger="click" hx-target="#facultytablep" hx-push-url="true" class="btn btn-lg btn-danger">
                                 <div class='pt-4 text-bold fs-6'>Apply filters</div>
                                 <img class="htmx-indicator" src="{% static 'rings.svg' %}">
                             </button>
@@ -223,8 +223,8 @@
             <p class="card-text">Due to a bug, the results table is not rendered properly if you filter more than once in a row. Go back to the initial filter-tool page & start from scratch to fix this.</p>
         </div>
     </div>
-    <table id="facultytable" class="display" >
-    </table>
+    <div id="facultytablep" class="display" >
+    </div>
 </div>
 
 {% endblock %}

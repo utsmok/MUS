@@ -35,7 +35,6 @@ class Author(TimeStampedModel, models.Model):
     openalex_url = models.CharField(max_length=256, blank=True, null=True)
     known_as = models.JSONField(blank=True, null=True)
     scopus_id = models.CharField(max_length=256, unique=True, blank=True, null=True)
-
     objects = AuthorManager().from_queryset(AuthorQuerySet)()
     class Meta:
         ordering = ['-is_ut', 'last_name']
@@ -72,6 +71,7 @@ class UTData(models.Model):
         Author, on_delete=models.CASCADE, null=True
     )
     email = models.EmailField(max_length=256)
+    pure_uuid = models.UUIDField(unique=True, default=None, null=True)
 
     class Meta:
         indexes = [

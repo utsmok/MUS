@@ -9,43 +9,8 @@ import csv
 from loguru import logger
 import xmltodict
 
-def write_to_csv(data, filename, keys):
-    with open(filename, 'w', newline='',encoding='utf-8') as myFile:
-        writer = csv.DictWriter(myFile, fieldnames=keys)
-        writer.writeheader()
-        writer.writerows(data)
 
 
-def export_paper_data(requests: dict) -> list[str]:
-    '''
-    Exports csv files based on the request.
-    Requests is a dict defined as follows:
-    requests = {
-
-        'export_filename1.csv': {
-            'filters': [[filter1, value1],[filter2, value2],[filter3, value3]]
-        },
-        'export_filename2.csv': {
-            ...
-        },
-        ...
-
-    'export_filename_n' is the name of the file to be exported
-    'filters' is a list of filters as defined in Paper.objects.filter_by()
-
-    Returns the paths to the files for further processing.
-    '''
-    filenames=[]
-
-    for filename, data in requests.items():
-        if not str(filename).endswith('.csv'):
-            raise FileNotFoundError(f'Filename {filename} does not end with .csv')
-
-        raw_data, keys=Paper.objects.get_csv(data)
-        write_to_csv(raw_data,str(filename), keys)
-        logger.info(f"Exported data to {filename}")
-
-    return filenames
 def export_paper_data_to_cerif_xml(requests: dict) -> list[str]:
     '''
     Exports CERIF XML files based on the request.

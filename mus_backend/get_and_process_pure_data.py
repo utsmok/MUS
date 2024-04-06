@@ -22,12 +22,13 @@ pure_cerif_works = db['pure_cerif_works']
 pure_cerif_journals = db['pure_cerif_journals']
 pure_cerif_categories = db['pure_cerif_categories']
 pure_org_mapping = db['pure_org_mapping']
+pure_full_orgs_mapping = db['pure_full_orgs_mapping']
+pure_cerif_ut_authors = db['pure_cerif_ut_authors']
 
-'''
-============================================================
-IMPORT PURE AUTHOR DATA FROM REPORT CSV EXPORT
-============================================================
-'''
+#============================================================
+#IMPORT PURE AUTHOR DATA FROM REPORT CSV EXPORT
+#============================================================
+
 def import_pure_author_csv(filename='eemcs_author_details.csv'):
     '''
     read in pure report with author details incl org/affil details
@@ -121,7 +122,7 @@ IMPORT CERIF XML
 ========================================
 '''
 # export pure CERIF xml, use importpurexml to import
-# when done it calls process_data_from_pure_xmls() and then process_pure_uuids()
+# when done it calls functions to process the data further into separate mongo collections
 def importpurexml(file='eemcs_output_2023_2024q1cerif.xml', replace=False):
     '''
     this reads in a pure cerif xml export file containing research products
@@ -161,7 +162,9 @@ def importpurexml(file='eemcs_output_2023_2024q1cerif.xml', replace=False):
     mongo_pure_xmls.insert_many(publications) if publications else None
     if any([products, patents, publications]):
         process_data_from_pure_xmls()
-
+        process_pure_uuids_works()
+        process_pure_uuids_authors()
+    
 def process_data_from_pure_xmls():
     '''
     Read in the import raw xml data and process it to create formatted data.
@@ -472,9 +475,44 @@ def process_data_from_pure_xmls():
         except Exception as e:
             logger.error(f'error for itemid {item.get("@id")}: {e}', exc_info=True)
     
-    process_pure_uuids()
 
-def process_pure_uuids():
+def process_pure_uuids_works():
+
+    iorg = []
+    for item in pure_cerif_works.find():
+        authorlist = []
+        if item.get('authors'):
+            authorlist.extend(item.get('authors'))
+        if item.get('creators'):
+            authorlist.extend(item.get('creators'))
+
+        for author in authorlist:
+            if author.get('affiliations'):
+                for affl in author.get('affiliations'):
+                    uuid = affl.get('id')
+                    name = affl.get('name')
+                    adddict = {'name':name, 'uuid':uuid}
+                    iorg.append(adddict)
+
+    print(len(iorg))
+    uniqueorgs = list({item['uuid']:item for item in iorg}.values())
+    print(len(uniqueorgs))
+    pure_full_orgs_mapping.insert_many(uniqueorgs)
+    match_full_orgs_to_ut_groups()
+
+def match_full_orgs_to_ut_groups():
+    for item in pure_full_orgs_mapping.find():
+        faculty = None
+        if item.get('name').lower() in PureOpenAlex.constants.UTRESEARCHGROUPS_FLAT or item.get('name') in PureOpenAlex.constants.UTRESEARCHGROUPS_FLAT:
+            if not item.get('faculty'):
+                try:
+                    faculty = PureOpenAlex.constants.FACULTYABBRMAPPING[PureOpenAlex.constants.UTRESEARCHGROUPS_FLAT[item.get('name').lower()]]
+                except KeyError:
+                    continue
+                if faculty:
+                    pure_full_orgs_mapping.update_one({'name':item.get('name')}, {'$set':{'faculty':faculty}})
+
+def process_pure_uuids_authors():
     # import uuid fields from authors, works
     faculties = {}
     orgid_to_name = {}
@@ -549,7 +587,6 @@ def process_pure_uuids():
 
     uniqueorgs = list({item['uuid']:item for item in iorg if item.get('name')}.values())
     print(len(uniqueorgs))
-    input('...')
 
     for org in uniqueorgs:
         if isinstance(org.get('name'), set):
@@ -560,3 +597,53 @@ def process_pure_uuids():
         else:
             pure_org_mapping.insert_one(org)
 
+
+
+def get_cerif_ut_authors():
+    def get_ut_groups():
+        result = {}
+        for item in pure_full_orgs_mapping.find({'faculty': {'$exists': True}}):
+            result[item['uuid']] = item
+            result[item['faculty']] = item
+            result[item['name']] = item
+        return result
+
+
+    groupmapping = get_ut_groups()
+    utauthors = []
+    for item in pure_cerif_authors.find():
+        isut=False
+        if item.get('affiliations'):
+            item['utgroup'] = []
+            for affl in item.get('affiliations'):
+                if affl.get('id') in groupmapping.keys():
+                    item['utgroup'].append(groupmapping[affl.get('id')])
+                    isut=True
+        if isut:
+            utauthors.append(item)
+    
+    print(len(utauthors))
+    uniqueauthors = list({item['id']:item for item in utauthors}.values())
+    print(len(uniqueauthors))
+    for author in uniqueauthors:
+        if pure_cerif_ut_authors.find_one({'id':author.get('id')}):
+            pure_cerif_ut_authors.update_one({'id':author.get('id')}, {'$set':author})
+        else:
+            pure_cerif_ut_authors.insert_one(author)
+    
+
+    updauthors = []
+    for author in pure_cerif_ut_authors.find():
+        upd = False
+        if author.get('affiliation_details'):
+            for affl in author.get('affiliation_details'):
+                if not affl.get('name'):
+                    if affl.get('uuid') in groupmapping.keys():
+                        affl['name'] = groupmapping[affl.get('uuid')].get('name')
+                        upd=True
+        if upd:
+            updauthors.append(author)
+    
+    print(len(updauthors))
+    for author in updauthors:
+        pure_cerif_ut_authors.update_one({'id':author.get('id')}, {'$set':author})
