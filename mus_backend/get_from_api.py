@@ -287,6 +287,8 @@ def getCrossrefWorks(years):
     return result if result['total']>0 else None
 def getOpenAlexWorks(years):
     logger.info("Retrieving OpenAlex API results for UT works")
+    result = None
+    result2 = None
     query = (
             Works()
             .filter(
@@ -297,7 +299,7 @@ def getOpenAlexWorks(years):
     try:
         result = retrieveOpenAlexQuery(query)
     except Exception as e:
-        logger.error('error while retrieving OpenAlex works (1st query): %s', e)
+        logger.error(f'error while retrieving OpenAlex works (1st query): {e}')
     query = (
             Works()
             .filter(
@@ -306,9 +308,9 @@ def getOpenAlexWorks(years):
             )
     )
     try:
-        result2= retrieveOpenAlexQuery(query)
+        result2 = retrieveOpenAlexQuery(query)
     except Exception as e:
-        logger.error('error while retrieving OpenAlex works (2st query): %s', e)
+        logger.error(f'error while retrieving OpenAlex works (2nd query): {e}')
     if not (result and result2):
         logger.error('no results for one or both OpenAlex queries!')
         return None

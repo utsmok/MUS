@@ -1,5 +1,6 @@
 from .models import (
     Paper,
+    DBUpdate,
 )
 from .constants import FACULTYNAMES, TCSGROUPSABBR, EEGROUPSABBR
 from loguru import logger
@@ -384,12 +385,28 @@ def generate_chart(parameters, user):
 
     return fig.to_html()
 
-def read_log(filename='log_mus.log', days=3, maxlines=500):
+def read_log(filename='log_mus.log', maxlines=10000):
+    if filename=='db_updates.log':
+        lines = []
+        updates = DBUpdate.objects.filter(created__gte=datetime.now() - timedelta(days=4)).order_by('-created')
+        for i, update in enumerate(updates.all()):
+            lines.append(str(f'DB UPDATE {i+1}/{updates.count()}'))
+            lines.append('Date run: '+ str(update.created))
+            lines.append('Data source: '+ str(update.update_source))
+            lines.append('Update type: '+ str(update.update_type))
+            lines.append('Details: ')
+            for key, value in update.details.items():
+                if len(str(value)) < 500:
+                    lines.append('  '+str(key)+': '+str(value))
+                else:
+                    lines.append('  '+str(key)+': '+str(value)[0:1000]+'...')
+            lines.append('')
+        lines.reverse()
+        with open(filename, 'w') as f:
+            for line in lines:
+                f.write(line+'\n')
+
     lineset=[]
-    daylist = []
-    for day in range(days):
-        daylist.append('['+(datetime.now()-timedelta(days=day)).strftime("%m %d")+']')
-    print(daylist)
     with open(filename, 'r') as f:
         lineset = f.readlines()
     lineset.reverse()

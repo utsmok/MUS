@@ -13,6 +13,7 @@ import os
 import requests
 from io import StringIO
 import csv
+
 MONGOURL = getattr(settings, "MONGOURL")
 client=pymongo.MongoClient(MONGOURL)
 db=client['mus']
@@ -1184,7 +1185,6 @@ class PaperQuerySet(models.QuerySet):
         mus_url = 'https://openalex.samuelmok.cc/'
         mus_api_url = 'https://openalex.samuelmok.cc/api/'
         logger.info(f'Creating list with data for CSV for {self.count()} papers')
-
         for paper in self.all().distinct():
             paperauthors=paper.authors.filter(utdata__isnull=False)
             authorgroups = paperauthors.get_ut_groups(groups)
@@ -1300,7 +1300,6 @@ class PaperQuerySet(models.QuerySet):
             mapping['mus_api_url_pure_entry']=pureentrylist
             mapping['mus_api_url_pure_report_details']=pilotpuredatalist
             data.append(mapping)
-
         return data
 
     def exportris(self):

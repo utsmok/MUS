@@ -455,9 +455,12 @@ def customchart(request):
 
 @login_required
 def viewlog(request, file='log'):
-    logger.info("viewlog [user] {}",request.user.username)
+    if request.user.username != 'sam':
+        logger.info("viewlog [user] {}",request.user.username)
     if file=='cron':
         filename = 'cron_update.log'
     if file=='log':
         filename = 'log_mus.log'
+    if file=='dbupdates':
+        filename = 'db_updates.log'
     return render(request, "viewlog.html", {"log": read_log(filename)})
