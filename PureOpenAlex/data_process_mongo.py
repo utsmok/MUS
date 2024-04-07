@@ -919,6 +919,12 @@ def processMongoOpenAireEntry(openairedata):
                         else:
                             logger.debug('link to ut ris not found in openaire data... ?')
 
-
-
     return updated
+
+@transaction.atomic
+def process_datacite_entry(dataset):
+    # read in dataset
+    # try to match dataset to Paper in db
+    # try to match creators & contributors with Author(s) in db
+    # store as datacite entry in db with linked Paper, Authors
+    ...

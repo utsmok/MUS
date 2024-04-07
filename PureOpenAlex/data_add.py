@@ -3,7 +3,7 @@ from pyalex import Works
 from .namematcher import NameMatcher
 from .models import  Paper, viewPaper, PureEntry, DBUpdate
 from django.db import transaction
-from .data_process_mongo import processMongoPaper, processMongoPureEntry, processMongoOpenAireEntry, processMongoPureReportEntry
+from .data_process_mongo import processMongoPaper, processMongoPureEntry, processMongoOpenAireEntry, processMongoPureReportEntry, process_datacite_entry
 from pymongo import MongoClient
 from django.conf import settings
 from loguru import logger
@@ -27,6 +27,9 @@ APIEMAIL = getattr(settings, "APIEMAIL", "no@email.com")
 
 pyalex.config.email = APIEMAIL
 name_matcher = NameMatcher()
+pyalex.config.max_retries = 5
+pyalex.config.retry_backoff_factor = 0.4
+pyalex.config.retry_http_codes = [429, 500, 503]
 
 client=MongoClient(getattr(settings, 'MONGOURL', None))
 db=client['mus']
@@ -37,6 +40,7 @@ pure_works=db['api_responses_pure']
 tcs_pilot_entries=db['pure_report_start_tcs']
 mongo_pure_report_start_tcs=db['pure_report_start_tcs']
 mongo_pure_report_ee=db['pure_report_ee']
+mongo_api_responses_datacite=db['api_responses_datacite']
 
 def addOpenAlexWorksFromMongo(updatelist=[]):
     datasets=[]
@@ -96,7 +100,7 @@ def addOpenAlexWorksFromMongo(updatelist=[]):
     dbu=DBUpdate.objects.create(update_source='OpenAlex', update_type='addOpenAlexWorksFromMongo',details={'added':len(added),'failed':len(failed),'added_ids':added,'failed_ids':failed})
     dbu.save()
 
-def addPureWorksFromMongo(updatedict={'ris_file':[], 'ris_page':[]}):
+def addPureWorksFromMongo(updatedict={'ris_files':[], 'ris_pages':[]}):
     datasets=[]
     i=0
     k=0
@@ -104,16 +108,18 @@ def addPureWorksFromMongo(updatedict={'ris_file':[], 'ris_page':[]}):
     pureentries = PureEntry.objects.all().only('doi','researchutwente', 'risutwente')
     sets={}
     sets['doi'] = set(pureentries.values_list('doi', flat=True))
-    sets['ris_file'] = set(pureentries.values_list('risutwente', flat=True))
-    sets['ris_page'] = set(pureentries.values_list('researchutwente', flat=True))
+    sets['ris_files'] = set(pureentries.values_list('risutwente', flat=True))
+    sets['ris_pages'] = set(pureentries.values_list('researchutwente', flat=True))
     added=[]
     failed=[]
     allapientrys = pure_works.find().sort('date',pymongo.DESCENDING)
+    ris_files = updatedict.get('ris_files')
+    ris_pages = updatedict.get('ris_pages')
     for document in allapientrys:
         stop=False
-        for checkitemstr in ['doi', 'ris_file', 'ris_page']:
+        for checkitemstr in ['ris_files', 'ris_pages']:
             checkitem = document.get('identifier').get(checkitemstr)
-            if checkitem in updatedict['ris_file'] or checkitem in updatedict['ris_page']:
+            if checkitem in ris_files or checkitem in ris_pages:
                 break
             elif checkitem:
                 if isinstance(checkitem, list):
@@ -245,6 +251,17 @@ def addPureReportWorksFromMongo(group):
     message=f"processed {k} entries, {h} updated"
     logger.info(message)
 
+def add_datacite_items_from_mongo():
+    datasets=[]
+    for document in mongo_api_responses_datacite.find():
+        datasets.append(document)
+    logger.info(f"found {len(datasets)} datacite items, processing")
+    for dataset in datasets:
+        try:
+            process_datacite_entry(dataset)
+        except Exception as e:
+            logger.exception('exception {e} while adding datacite item {id}', e=e, id=dataset['id'])
+    
 def addPaper(doi, user):
     # TODO: Move to PaperManager
     status = 'danger'

@@ -73,10 +73,10 @@ def update_pure_items(years, processpapers):
     if addedfrompure:
         pureupdate = DBUpdate.objects.create(update_source="Pure", update_type="manualmongo", details = addedfrompure)
         pureupdate.save()
-        if len(addedfrompure['ris_file'])>0:
-            processpapers['pure'].extend({'ris_files':addedfrompure['ris_file'],'ris_pages':addedfrompure['ris_page']})
-            logger.info(f"{len(addedfrompure['ris_file'])} updated works retrieved from Pure OAI-PMH")
-            addPureWorksFromMongo(processpapers['pure'])
+        if len(addedfrompure['ris_files'])>0 or len(addedfrompure['ris_pages'])>0:
+            processpapers['pure'].extend({'ris_files':addedfrompure['ris_files'],'ris_pages':addedfrompure['ris_pages']})
+            logger.info(f"{len(addedfrompure['ris_files'])} updated works retrieved from Pure OAI-PMH")
+            addPureWorksFromMongo(addedfrompure)
 
     return processpapers
 def update_works(years, processpapers):
@@ -147,7 +147,7 @@ def update_people_page_data():
     logger.info('done running fillUTPeopleData()')
 
 def update_all(clean=False, people=False, get_dbupdates=False):
-    years=[2016,2017,2018,2019,2020,2021,2022,2023,2024,2025]
+    years=[2022,2023,2024,2025]
     processpapers=defaultdict(list)
     logger.info('running updateAll()')
     if get_dbupdates:

@@ -277,8 +277,6 @@ def generate_chart(parameters, user):
     groups.extend(TCSGROUPSABBR)
     groups=list(set(groups))
     types = ['proceedings-article', 'journal-article']
-    baseline=defaultdict(int)
-    baseline_eemcs=defaultdict(int)
     baseline_tcs= defaultdict()
     baseline_ee= defaultdict()
     for year in years:

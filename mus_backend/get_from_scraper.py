@@ -19,7 +19,6 @@ import httpx
 from unidecode import unidecode
 from fuzzywuzzy import process, fuzz
 from pymongo import MongoClient
-from PureOpenAlex.models import DBUpdate
 from django.conf import settings
 from loguru import logger
 from typing import Coroutine, List, Sequence

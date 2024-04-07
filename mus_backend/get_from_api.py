@@ -22,8 +22,6 @@ from datetime import datetime, timedelta
 from PureOpenAlex.models import Paper, DBUpdate
 import xmltodict
 from loguru import logger
-from collections import defaultdict
-from PureOpenAlex.data_add import addOpenAlexWorksFromMongo, addPureWorksFromMongo, addOpenAireWorksFromMongo
 MONGOURL = getattr(settings, "MONGOURL")
 APIEMAIL = getattr(settings, "APIEMAIL", "no@email.com")
 OPENAIRETOKEN = getattr(settings, "OPENAIRETOKEN", "")
@@ -32,6 +30,10 @@ MONGODB=MongoClient(MONGOURL)
 db=MONGODB["mus"]
 pyalex.config.email = APIEMAIL
 cr = Crossref(mailto=APIEMAIL)
+
+pyalex.config.max_retries = 5
+pyalex.config.retry_backoff_factor = 0.4
+pyalex.config.retry_http_codes = [429, 500, 503]
 
 UTKEYWORD=["UT-Hybrid-D", "UT-Gold-D", "NLA", "N/A OA procedure", "n/a OA procedure"]
 
@@ -76,8 +78,8 @@ def getPureItems(years):
             root = ET.fromstring(xml_data)
             return root, xml_data
 
-        def process_records(records, xml,total):
-            articles=[]
+        def process_records(records):
+            articles: list[dict] = []
             result={'ris_pages':[], 'ris_files':[], 'total':0}
 
             # First turn every article into from an XML to a dict
@@ -158,11 +160,11 @@ def getPureItems(years):
             # check if article is already in mongodb
             addarticles=[]
             for article in articles:
-                if api_responses_pure.find_one({"identifier":{'ris_page':article["identifier"]["ris_page"]}}) or \
-                    api_responses_pure.find_one({"identifier":{'ris_file':article["identifier"]["ris_file"]}}):
+                if api_responses_pure.find_one({"identifier":{'ris_page':article["identifier"].get('ris_page')}}) or \
+                    api_responses_pure.find_one({"identifier":{'ris_file':article["identifier"].get('ris_file')}}):
                         addarticles.append(article)
-                        result['ris_files'].append(article["identifier"]["ris_file"])
-                        result['ris_pages'].append(article["identifier"]["ris_page"])
+                        result['ris_files'].append(article["identifier"].get('ris_file'))
+                        result['ris_pages'].append(article["identifier"].get('ris_page'))
                         result['total']+=1
             # add the articles to mongodb
             if len(addarticles)>0:
@@ -172,14 +174,17 @@ def getPureItems(years):
         initial_url = (
             f"{base_url}?verb=ListRecords&metadataPrefix={metadata_prefix}&set={set_name}"
         )
+        root = None
         try:
             root, xml = fetch_records(initial_url)
         except Exception as e:
             logger.error(f'Error retrieving Pure data: {e}')
-
-        list_records = root.find("oai:ListRecords", namespace)
         try:
-            resultt=process_records(list_records.findall("oai:record", namespace), xml)
+            list_records = root.find("oai:ListRecords", namespace)
+        except Exception as e:
+            logger.error(f'Error retrieving Pure data: {e}')
+        try:
+            resultt=process_records(list_records.findall("oai:record", namespace))
             result['total']+=resultt['total']
             result['ris_files'].extend(resultt['ris_files'])
             result['ris_pages'].extend(resultt['ris_pages'])
@@ -194,7 +199,7 @@ def getPureItems(years):
             try:
                 root, xml = fetch_records(next_url)
                 list_records = root.find("oai:ListRecords", namespace)
-                resultt=process_records(list_records.findall("oai:record", namespace), xml)
+                resultt=process_records(list_records.findall("oai:record", namespace))
                 result['total']+=resultt['total']
                 result['ris_files'].extend(resultt['ris_files'])
                 result['ris_pages'].extend(resultt['ris_pages'])
@@ -296,10 +301,8 @@ def getOpenAlexWorks(years):
                 publication_year="|".join([str(x) for x in years]),
             )
     )
-    try:
-        result = retrieveOpenAlexQuery(query)
-    except Exception as e:
-        logger.error(f'error while retrieving OpenAlex works (1st query): {e}')
+
+    result = retrieveOpenAlexQuery(query)
     query = (
             Works()
             .filter(
@@ -307,10 +310,8 @@ def getOpenAlexWorks(years):
                 publication_year="|".join([str(x) for x in years]),
             )
     )
-    try:
-        result2 = retrieveOpenAlexQuery(query)
-    except Exception as e:
-        logger.error(f'error while retrieving OpenAlex works (2nd query): {e}')
+
+    result2 = retrieveOpenAlexQuery(query)
     if not (result and result2):
         logger.error('no results for one or both OpenAlex queries!')
         return None
@@ -331,6 +332,7 @@ def retrieveOpenAlexQuery(query):
     api_responses_openalex = db["api_responses_works_openalex"]
     result={'total':0,'new':0,'updated':0,'skipped':0,'openalex_url':[], 'dois':[]}
     for article in batched(chain(*query.paginate(per_page=100, n_max=None)),100):
+        logger.info(f'processing batch of 100 OA works. Stats of earlier batches: {result["total"]} new: {result["new"]} updated: {result["updated"]} skipped: {result["skipped"]}')
         for art in article:
             doc = api_responses_openalex.find_one_and_replace({"id":art['id']}, art, upsert=True)
             if not doc:

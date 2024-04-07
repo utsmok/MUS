@@ -1,11 +1,9 @@
 from PureOpenAlex.models import Paper
 from PureOpenAlex.constants import (
-    CSV_EXPORT_KEYS, CSV_EEMCS_KEYS,
-    EEGROUPSABBR, TCSGROUPSABBR,
+
     CERIF_CLOSER, RECORD_CLOSER,
     get_cerif_header, get_cerif_record_header
     )
-import csv
 from loguru import logger
 import xmltodict
 

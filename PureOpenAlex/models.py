@@ -378,6 +378,31 @@ class PureEntry(TimeStampedModel, models.Model):
         ]
 
 
+class Dataset(TimeStampedModel, models.Model):
+    doi = models.CharField(max_length=256, blank=True, null=True)
+    title = models.CharField(max_length=1024, blank=True, null=False)
+    authors = models.ManyToManyField(Author, related_name="datasets")
+    related_papers = models.ManyToManyField(Paper, related_name="datasets")
+    publisher = models.CharField(max_length=256, blank=True, null=True)
+    url = models.CharField(max_length=256, blank=True, null=True)
+    itemtype = models.CharField(max_length=256, blank=True, null=False)
+    detailed_itemtype = models.JSONField(blank=True, null=True)
+    related_ids = models.JSONField(blank=True, null=True)
+    license_info = models.JSONField(blank=True, null=True)
+    description = models.TextField(blank=True, null=True)
+    source = models.CharField(max_length=256, blank=True, null=True)
+    created_source_date = models.DateField(blank=True, null=True)
+    last_modified_source_date = models.DateField(blank=True, null=True)
+
+    class Meta:
+        ordering = ['-created']
+        indexes = [
+            models.Index(fields=["doi",
+                                'title',
+                                'itemtype',
+                                'source',
+                                ]),
+        ]
 
 
 class DBUpdate(TimeStampedModel, models.Model):
