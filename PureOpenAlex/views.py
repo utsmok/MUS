@@ -406,17 +406,12 @@ def load_affils(request,author_id):
 
 @login_required
 def chart(request):
+    logger.info("chart [parameters] {} [user] {}", request.POST, request.user.username)
+    return render(request, "chart.html", {"chart": generate_chart(request.POST, request.user)})
 
-    '''
-    TODO: make modular (see func 'customchart' below), move logic to other file
-    '''
-    parameters = request.POST
-    user = request.user
-    #chart = generate_chart(parameters, user)
-    chart = generate_oa_chart()
-    logger.info("chart [parameters] {} [user] {}",parameters, user.username)
-
-    return render(request, "chart.html", {"chart": chart})
+def oa_chart(request):
+    logger.info("oachart [user] {}", request.POST, request.user.username)
+    return render(request, {'chart': generate_oa_chart()})
 
 @login_required
 def customchart(request):

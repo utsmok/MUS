@@ -20,6 +20,7 @@ from .views import (
     customchart,
     getcsv,
     viewlog,
+    oa_chart,
 )
 
 app_name = "PureOpenAlex"
@@ -46,7 +47,8 @@ urlpatterns = [
     path('rawjson/<int:article_id>/', get_raw_data_json, name='rawjson'),
     path('chart/', chart, name='chart'),
     path('customchart/', customchart, name='customchart'),
+    path('oachart/', oa_chart, name='oachart'),
     path('affiliations/<int:author_id>/', load_affils, name='affiliations'),
     path('log/<str:file>', viewlog, name='viewlog'),
-    
+
 ]

@@ -201,7 +201,7 @@ class Paper(TimeStampedModel, models.Model):
     topics = models.JSONField(blank=True, null=True)
     taverne_date = models.DateField(blank=True, null=True)
     calc_taverne_date = models.DateField(blank=True, null=True)
-    
+
     objects = PaperManager().from_queryset(PaperQuerySet)()
 
     def get_oa_links(self):
@@ -220,7 +220,7 @@ class Paper(TimeStampedModel, models.Model):
                         urls.append(loc.pdf_url)
         else:
             return bestoa, urls
-        
+
     class Meta:
         ordering = ['-year', 'doi']
         indexes = [
@@ -290,7 +290,7 @@ class MUSPDF(TimeStampedModel, models.Model):
                                 "location",
                                 ]),
         ]
-        
+
 class PilotPureData(models.Model):
     pureid = models.IntegerField()
     title = models.CharField(max_length=1024)
@@ -360,6 +360,7 @@ class PureEntry(TimeStampedModel, models.Model):
     )
     keywords = models.JSONField(blank=True, null=True)
     pilot_pure_data = models.ForeignKey(PilotPureData, on_delete=models.DO_NOTHING, related_name="pure_entries", blank=True, null=True)
+    checked_for_match = models.BooleanField(default=False)
     objects = PureEntryManager()
     class Meta:
         ordering = ['-year', 'doi']

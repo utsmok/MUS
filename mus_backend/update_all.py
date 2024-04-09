@@ -148,7 +148,7 @@ def update_people_page_data():
     logger.info('done running fillUTPeopleData()')
 
 def update_all(clean=False, people=False, get_dbupdates=False):
-    years=[2022,2023,2024,2025]
+    years=[2023,2024,2025]
     processpapers=defaultdict(list)
     logger.info('running updateAll()')
     if get_dbupdates:

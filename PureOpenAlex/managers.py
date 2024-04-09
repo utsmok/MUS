@@ -134,7 +134,6 @@ class AuthorManager(models.Manager):
         failed=0
         for author in authorlist:
             with transaction.atomic():
-                logger.debug("adding affils for author "+str(author.name))
                 raw_affildata = None
                 oa_data = api_responses_authors_openalex.find_one({"id":author.openalex_url})
                 try:
@@ -161,7 +160,6 @@ class AuthorManager(models.Manager):
                                 added+1
                         except Exception as e:
                             logger.error(f'error adding affil for {author.name}: {e}')
-                    logger.debug(f"added {len(affiliations)} affils to Mongo for author {author.openalex_url} | {author.name}")
         amount = self.filter(affils__isnull=True).distinct().count()
         logger.info(f"{amount} authors still have no affils.")
         DBUpdate = apps.get_model('PureOpenAlex', 'DBUpdate')
@@ -232,7 +230,7 @@ class AuthorManager(models.Manager):
                 count += 1
                 process_cerif_data(author, cerif_author_data)
         print(count)
-    
+
     def fix_abbrs(self):
         UTData = apps.get_model('PureOpenAlex', 'UTData')
         wrongabbrs = UTData.objects.exclude(current_faculty__in=FACULTYNAMES)
@@ -348,18 +346,15 @@ class PureEntryManager(models.Manager):
                 faillist.append(entry.id)
                 continue
             if num_authors == len(authorlist):
-                logger.info(f'no missing authors for {entry.id}')
                 continue
 
             total += len(authorlist) - len(authorlist)
-            logger.info(f'{num_authors - len(authorlist)} new authors found for {entry.id}')
 
             with transaction.atomic():
                 for author in authorlist:
                     matches = process.extract(author,matchlist, processor=utils.default_process, scorer=fuzz.QRatio, score_cutoff=90)
                     if len(matches) == 0 or not matches:
                         failed += 1
-                        logger.warning(f'no matches for {author}')
                     else:
                         matchname=matches[0][0]
                         authorid=idnamemapping[matchname]
@@ -368,12 +363,13 @@ class PureEntryManager(models.Manager):
                             id = max(authorid)
                             authorobj = Author.objects.get(id=id)
                             if authorobj:
-                                logger.debug(f'match: {author} == {authorobj.name} ({authorobj.id}) | score {matches[0][1]}')
                                 if authorobj not in entry.authors.all():
+                                    logger.debug(f'match: {author} == {authorobj.name} ({authorobj.id}) | score {matches[0][1]}')
                                     entry.authors.add(authorobj)
                                     entry.save()
                                 else:
-                                    logger.info(f'{authorobj.name} already linked with entry')
+                                    ...
+                                    #logger.info(f'{authorobj.name} already linked with entry')
                         else:
                             failed += 1
                             logger.error(f'failed to process matches for {author}')
@@ -501,14 +497,15 @@ class PureEntryManager(models.Manager):
         """
         paperlist = []
         entrylist = []
+        checked = []
         checkedentries=0
         Paper = apps.get_model('PureOpenAlex', 'Paper')
 
-        allentries = self.filter(Q(paper__isnull=True)).only("doi","title",'researchutwente', 'risutwente', 'other_links', 'duplicate_ids')
+        allentries = self.filter(Q(paper__isnull=True) & Q(checked_for_match=False))
         paperpreload = Paper.objects.all().only("doi","title",'locations','id').prefetch_related('locations')
         logger.info('Trying to find matches for ' + str(allentries.count()) + ' PureEntries in ' + str(paperpreload.count()) + 'unmatched papers')
         for entry in allentries:
-            if checkedentries % 100  == 0:
+            if checkedentries % 1000  == 0:
                 logger.info(f'matched {len(entrylist)}/{checkedentries} entries to {len(paperlist)} papers. {len(allentries)-checkedentries} entries left to check.')
 
             checkedentries=checkedentries+1
@@ -563,6 +560,8 @@ class PureEntryManager(models.Manager):
                         link = entry.other_links.replace('https://ezproxy2.utwente.nl/login?url=', '')
                         paper = paperpreload.filter(locations__pdf_url__icontains=link).first()
                         paper = paperpreload.filter(locations__landing_page_url__icontains=link).first()
+            entry.checked_for_match = True
+            checked.append(entry)
             if paper:
                 with transaction.atomic():
                     entry.paper = paper
@@ -570,16 +569,17 @@ class PureEntryManager(models.Manager):
                 paperlist.append(paper)
                 entrylist.append(entry)
                 if not found:
-                    logger.debug(f"found initial paper for entry {entry.id}")
+                    logger.debug(f"found first paper for entry {entry.id}")
                 else:
-                    logger.debug(f"found new paper for entry {entry.id}")
+                    logger.debug(f"added extra paper for entry {entry.id}")
             else:
-                logger.debug(f"no paper found for entry {entry.id}") #no match or no new match
 
+                ... #no match found
 
         with transaction.atomic():
             Paper.objects.bulk_update(paperlist, fields=["has_pure_oai_match"])
             self.bulk_update(entrylist, fields=["paper"])
+            self.bulk_update(checked, fields=["checked_for_match"])
 
         logger.info(f"Linked {len(paperlist)} papers with {len(entrylist)} PureEntries after checking {checkedentries} PureEntries")
 
@@ -1217,7 +1217,7 @@ class PaperQuerySet(models.QuerySet):
                     if keyname == 'ut_groups':
                         mapping[keyname] = ' | '.join(authorgroups) if authorgroups else ''
                     if keyname == 'is_eemcs?':
-                        mapping[keyname] = paperauthors.filter(Q(utdata__current_faculty__iexact='EEMCS') | Q(utdata__employment_data__contains=[{'faculty':'EEMCS'}])).exists() 
+                        mapping[keyname] = paperauthors.filter(Q(utdata__current_faculty__iexact='EEMCS') | Q(utdata__employment_data__contains=[{'faculty':'EEMCS'}])).exists()
                     if keyname == 'is_ee?':
                         mapping[keyname] = paperauthors.filter(Q(utdata__current_group__in=EEGROUPSABBR)).exists() ,
                     if keyname == 'is_tcs?':
@@ -1604,4 +1604,4 @@ class PaperQuerySet(models.QuerySet):
             result.append(paperdict)
 
         return result
-    
+
