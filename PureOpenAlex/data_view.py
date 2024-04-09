@@ -334,12 +334,12 @@ def get_chart_data():
         for p in allpapers]
     paperframe = pd.DataFrame(data)
     paperframe.to_csv('paperdataframe.csv')
-
+'''
     allauthors = Author.objects.filter(papers__in=allpapers)
     data =[{} for a in allauthors]
     authorframe = pd.DataFrame(data)
     authorframe.to_csv('authordataframe.csv')
-    
+
     alllocs = Author.objects.filter(papers__in=allpapers)
     data =[{} for loc in alllocs]
     locframe = pd.DataFrame(data)
@@ -350,7 +350,7 @@ def get_chart_data():
     peframe = pd.DataFrame(data)
     peframe.to_csv('pureentriesdataframe.csv')
 
-
+'''
 def get_oa_chart_data():
     '''
     chart 1: stacked bar with peer-reviewed items
@@ -367,7 +367,7 @@ def get_oa_chart_data():
     peer-reviewed items contain these itemtypes:
     1) article
     2) letter
-    3) comment / letter to the editor,   
+    3) comment / letter to the editor,
     4) article in a special issue
     5) review article
 
@@ -378,9 +378,9 @@ def get_oa_chart_data():
     - closed
     - gold DOAJ
     - Bronze (gold non-doaj) or hybrid
-    - green only 
+    - green only
         - number with 'OA procedure XXXX' ut keyword
-    
+
     chart 2: same as chart 1 but for 2022 and now faculty on x-axis
     '''
     def get_fac(paper):
@@ -419,8 +419,11 @@ def get_oa_chart_data():
 
 def generate_oa_chart():
     import plotly.express as px
-
-    oachartdata = pd.read_csv('oachartdata.csv')
+    try:
+        oachartdata = pd.read_csv('oachartdata.csv')
+    except FileNotFoundError:
+        get_oa_chart_data()
+        oachartdata = pd.read_csv('oachartdata.csv')
     years = [2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024]
     oatypes = ['green', 'closed', 'bronze', 'gold','hybrid']
     resultsy = []
@@ -457,7 +460,7 @@ def generate_oa_chart():
             result['percent'] = int(percent)
             resultsf.append(result)
 
-        
+
 
     dfoay = pd.DataFrame(resultsy)
     dfoay=dfoay.sort_values(by=['year'])

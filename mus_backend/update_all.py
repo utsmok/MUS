@@ -6,7 +6,7 @@ from .get_from_api import getCrossrefWorks, getOpenAlexWorks, getOpenAlexAuthorD
 from .get_from_file import getfrompurereport, getdblp
 from .get_from_scraper import fillJournalData, fillUTPeopleData
 from PureOpenAlex.data_add import addOpenAlexWorksFromMongo, addPureWorksFromMongo, addOpenAireWorksFromMongo
-from PureOpenAlex.data_view import get_chart_data
+from PureOpenAlex.data_view import get_oa_chart_data
 from django.db.models import Q
 from pymongo import DeleteOne,MongoClient
 from pymongo.collection import Collection
@@ -165,7 +165,7 @@ def update_all(clean=False, people=False, get_dbupdates=False):
     logger.info('done with updateAll()')
 
     logger.info('gathering chartdata')
-    get_chart_data()
+    get_oa_chart_data()
     logger.info('done gathering chartdata')
     if clean:
         logger.info('clean = True, running cleandb()')

@@ -411,7 +411,7 @@ def chart(request):
 
 def oa_chart(request):
     logger.info("oachart [user] {}", request.POST, request.user.username)
-    return render(request, {'chart': generate_oa_chart()})
+    return render(request, 'chart.html', {'chart': generate_oa_chart()})
 
 @login_required
 def customchart(request):
