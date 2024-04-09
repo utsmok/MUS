@@ -7,7 +7,7 @@ from django.core.cache.backends.base import DEFAULT_TIMEOUT
 from django.db.models import Q
 from django.core.exceptions import ObjectDoesNotExist
 from .data_add import addPaper
-from .data_view import generateMainPage, getPapers, getAuthorPapers, open_alex_autocomplete, get_raw_data, generate_chart, read_log
+from .data_view import generateMainPage, getPapers, getAuthorPapers, open_alex_autocomplete, get_raw_data, generate_chart, read_log, generate_oa_chart
 from django.conf import settings
 from .data_helpers import processDOI
 from django.views.decorators.cache import cache_page
@@ -412,7 +412,8 @@ def chart(request):
     '''
     parameters = request.POST
     user = request.user
-    chart = generate_chart(parameters, user)
+    #chart = generate_chart(parameters, user)
+    chart = generate_oa_chart()
     logger.info("chart [parameters] {} [user] {}",parameters, user.username)
 
     return render(request, "chart.html", {"chart": chart})

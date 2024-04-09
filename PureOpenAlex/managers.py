@@ -40,11 +40,14 @@ class AuthorManager(models.Manager):
         all_paths = []
         urlmapping = {}
         for entry in data:
-            url = entry.avatar.url
-            entry.avatar_path = url.replace(r'/https%3A/people.utwente.nl/','author_avatars/').replace(r'/picture','')
-            all_paths.append(entry.avatar_path)
-            urlmapping[entry.avatar_path] = url
-            entry.save()
+            try:
+                url = entry.avatar.url
+                entry.avatar_path = url.replace(r'/https%3A/people.utwente.nl/','author_avatars/').replace(r'/picture','')
+                all_paths.append(entry.avatar_path)
+                urlmapping[entry.avatar_path] = url
+                entry.save()
+            except Exception as e:
+                logger.warning(f'failed to add avatar path for utdata id {entry.id}: {e}')
 
         if download:
             if getattr(settings, "DEBUG"):
@@ -290,7 +293,7 @@ class AuthorQuerySet(models.QuerySet):
 class PureEntryManager(models.Manager):
 
     def add_authors(self):
-        allentries = self.all()
+        entries_with_no_authors = self.filter(authors__isnull=True)
         Author = apps.get_model('PureOpenAlex', 'Author')
         dbauthordata = Author.objects.order_by('last_name','first_name').only('id','openalex_url','name','first_name','last_name','known_as', 'initials')
         matchlist = []
@@ -314,7 +317,7 @@ class PureEntryManager(models.Manager):
         matched = 0
         failed = 0
         total = 0
-        for entry in allentries:
+        for entry in entries_with_no_authors:
             num_authors = entry.authors.count()
             mongodata = api_responses_pure.find_one({'title':entry.title})
 
@@ -656,7 +659,7 @@ class JournalManager(models.Manager):
             'openalex_url': data.get('id'),
         }
 
-        dealdata, keywords, publisher = get_deal_data(journaldata['openalex_url'])
+        dealdata, keywords, publisher = get_deal_data(self, journaldata['openalex_url'])
         journaldata['keywords']=keywords
         journaldata['publisher']=publisher if publisher else ""
         journal, created = self.get_or_create(**journaldata)
@@ -672,9 +675,6 @@ class JournalManager(models.Manager):
             journal.save()
 
 
-        DBUpdate = apps.get_model('PureOpenAlex', 'DBUpdate')
-        dbu = DBUpdate.objects.create(update_source='OpenAlex', update_type='Journal.objects.get_or_make_from_api_data()', details={'journal':journal.__dict__})
-        dbu.save()
 
         return journal, created
 class PaperManager(models.Manager):

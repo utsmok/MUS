@@ -1,3 +1,5 @@
 {% block content %}
-{{chart|safe}}
+{% for c in chart %}
+{{c|safe}}
+{% endfor %}
 {% endblock %}

@@ -1,10 +1,16 @@
 from .models import (
     Paper,
     DBUpdate,
+    Author,
+    Journal,
+    Location,
+    PureEntry,
+    Source,
+    UTData
 )
 from .constants import FACULTYNAMES, TCSGROUPSABBR, EEGROUPSABBR
 from loguru import logger
-
+from django.db.models import Q
 from rich import print
 from pymongo import MongoClient
 from django.conf import settings
@@ -14,7 +20,6 @@ from collections import defaultdict
 import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
-
 def generateMainPage(user):
     """
     returns:
@@ -263,6 +268,207 @@ def get_raw_data(article_id, user=None):
 
     return article, fulljson, raw_data
 
+def get_chart_data():
+    '''
+    Preloads data from the db into separate pandas dataframes for use in making charts
+    Stores the pandas dataframes on disk to load in when 'generate_chart' is called
+    '''
+    '''fields['author']=Author._meta.get_fields()
+    fields['journal']=Journal._meta.get_fields()
+    fields['location']=Location._meta.get_fields()
+    fields['ut_data']=UTData._meta.get_fields()
+    fields['pure_entry']=PureEntry._meta.get_fields()
+    fields['authorship']=Authorship._meta.get_fields()
+    fields['organization']=Organization._meta.get_fields()
+    fields['affiliation']=Affiliation._meta.get_fields()
+    fields['dealdata']=Dealdata._meta.get_fields()
+    fields['source']=Source._meta.get_fields()'''
+
+    allpapers = Paper.objects.filter(year__gte=2015).prefetch_related('authors', 'locations', 'pure_entries', 'authorships').select_related('journal').order_by('-year')
+
+
+    data = [{'pure_entries':" | ".join([str(e.id) for e in p.pure_entries.all()]),
+        'id':p.id,
+        'created':p.created,
+        'modified':p.modified,
+        'openalex_url':p.openalex_url,
+        'title':p.title,
+        'doi':p.doi,
+        'year':p.year,
+        'citations':p.citations,
+        'primary_link':p.primary_link,
+        'itemtype':p.itemtype,
+        'date':p.date,
+        'openaccess':p.openaccess,
+        'language':p.language,
+        'abstract':p.abstract,
+        'pages':p.pages,
+        'pagescount':p.pagescount,
+        'volume':p.volume,
+        'issue':p.issue,
+        'is_oa':p.is_oa,
+        'license':p.license,
+        'pdf_link_primary':p.pdf_link_primary,
+        'keywords':p.keywords,
+        'journal':p.journal.id if p.journal else None,
+        'apc_listed_value':p.apc_listed_value,
+        'apc_listed_currency':p.apc_listed_currency,
+        'apc_listed_value_usd':p.apc_listed_value_usd,
+        'apc_listed_value_eur':p.apc_listed_value_eur,
+        'apc_paid_value':p.apc_paid_value,
+        'apc_paid_currency':p.apc_paid_currency,
+        'apc_paid_value_usd':p.apc_paid_value_usd,
+        'apc_paid_value_eur':p.apc_paid_value_eur,
+        'is_in_pure':p.is_in_pure,
+        'has_pure_oai_match':p.has_pure_oai_match,
+        'has_any_ut_author_year_match':p.has_any_ut_author_year_match,
+        'published_print':p.published_print,
+        'published_online':p.published_online,
+        'published':p.published,
+        'issued':p.issued,
+        'topics':p.topics,
+        'taverne_date':p.taverne_date,
+        'authors':" | ".join([str(a.id) for a in p.authors.all()]),
+        'locations':" | ".join([str(l.id) for l in p.locations.all()]),
+        }
+        for p in allpapers]
+    paperframe = pd.DataFrame(data)
+    paperframe.to_csv('paperdataframe.csv')
+
+    allauthors = Author.objects.filter(papers__in=allpapers)
+    data =[{} for a in allauthors]
+    authorframe = pd.DataFrame(data)
+    authorframe.to_csv('authordataframe.csv')
+    
+    alllocs = Author.objects.filter(papers__in=allpapers)
+    data =[{} for loc in alllocs]
+    locframe = pd.DataFrame(data)
+    locframe.to_csv('locationsdataframe.csv')
+
+    allpureentries = PureEntry.objects.filter(papers__in=allpapers)
+    data =[{} for p in allpureentries]
+    peframe = pd.DataFrame(data)
+    peframe.to_csv('pureentriesdataframe.csv')
+
+
+def get_oa_chart_data():
+    '''
+    chart 1: stacked bar with peer-reviewed items
+
+    x-axis: year
+    y-axis: %
+        each bar shows % of each oa-type from this list:
+            - gold doaj
+            - gold non-doaj or hybrid
+            - green only
+            - not oa / closed
+    also show total % open access (all except not oa/closed) per year
+    also mark preferred route OA (immediate OA: gold, hybrid, 'bronze')
+    peer-reviewed items contain these itemtypes:
+    1) article
+    2) letter
+    3) comment / letter to the editor,   
+    4) article in a special issue
+    5) review article
+
+    table 1: details for items for past year (2023)
+    # and % of:
+    - total
+    - OA publications
+    - closed
+    - gold DOAJ
+    - Bronze (gold non-doaj) or hybrid
+    - green only 
+        - number with 'OA procedure XXXX' ut keyword
+    
+    chart 2: same as chart 1 but for 2022 and now faculty on x-axis
+    '''
+    def get_fac(paper):
+        faclist = []
+        #grouplist = []
+        for author in paper.authors.all():
+            if UTData.objects.filter(employee=author).exists():
+                faclist.append(author.utdata.current_faculty)
+                #grouplist.append(author.utdata.current_group)
+                if author.utdata.employment_data:
+                    for entry in author.utdata.employment_data:
+                        faclist.append(entry.get('faculty'))
+                        #grouplist.append(entry.get('group'))
+        faclist = list(set(faclist))
+        if len(faclist) == 0:
+            return None
+        if len(faclist) == 1:
+            return faclist[0]
+        else:
+            return ' | '.join(faclist)
+    itemtypes = ['journal-article', 'peer-review']
+    years = [2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024]
+    papers = Paper.objects.filter(Q(year__in=years) & Q(itemtype__in=itemtypes)).get_table_prefetches()
+    data = [{
+        'id':p.id,
+        'oa_type':p.openaccess,
+        'is_oa':p.is_oa,
+        'has_pure_entry':p.pure_entries.exists(),
+        'year':p.year,
+        'itemtype':p.itemtype,
+        'faculty':get_fac(p)
+            } for p in papers
+    ]
+    oadf = pd.DataFrame(data)
+    oadf.to_csv('oachartdata.csv')
+
+def generate_oa_chart():
+    import plotly.express as px
+
+    oachartdata = pd.read_csv('oachartdata.csv')
+    years = [2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024]
+    oatypes = ['green', 'closed', 'bronze', 'gold','hybrid']
+    resultsy = []
+    resultsf = []
+    for year in years:
+        yearpapers=oachartdata[oachartdata['year']==year]
+        result = {}
+        total = yearpapers.shape[0]
+
+        resultsy.append(result)
+        for oatype in oatypes:
+            result = {'year':year}
+            count = yearpapers[yearpapers['oa_type'] == oatype].shape[0]
+            percent = round(count*100/total,0)
+            result['type'] = oatype
+            result['count'] = int(count)
+            result['percent'] = int(percent)
+            resultsy.append(result)
+    papers2023=oachartdata[oachartdata['year']==2023]
+    faculties = ['EEMCS', 'BMS', 'EE', 'ITC', 'TNW']
+    for fac in faculties:
+        result = {'faculty':fac}
+        papers2023['faculty_clean'] = papers2023['faculty'].fillna('').astype(str)
+
+        msk = papers2023['faculty_clean'].str.contains(fac)
+        total = papers2023[msk].shape[0]
+
+        for oatype in oatypes:
+            result = {'faculty':fac}
+            count = papers2023[(papers2023['oa_type'] == oatype) & msk].shape[0]
+            percent = round(count*100/total,0)
+            result['type'] = oatype
+            result['count'] = int(count)
+            result['percent'] = int(percent)
+            resultsf.append(result)
+
+        
+
+    dfoay = pd.DataFrame(resultsy)
+    dfoay=dfoay.sort_values(by=['year'])
+    print(dfoay.info(verbose=True))
+    print(dfoay)
+    dfoaf = pd.DataFrame(resultsf)
+    print(dfoay.info(verbose=True))
+    print(dfoaf)
+    fig = px.bar(dfoay, x="year", y="count", color="type")
+    fig2 = px.bar(dfoaf, x="faculty", y="count", color="type")
+    return [fig.to_html(), fig2.to_html()]
 
 def generate_chart(parameters, user):
     '''

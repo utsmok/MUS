@@ -39,3 +39,4 @@ aiohttp
 aiodns
 orjson
 django-cors-headers
+django-pandas
