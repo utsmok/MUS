@@ -151,24 +151,18 @@ def open_alex_autocomplete(query, types=['works','authors'], amount=5):
             url = f"https://api.openalex.org/autocomplete/{oa_type}?q={query}"
         result= {
         'count':0,
-        'results':[]
+        'results':[],
+        'type':oa_type
         }
-
         response = httpx.get(url)
         response.raise_for_status()
         data=response.json()
-
         result['count']=data['meta']['count']
-        if result['count']==0:
-            print('no results (?)')
-            return None
-        result['type']=[oa_type]
-        if result['count']>=5:
-            result['results']=data['results'][:6]
-        else:
-            result['results']=data['results']
+        print(data)
+        result['results']=data['results'] if result['count']<=5 else data['results'][:6]
         tresults[oa_type]=result
 
+    print(tresults)
     maxlen=0
     most_results_type=''
     for key, value in tresults.items():

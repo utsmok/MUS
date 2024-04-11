@@ -77,10 +77,8 @@ def searchpaper(request):
 
     if query.startswith('http') or query[0].isdigit() or 'doi' in query.lower():
         query = processDOI(query)
-        papers = all_papers.filter( Q(doi__icontains=query) | Q(title__icontains=query))
-        if not papers:
-            query = query.replace('https://doi.org/', '')
-            papers = all_papers.filter( Q(doi__icontains=query) | Q(title__icontains=query))
+        query2 = query.replace('https://doi.org/', '')
+        papers = all_papers.filter( Q(doi__icontains=query) | Q(title__icontains=query) | Q(doi__icontains=query2) | Q(title__icontains=query2))
     else:
         papers = all_papers.filter( Q(title__icontains=query) | Q(authors__name__icontains=query))
 
