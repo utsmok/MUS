@@ -79,6 +79,8 @@ INSTALLED_APPS = [
     "django_extensions",
     "ajax_datatable",
     "slippers",
+    'explorer',
+    'django_celery_results',
    # 'debug_toolbar',
 
 ]
@@ -138,9 +140,16 @@ DATABASES = {
         "HOST": str(os.getenv('POSTGRESHOST')),
         "PORT": str(os.getenv('POSTGRESPORT')),
         "PASSWORD": str(os.getenv('POSTGRESPWD')),
+    },
+    'readonly': {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": str(os.getenv('POSTGRESDB')),
+        "USER": 'readonly',
+        "HOST": str(os.getenv('POSTGRESHOST')),
+        "PORT": str(os.getenv('POSTGRESPORT')),
+        "PASSWORD": 'readonly',
     }
 }
-print(DATABASES)
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
@@ -155,6 +164,13 @@ RQ_QUEUES = {
         "USE_REDIS_CACHE": "default",
     },
 }
+
+# Celery settings
+CELERY_BROKER_URL = str(os.getenv('REDISHOST'))
+CELERY_TIMEZONE = "Europe/Amsterdam"
+CELERY_TASK_TRACK_STARTED = True
+CELERY_RESULT_BACKEND = 'django-db'
+
 # Password validation
 # https://docs.djangoproject.com/en/5.0/ref/settings/#auth-password-validators
 
@@ -178,11 +194,8 @@ AUTH_PASSWORD_VALIDATORS = [
 # https://docs.djangoproject.com/en/5.0/topics/i18n/
 
 LANGUAGE_CODE = "en-us"
-
-TIME_ZONE = "UTC"
-
+TIME_ZONE = "Europe/Amsterdam"
 USE_I18N = True
-
 USE_TZ = True
 
 
@@ -230,3 +243,5 @@ SESSION_CACHE_ALIAS = "default"
 
 CACHE_TTL = 60 * 5
 
+EXPLORER_CONNECTIONS = { 'Default': 'readonly' }
+EXPLORER_DEFAULT_CONNECTION = 'readonly'

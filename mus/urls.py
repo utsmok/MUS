@@ -27,5 +27,7 @@ urlpatterns = [
     path("data-browser/", include("data_browser.urls")),
    # path("__debug__/", include("debug_toolbar.urls")),
     path("api/", api.urls),
+    path('explorer/', include('explorer.urls')),
+
 
 ]

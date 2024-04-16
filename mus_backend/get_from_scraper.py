@@ -214,7 +214,6 @@ async def fillUTPeopleData():
         }
     }
 
-
 async def getJournalBrowserData(journals):
     async def getOADealData(journalid, journaldata):
         """

@@ -335,7 +335,7 @@ def get_chart_data():
     paperframe = pd.DataFrame(data)
     paperframe.to_csv('paperdataframe.csv')
 '''
-    allauthors = Author.objects.filter(papers__in=allpapers)
+    allauthors = Author.objects.filter(paper__in=allpapers)
     data =[{} for a in allauthors]
     authorframe = pd.DataFrame(data)
     authorframe.to_csv('authordataframe.csv')

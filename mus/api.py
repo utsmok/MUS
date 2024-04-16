@@ -85,12 +85,12 @@ class NotFoundSchema(Schema):
     exception: str
     msg: str
 
-PaperSchema = create_schema(Paper,depth=2)
-PureEntrySchema = create_schema(PureEntry, depth=3)
-ViewPaperSchema = create_schema(viewPaper, depth=3)
+PaperSchema = create_schema(Paper,depth=1)
+PureEntrySchema = create_schema(PureEntry, depth=1)
+ViewPaperSchema = create_schema(viewPaper, depth=1)
 JournalSchema = create_schema(Journal, depth=1)
 OrganizationSchema = create_schema(Organization, depth=1)
-AuthorSchema = create_schema(Author, depth=3)
+AuthorSchema = create_schema(Author, depth=1)
 PilotPureDataSchema = create_schema(PilotPureData, exclude=['apc_paid_amount'], depth=1)
 SourceSchema = create_schema(Source, depth=1)
 
