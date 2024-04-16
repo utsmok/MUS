@@ -335,40 +335,30 @@ class CrossrefAPI():
         self.pagesize=100
         self.dois = dois
         self.years = years
-    def get_results(self):
+    def get_crossref_results_from_dois(self):
         if not self.dois:
-            print('getting default queries for crossref')
-            self.results.append(self.crossref.works(filter = {'from-pub-date':f'{self.years[-1]}-01-01','until-pub-date': f'{self.years[0]}-12-31'}, query_affiliation='twente', cursor = "*", limit = self.pagesize, cursor_max=100000))
             self.dois = [str(x['doi']).replace('https://doi.org/','') for x in self.mongoclient.works_openalex.find()]
             print(f'found {len(self.dois)} dois')
-            print('ONLY GETTING FIRST 100 DOIS')
-            for doi in self.dois[:100]:
+            i=0
+            for doi in self.dois:
                 try:
-                    self.results.append(self.crossref.works(ids=doi))
+                    article = self.crossref.works(ids=doi)['message']
                 except Exception as e:
-                    pass
-            print(f'prepared {len(self.results)} crossref queries')
+                    print(f'error querying crossref for doi {doi}: {e}')
+                    continue
+                try:
+                    self.collection.find_one_and_update({"DOI":article['DOI']}, {'$set':article}, upsert=True)
+                    i=i+1
+                except Exception as e:
+                    print(f'error storing crossref result for doi {doi}: {e}')
+                    continue
+                if i % 100 == 0:
+                    print(f'{i} of {len(self.dois)} added (+100)')
         else:
             self.results.append(self.crossref.works(ids=self.dois, cursor = "*", limit = self.pagesize, cursor_max=100000))
             pass
-    def store_results(self):
-        if not self.results:
-            raise Warning('CrossrefAPI instance has no results to store')
-        else:
-            for result in self.results:
-                articles = []
-                if isinstance(result, list):
-                    for page in result:
-                        for article in page['message']['items']:
-                            articles.append(article)
-                else:
-                    for article in page['message']['items']:
-                        articles.append(article)
-                for article in articles:
-                    self.collection.find_one_and_update({"DOI":article['doi']}, {'$set':article}, upsert=True)
     def run(self):
-        self.get_results()
-        self.store_results()
+        self.get_crossref_results_from_dois()
 
 class OpenAIREAPI():
     def __init__(self, mongoclient):
