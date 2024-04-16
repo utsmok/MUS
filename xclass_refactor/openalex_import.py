@@ -1,128 +1,11 @@
-'''
-temporary file
 
-refactoring all the functions in mus_backend for retrieving items from apis, scrapers etc 
--> from function-based into class-based
-
-instead of calling the functions one after another we'll use classes to manage it all
-
-main structure:
--> base class that manages the current update process
--> creates instances of all kinds of other classes that will hold/retrieve the data
--> take note that we want to bundle api calls and db operations in batches instead of one at a time
-
-
-implement some multiprocessing/threading/asyncio where it makes sense
-
-import multiprocessing as mp
-from concurrent.futures import ProcessPoolExecutor
-
-'''
-from pymongo import MongoClient
-from pymongo.collection import Collection
+from itertools import chain
+from typing import Collection, Iterable
 from django.conf import settings
 import pyalex
-from pyalex import Works, Authors, Sources, Funders,  Institutions
-from itertools import chain
-from loguru import logger
-from typing import Iterable
+from xclass_refactor.mus_mongo_client import MusMongoClient
+from pyalex import Authors, Funders, Institutions, Sources, Works
 from pyalex.api import BaseOpenAlex
-from habanero import Crossref
-
-
-class MusMongoClient:
-    '''
-    creates connections to mongodb
-    stores references to the relevant collections as attributes
-    wraps search and update functions
-    '''
-    def __init__(self):
-        MONGOURL = getattr(settings, "MONGOURL")
-        self.mongoclient = MongoClient(MONGOURL)['metadata_unificiation_system']
-        
-        self.works_openalex = self.mongoclient['works_openalex']
-        self.authors_openalex = self.mongoclient['authors_openalex']
-        self.sources_openalex = self.mongoclient['sources_openalex']
-        self.funders_openalex = self.mongoclient['funders_openalex']
-        self.topics_openalex = self.mongoclient['topics_openalex']
-        self.institutions_openalex = self.mongoclient['institutions_openalex']
-
-        self.items_pure_oaipmh = self.mongoclient['items_pure_oaipmh']
-        self.items_pure_reports = self.mongoclient['items_pure_reports']
-        self.items_datacite = self.mongoclient['items_datacite']
-        self.items_crossref = self.mongoclient['items_crossref']
-        self.items_openaire = self.mongoclient['items_openaire']
-        self.items_zenodo = self.mongoclient['items_zenodo']
-        self.items_semantic_scholar = self.mongoclient['items_semantic_scholar']
-
-        self.deals_journalbrowser = self.mongoclient['deals_journalbrowser']
-        self.employees_peoplepage = self.mongoclient['employees_peoplepage']
-
-class UpdateManager:
-    def __init__(self, years: list[int], include: dict):
-        '''
-        years: the publication years of the items to retrieve
-        include: a dict detailing which apis/scrapes to run.
-            default: 
-            {
-                'works_openalex': True,
-                'items_pure_oaipmh': True,
-            }
-            instead of True, you can also pass a list of ids to retrieve from that api as a value instead.
-            e.g. {'works_openalex': ['https://openalex.org/W2105846236', 'https://openalex.org/W2105846237'], 'items_pure_oaipmh': True}
-            '''
-
-        if not include:
-            include = {
-                'works_openalex': True,
-                'authors_openalex': True,
-                'items_pure_oaipmh': True,
-            }
-
-        self.years = years
-        self.include = include
-        self.mongoclient = MusMongoClient()
-        self.results = {}
-        self.queries = []
-
-    def run(self):
-        '''
-        runs the queries based on the include dict
-        '''
-        print(self.include)
-        openalex_results = ['works_openalex', 'authors_openalex', 'sources_openalex', 'funders_openalex', 'institutions_openalex', 'topics_openalex']
-        if not self.include.keys():
-            raise KeyError('dict UpdateManager.include is empty or invalid -- no updates to run.')
-        openalex_requests = {}
-        for key,item in self.include.items():
-            if key in openalex_results:
-                if not isinstance(item, list):
-                    openalex_requests[key]=None
-                else:
-                    openalex_requests[key]=item
-    
-        if openalex_requests:
-            print('running openalex')
-            OpenAlexAPI(openalex_requests, self.years, self.mongoclient).run()
-        if self.include.get('items_pure_oaipmh'):
-            self.queries.append(PureAPI(self.years, self.mongoclient))
-        if self.include.get('items_pure_reports'):
-            self.queries.append(PureReports(self.mongoclient))
-        if self.include.get('items_datacite'):
-            self.queries.append(DataCiteAPI(self.mongoclient))
-        if self.include.get('items_crossref'):
-            print('running crossref')
-            CrossrefAPI(self.years, self.mongoclient).run()
-        if self.include.get('items_openaire'):
-            self.queries.append(OpenAIREAPI(self.mongoclient))
-        if self.include.get('items_zenodo'):
-            self.queries.append(ZenodoAPI(self.mongoclient))
-        if self.include.get('items_semantic_scholar'):
-            self.queries.append(SemanticScholarAPI(self.mongoclient))
-        if self.include.get('deals_journalbrowser'):
-            self.queries.append(JournalBrowserScraper(self.mongoclient))
-        if self.include.get('employees_peoplepage'):
-            self.queries.append(PeoplePageScraper(self.mongoclient))
 
 class OpenAlexAPI():
     '''
@@ -199,7 +82,7 @@ class OpenAlexQuery():
     ---------
     add_to_querylist(query) - adds a query to the list of queries to run. if no query is provided, it will add default queries for the itemtype
     run() - runs the query and updates the database, if no queries are initialized, it calls add_to_querylist() to add default queries based on itemtype
-    
+
     '''
     def __init__(self, mongoclient:MusMongoClient, mongocollection:Collection, pyalextype:str, item_ids:Iterable[str]=None, years:list[int]=[2023,2024,2025]):
         self.mongoclient:MusMongoClient = mongoclient
@@ -218,7 +101,7 @@ class OpenAlexQuery():
             'institutions': Institutions
         }
         self.pyalextype = pyalextype
-        
+
     def add_to_querylist(self,query: BaseOpenAlex=None) -> None:
         '''
         adds the pyalex query to the list of queries to run for this itemtype
@@ -226,7 +109,7 @@ class OpenAlexQuery():
         '''
         if not query:
             # first try making query using item_ids if provided
-            by_ids = self.add_query_by_ids() 
+            by_ids = self.add_query_by_ids()
             if not by_ids:
                 # no item_ids, no query: make default query for itemtype
                 if self.pyalextype == 'works':
@@ -273,7 +156,7 @@ class OpenAlexQuery():
                         self.add_funder_query()
                     elif self.pyalextype == 'institutions':
                         self.add_institution_query()
-                    
+
                     self.add_query_by_ids()
         else:
             # query is provided: add to list
@@ -281,7 +164,7 @@ class OpenAlexQuery():
                 self.querylist.append(query)
             else:
                 self.querylist.extend(query)
-        
+
     def add_query_by_ids(self) -> bool:
         '''
         creates queries for all ids in self.item_ids for the itemtype of this instance of OpenAlexQuery
@@ -307,93 +190,3 @@ class OpenAlexQuery():
             for query in self.querylist:
                 for item in chain(*query.paginate(per_page=100, n_max=None)):
                     self.collection.find_one_and_update({"id":item['id']}, {'$set':item}, upsert=True)
-
-class PureAPI():
-    def __init__(self, years, mongoclient):
-        self.years = years
-        self.mongoclient = mongoclient
-        self.results = {}
-
-class PureReports():
-    def __init__(self, mongoclient):
-        self.mongoclient = mongoclient
-        self.results = {}
-
-class DataCiteAPI():
-    def __init__(self, mongoclient):
-        self.mongoclient = mongoclient
-        self.results = {}
-
-class CrossrefAPI():
-    def __init__(self, years: list = [2023, 2024, 2025], mongoclient: MusMongoClient = None, dois: list[str] = None):
-        self.mongoclient = mongoclient
-        if not self.mongoclient:
-            self.mongoclient = MusMongoClient()
-        self.collection = mongoclient.items_crossref
-        self.results = []
-        self.crossref = Crossref(mailto=APIEMAIL)
-        self.pagesize=100
-        self.dois = dois
-        self.years = years
-    def get_crossref_results_from_dois(self):
-        if not self.dois:
-            self.dois = [str(x['doi']).replace('https://doi.org/','') for x in self.mongoclient.works_openalex.find()]
-            print(f'found {len(self.dois)} dois')
-            i=0
-            for doi in self.dois:
-                try:
-                    article = self.crossref.works(ids=doi)['message']
-                except Exception as e:
-                    print(f'error querying crossref for doi {doi}: {e}')
-                    continue
-                try:
-                    self.collection.find_one_and_update({"DOI":article['DOI']}, {'$set':article}, upsert=True)
-                    i=i+1
-                except Exception as e:
-                    print(f'error storing crossref result for doi {doi}: {e}')
-                    continue
-                if i % 100 == 0:
-                    print(f'{i} of {len(self.dois)} added (+100)')
-        else:
-            self.results.append(self.crossref.works(ids=self.dois, cursor = "*", limit = self.pagesize, cursor_max=100000))
-            pass
-    def run(self):
-        self.get_crossref_results_from_dois()
-
-class OpenAIREAPI():
-    def __init__(self, mongoclient):
-        self.mongoclient = mongoclient
-        self.results = {}
-
-class ZenodoAPI():
-    def __init__(self, mongoclient):
-        self.mongoclient = mongoclient
-        self.results = {}
-
-class SemanticScholarAPI():
-    def __init__(self, mongoclient):
-        self.mongoclient = mongoclient
-        self.results = {}
-
-class JournalBrowserScraper():
-    def __init__(self, mongoclient):
-        self.mongoclient = mongoclient
-        self.results = {}
-
-class PeoplePageScraper():
-    def __init__(self, mongoclient):
-        self.mongoclient = mongoclient
-        self.results = {}
-
-
-def main():
-    mngr = UpdateManager([2023,2024,2025], {'items_crossref': True})
-    mngr.run()
-
-import os
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "mus.settings")
-import django
-django.setup()
-APIEMAIL = getattr(settings, "APIEMAIL", "no@email.com")
-
-main()

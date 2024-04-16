@@ -81,7 +81,8 @@ INSTALLED_APPS = [
     "slippers",
     'explorer',
     'django_celery_results',
-   # 'debug_toolbar',
+    'xclass_refactor.apps.XClassRefactorConfig',
+    # 'debug_toolbar',
 
 ]
 
