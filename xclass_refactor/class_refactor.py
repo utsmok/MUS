@@ -21,7 +21,7 @@ from concurrent.futures import ProcessPoolExecutor
 
 from loguru import logger
 from xclass_refactor.pure_import import PureAPI, PureReports, PureAuthorCSV
-from xclass_refactor.openalex_import import OpenAlexAPI
+from xclass_refactor.openalex_import import OpenAlexAPI, OpenAlexQuery
 from xclass_refactor.mus_mongo_client import MusMongoClient
 from xclass_refactor.journal_browser_scraper import JournalBrowserScraper
 from xclass_refactor.other_apis_import import CrossrefAPI, DataCiteAPI, OpenAIREAPI, SemanticScholarAPI, ZenodoAPI
@@ -60,6 +60,7 @@ class UpdateManager:
         note: add some sort of multiprocessing/threading/asyncio/scheduling here
         '''
         print(self.include)
+        print(self.years)
         openalex_results = ['works_openalex', 'authors_openalex', 'sources_openalex', 'funders_openalex', 'institutions_openalex', 'topics_openalex']
         if not self.include.keys():
             raise KeyError('dict UpdateManager.include is empty or invalid -- no updates to run.')
@@ -95,12 +96,17 @@ class UpdateManager:
             self.queries.append(PeoplePageScraper(self.mongoclient))
 
 def main():
-    #mngr = UpdateManager([2023,2024,2025], {'items_crossref': True})
-    #mngr.run()
+    mngr = UpdateManager([2021,2020,2019,2018], {'works_openalex': True, 'authors_openalex': True, 'sources_openalex':True})
+    mngr.run()
+    '''    from collections import defaultdict
+        mongoclient = MusMongoClient()
+        yeardict = defaultdict(int)
+        for work in mongoclient.works_openalex.find():
+            yeardict[work['publication_year']] += 1
+        print(yeardict)'''
     import pandas as pd
     from polyfuzz.models import TFIDF
     from polyfuzz import PolyFuzz
-    from nameparser import HumanName
     import datetime
     mongoclient = MusMongoClient()
     double_check_names = [
@@ -175,16 +181,39 @@ def main():
 
     i = 0
     j = 0
+    orcidsnotfound = []
     for author in pureauthororcidlist:
         j = j+1
         orcid = 'https://orcid.org/'+author[0]
         name = author[1]
         # find document in authors_openalex that matches the orcid
-        openalex = mongoclient.authors_openalex.find_one({'ids':{'orcid': orcid}})
+        openalex = mongoclient.authors_openalex.find_one({'ids.orcid': orcid})
+        if not openalex:
+            orcidsnotfound.append((orcid, name))
         if openalex:
             i = i+1
             mongoclient.authors_pure.update_one({'author_name': name}, {'$set': {'openalex_match': {'name':openalex['display_name'], 'id': openalex['id']}}})
-    print(f'{i} pure authors matched using orcid of {j} total with an orcid in authors_pure' )
+    print(f'orcid matching results: {i} matches / {len(orcidsnotfound)} not found / {j} total')
+    if orcidsnotfound:
+        print('found orcids without openalex author data -- retrieving...')
+        query = OpenAlexQuery(mongoclient, mongoclient.authors_openalex, 'authors')
+        query.add_query_by_orcid([orcid[0] for orcid in orcidsnotfound])
+        query.run()
+        i=0
+        j=0
+        n=0
+        for author in orcidsnotfound:
+            j=j+1
+            openalex = mongoclient.authors_openalex.find_one({'ids.orcid': author[0]})
+            if openalex:
+                i=i+1
+                mongoclient.authors_pure.update_one({'author_name': author[1]}, {'$set': {'openalex_match': {'name':openalex['display_name'], 'id': openalex['id']}}})
+            else:
+                n=n+1
+        print('retrieved authordata for missing orcids and matched to pure authors. result:')
+        print(f'{i} matches / {n} not found / {j} total')
+
+
     from_list = pureauthornamelist
     to_list = [a['display_name'] for a in mongoclient.authors_openalex.find()]
 
@@ -203,10 +232,8 @@ def main():
     for author in mongoclient.authors_pure.find():
         j=j+1
         if author.get('openalex_match'):
-            print(f'{author["author_name"]} matched to {author["openalex_match"]["name"]}')
+            #print(f'{author["author_name"]} matched to {author["openalex_match"]["name"]}')
             i = i+1
-            if i % 10 == 0:
-                input('continue?')
     print(f'{i} of {j} authors have openalex match' )
 
 

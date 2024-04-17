@@ -44,6 +44,7 @@ class CrossrefAPI():
             self.results.append(self.crossref.works(ids=self.dois, cursor = "*", limit = self.pagesize, cursor_max=100000))
             pass
     def run(self):
+        print('getting crossref results')
         self.get_crossref_results_from_dois()
 
 class OpenAIREAPI():

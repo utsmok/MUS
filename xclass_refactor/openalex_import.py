@@ -6,6 +6,7 @@ import pyalex
 from xclass_refactor.mus_mongo_client import MusMongoClient
 from pyalex import Authors, Funders, Institutions, Sources, Works
 from pyalex.api import BaseOpenAlex
+from pymongo.collection import Collection
 
 class OpenAlexAPI():
     '''
@@ -50,21 +51,26 @@ class OpenAlexAPI():
         APIEMAIL = getattr(settings, "APIEMAIL", "no@email.com")
         pyalex.config.email = APIEMAIL
         pyalex.config.max_retries = 5
-        pyalex.config.retry_backoff_factor = 0.4
+        pyalex.config.retry_backoff_factor = 0.2
         pyalex.config.retry_http_codes = [429, 500, 503]
 
     def run(self):
         # make parallel/async/mp?
         for request in self.openalex_requests:
             if request == 'works_openalex':
+                print('running works_openalex')
                 OpenAlexQuery(mongoclient=self.mongoclient, mongocollection=self.mongoclient.works_openalex, pyalextype='works', item_ids=self.requested_works, years=self.years).run()
             if request == 'authors_openalex':
+                print('running authors_openalex')
                 OpenAlexQuery(self.mongoclient, self.mongoclient.authors_openalex, 'authors', self.requested_authors).run()
             if request == 'sources_openalex':
+                print('running sources_openalex')
                 OpenAlexQuery(self.mongoclient, self.mongoclient.sources_openalex, 'sources', self.requested_sources).run()
             if request == 'funders_openalex':
+                print('running funders_openalex')
                 OpenAlexQuery(self.mongoclient, self.mongoclient.funders_openalex, 'funders', self.requested_funders).run()
             if request == 'institutions_openalex':
+                print('running institutions_openalex')
                 OpenAlexQuery(self.mongoclient, self.mongoclient.institutions_openalex, 'institutions', self.requested_institutions).run()
 
 class OpenAlexQuery():
@@ -114,10 +120,10 @@ class OpenAlexQuery():
                 # no item_ids, no query: make default query for itemtype
                 if self.pyalextype == 'works':
                     # works have a single default query
-                    self.querylist.append(Works().filter(
-                        institutions={"ror":"https://ror.org/006hf6230"},
-                        publication_year="|".join([str(x) for x in self.years])
-                    ))
+                    for year in self.years:
+                        self.querylist.append(Works().filter(
+                            institutions={"ror":"https://ror.org/006hf6230"},
+                            publication_year=year))
                 else:
                     # all other types: generate a list of ids extracted from available works
                     # then call add_query_by_ids to construct the batched queries
@@ -184,9 +190,43 @@ class OpenAlexQuery():
         else:
             return False
 
+    def add_query_by_orcid(self, orcids:list[str]) -> None:
+        '''
+        from a list of orcids, create queries for this instance of OpenAlexQuery
+        '''
+        if not self.pyalextype == 'authors':
+            raise Exception('add_query_by_orcid only works for authors')
+        batch = [] 
+        for orcid in orcids:
+            batch.append(orcid)
+            if len(batch) == 50:
+                orcid_batch="|".join(batch)
+                self.querylist.append(self.pyalexmapping[self.pyalextype]().filter(orcid=orcid_batch))
+                batch = []
+        orcid_batch="|".join(batch)
+        self.querylist.append(self.pyalexmapping[self.pyalextype]().filter(orcid=orcid_batch))
+
     def run(self) -> None:
+            print(f'running {self.pyalextype}')
             if not self.querylist:
+                print('adding default queries')
                 self.add_to_querylist()
-            for query in self.querylist:
-                for item in chain(*query.paginate(per_page=100, n_max=None)):
-                    self.collection.find_one_and_update({"id":item['id']}, {'$set':item}, upsert=True)
+            print('running queries')
+            for i, query in enumerate(self.querylist):
+                print(f'running query {i+1} of {len(self.querylist)} of {self.pyalextype}')
+                inserts = []
+                stop = False
+                while not stop:
+                    try:
+                        page = query.paginate(per_page=50, n_max=None)
+                        if not page:
+                            print(f'query done -- added/updated {len(inserts)} items')
+                            stop = True
+                            continue
+                        for items in page:
+                            for item in items:
+                                self.collection.find_one_and_update({"id":item['id']}, {'$set':item}, upsert=True)
+                                inserts.append(item['id'])
+                    except Exception as e:
+                        print(f'error {e} while retrieving {self.pyalextype}')
+                        continue
