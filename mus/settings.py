@@ -91,7 +91,6 @@ MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     "django.middleware.security.SecurityMiddleware",
     #"debug_toolbar.middleware.DebugToolbarMiddleware",
-    'django_sonar.middlewares.requests.RequestsMiddleware',
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -99,6 +98,8 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "allauth.account.middleware.AccountMiddleware",
+    'django_sonar.middlewares.requests.RequestsMiddleware',
+
 ]
 
 CORS_ALLOWED_ORIGINS = [
