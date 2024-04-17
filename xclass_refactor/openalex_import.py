@@ -8,6 +8,8 @@ from pyalex import Authors, Funders, Institutions, Sources, Works
 from pyalex.api import BaseOpenAlex
 from pymongo.collection import Collection
 from rich import print
+import httpx
+from collections import defaultdict
 
 class OpenAlexAPI():
     '''
@@ -59,19 +61,19 @@ class OpenAlexAPI():
         # make parallel/async/mp?
         for request in self.openalex_requests:
             if request == 'works_openalex':
-                print('running works_openalex')
+                print('running OpenAlexQuery for works')
                 OpenAlexQuery(mongoclient=self.mongoclient, mongocollection=self.mongoclient.works_openalex, pyalextype='works', item_ids=self.requested_works, years=self.years).run()
             if request == 'authors_openalex':
-                print('running authors_openalex')
+                print('running OpenAlexQuery for authors')
                 OpenAlexQuery(self.mongoclient, self.mongoclient.authors_openalex, 'authors', self.requested_authors).run()
             if request == 'sources_openalex':
-                print('running sources_openalex')
+                print('running OpenAlexQuery for sources')
                 OpenAlexQuery(self.mongoclient, self.mongoclient.sources_openalex, 'sources', self.requested_sources).run()
             if request == 'funders_openalex':
-                print('running funders_openalex')
+                print('running OpenAlexQuery for funders')
                 OpenAlexQuery(self.mongoclient, self.mongoclient.funders_openalex, 'funders', self.requested_funders).run()
             if request == 'institutions_openalex':
-                print('running institutions_openalex')
+                print('running OpenAlexQuery for institutions')
                 OpenAlexQuery(self.mongoclient, self.mongoclient.institutions_openalex, 'institutions', self.requested_institutions).run()
 
 class OpenAlexQuery():
@@ -216,10 +218,6 @@ class OpenAlexQuery():
             print(f'running {self.pyalextype}')
 
             if self.pyalextype == 'works' and not self.querylist:
-                #temp test manual api calling here
-                import httpx
-                from collections import defaultdict
-                from rich import inspect
                 added = defaultdict(int)
                 for year in self.years:
                     stop = False
@@ -256,14 +254,7 @@ class OpenAlexQuery():
                                     continue
                             else:
                                 print(f'error {e} while getting json')
-                                print('press i to inspect details, other key to continue')
-                                key=input()
-                                if key == 'i':
-                                    inspect(json_r)
-                                    input('....')
-                                    inspect(response)
-                                    input('press key to continue')
-                                continue
+                                break
                         items=[]
                         if json_r.get('results'):
                             for item in json_r['results']:
@@ -273,7 +264,6 @@ class OpenAlexQuery():
                                 self.collection.insert_many(items)
                                 added[year] += len(items)
                     print(added)
-
             else:
                 if not self.querylist:
                     print('adding default queries')
