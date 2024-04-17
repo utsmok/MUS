@@ -44,3 +44,4 @@ django-sql-explorer[xls]
 celery
 django-celery-results
 polyfuzz[all]
+django-sonar
