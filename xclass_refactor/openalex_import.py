@@ -7,6 +7,7 @@ from xclass_refactor.mus_mongo_client import MusMongoClient
 from pyalex import Authors, Funders, Institutions, Sources, Works
 from pyalex.api import BaseOpenAlex
 from pymongo.collection import Collection
+from rich import print
 
 class OpenAlexAPI():
     '''
@@ -130,6 +131,7 @@ class OpenAlexQuery():
                     if self.pyalextype == 'authors':
                         if not self.item_ids:
                             self.item_ids = []
+                        templist = []
                         for work in self.mongoclient.works_openalex.find():
                             if 'authorships' in work:
                                 for authorship in work['authorships']:
@@ -138,8 +140,12 @@ class OpenAlexQuery():
                                             if institution['ror'] == 'https://ror.org/006hf6230' \
                                             or institution['id'] == 'https://openalex.org/I94624287' \
                                             or 'twente' in institution['display_name'].lower():
-                                                self.item_ids.append(authorship['author']['id'])
+                                                templist.append(authorship['author']['id'])
                                                 break
+                        templist=list(set(self.item_ids))
+                        for a in templist:
+                            if not self.mongoclient.authors_openalex.find_one({'id':a}):
+                                self.item_ids.append(a)
                         self.item_ids=list(set(self.item_ids))
                     elif self.pyalextype == 'sources':
                         # note: only retrieves journals, not all sources
@@ -196,7 +202,7 @@ class OpenAlexQuery():
         '''
         if not self.pyalextype == 'authors':
             raise Exception('add_query_by_orcid only works for authors')
-        batch = [] 
+        batch = []
         for orcid in orcids:
             batch.append(orcid)
             if len(batch) == 50:
@@ -208,25 +214,77 @@ class OpenAlexQuery():
 
     def run(self) -> None:
             print(f'running {self.pyalextype}')
-            if not self.querylist:
-                print('adding default queries')
-                self.add_to_querylist()
-            print('running queries')
-            for i, query in enumerate(self.querylist):
-                print(f'running query {i+1} of {len(self.querylist)} of {self.pyalextype}')
-                inserts = []
-                stop = False
-                while not stop:
-                    try:
-                        page = query.paginate(per_page=50, n_max=None)
-                        if not page:
-                            print(f'query done -- added/updated {len(inserts)} items')
+
+            if self.pyalextype == 'works' and not self.querylist:
+                #temp test manual api calling here
+                import httpx
+                from collections import defaultdict
+                from rich import inspect
+                added = defaultdict(int)
+                for year in self.years:
+                    stop = False
+                    cursor = '*'
+                    amountperpage = 25
+                    while not stop:
+                        try:
+                            response = httpx.get(f'https://api.openalex.org/works?filter=publication_year:{year},institutions.ror:https://ror.org/006hf6230&per-page={amountperpage}&cursor={cursor}')
+                        except Exception as e:
+                            print(f'error {e} while getting response, retrying with less papers per page')
+                            amountperpage = amountperpage-5
+                            if amountperpage < 5:
+                                print('too many retries, stopping this iteration')
+                                stop = True
+                                continue
+                            continue
+                        if response.status_code == 403 and 'pagination' in str(response.content).lower():
                             stop = True
                             continue
-                        for items in page:
-                            for item in items:
+                        if response.status_code == 503 or response.status_code == 473:
+                            print('503 or 473 error, retrying with less papers per page')
+                            amountperpage = amountperpage-5
+                            if amountperpage < 1:
+                                amountperpage = 1
+                            continue
+                        amountperpage = 25
+                        try:
+                            json_r = response.json()
+                            cursor = json_r['meta']['next_cursor']
+                        except Exception as e:
+                            if json_r.get('error'):
+                                if json_r['error'] == 'Pagination error.':
+                                    stop = True
+                                    continue
+                            else:
+                                print(f'error {e} while getting json')
+                                print('press i to inspect details, other key to continue')
+                                key=input()
+                                if key == 'i':
+                                    inspect(json_r)
+                                    input('....')
+                                    inspect(response)
+                                    input('press key to continue')
+                                continue
+                        items=[]
+                        if json_r.get('results'):
+                            for item in json_r['results']:
+                                if not self.collection.find_one({"id":item['id']}):
+                                    items.append(item)
+                            if items:
+                                self.collection.insert_many(items)
+                                added[year] += len(items)
+                    print(added)
+
+            else:
+                if not self.querylist:
+                    print('adding default queries')
+                    self.add_to_querylist()
+                print('running queries')
+                for i, query in enumerate(self.querylist):
+                    querynum=i+1
+                    print(f'running query {querynum} of {len(self.querylist)} of {self.pyalextype}')
+                    try:
+                        for item in chain(*query.paginate(per_page=100, n_max=None)):
                                 self.collection.find_one_and_update({"id":item['id']}, {'$set':item}, upsert=True)
-                                inserts.append(item['id'])
                     except Exception as e:
                         print(f'error {e} while retrieving {self.pyalextype}')
                         continue

@@ -96,7 +96,7 @@ class UpdateManager:
             self.queries.append(PeoplePageScraper(self.mongoclient))
 
 def main():
-    mngr = UpdateManager([2021,2020,2019,2018], {'works_openalex': True, 'authors_openalex': True, 'sources_openalex':True})
+    mngr = UpdateManager([2020,2019,2018,2021], {'authors_openalex': True, 'sources_openalex':True})
     mngr.run()
     '''    from collections import defaultdict
         mongoclient = MusMongoClient()

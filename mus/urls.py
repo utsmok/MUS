@@ -28,6 +28,5 @@ urlpatterns = [
    # path("__debug__/", include("debug_toolbar.urls")),
     path("api/", api.urls),
     path('explorer/', include('explorer.urls')),
-
-
+    path('sonar/', include('django_sonar.urls')),
 ]

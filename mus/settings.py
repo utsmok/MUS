@@ -82,6 +82,7 @@ INSTALLED_APPS = [
     'explorer',
     'django_celery_results',
     'xclass_refactor.apps.XClassRefactorConfig',
+    'django_sonar',
     # 'debug_toolbar',
 
 ]
@@ -90,6 +91,7 @@ MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     "django.middleware.security.SecurityMiddleware",
     #"debug_toolbar.middleware.DebugToolbarMiddleware",
+    'django_sonar.middlewares.requests.RequestsMiddleware',
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -175,6 +177,8 @@ CELERY_RESULT_BACKEND = 'django-db'
 # Password validation
 # https://docs.djangoproject.com/en/5.0/ref/settings/#auth-password-validators
 
+
+
 AUTH_PASSWORD_VALIDATORS = [
     {
         "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
@@ -246,3 +250,13 @@ CACHE_TTL = 60 * 5
 
 EXPLORER_CONNECTIONS = { 'Default': 'readonly' }
 EXPLORER_DEFAULT_CONNECTION = 'readonly'
+
+
+DJANGO_SONAR = {
+    'excludes': [
+        STATIC_URL,
+        '/sonar/',
+        '/admin/',
+        '/__reload__/',
+    ],
+}
