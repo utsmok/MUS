@@ -11,6 +11,9 @@ class DataCiteAPI():
         self.results = {}
 
 class CrossrefAPI():
+    '''
+    TODO: import xml data instead of json, see https://www.crossref.org/documentation/retrieve-metadata/xml-api/doi-to-metadata-query/
+    '''
     def __init__(self, years: list = [2023, 2024, 2025], mongoclient: MusMongoClient = None, dois: list[str] = None):
         self.mongoclient = mongoclient
         if not self.mongoclient:

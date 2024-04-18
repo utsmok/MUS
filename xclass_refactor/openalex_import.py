@@ -1,6 +1,6 @@
 
 from itertools import chain
-from typing import Collection, Iterable
+from typing import Iterable
 from django.conf import settings
 import pyalex
 from xclass_refactor.mus_mongo_client import MusMongoClient
