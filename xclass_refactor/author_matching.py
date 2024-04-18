@@ -7,7 +7,7 @@ from xclass_refactor.openalex_import import OpenAlexQuery
 
 class AuthorMatcher():
     def __init__(self, mongoclient: MusMongoClient):
-        self.self.mongoclient = mongoclient
+        self.mongoclient = mongoclient
         self.double_check_names = [
             'yang','yi','zhang','zhao','zhu','zhou','zhuang','zhun','zhuo','zhuy','zhang',
             'chen','cheng','chen','chen','liu','yuan','wang','bu','feng','fu','gu','guo',
@@ -19,7 +19,7 @@ class AuthorMatcher():
     def get_authors(self):
         pureauthornamelist = []
         pureauthororcidlist = []
-        for a in self.self.mongoclient.authors_pure.find():
+        for a in self.mongoclient.authors_pure.find():
             if a.get('affl_periods'):
                 for period in a['affl_periods']:
                     if not period['end_date'] or period['end_date'] > datetime.datetime(2010,1,1):

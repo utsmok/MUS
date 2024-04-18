@@ -4,7 +4,7 @@ from typing import Collection, Iterable
 from django.conf import settings
 import pyalex
 from xclass_refactor.mus_mongo_client import MusMongoClient
-from pyalex import Authors, Funders, Institutions, Sources, Works
+from pyalex import Authors, Funders, Institutions, Sources, Works, Topics
 from pyalex.api import BaseOpenAlex
 from pymongo.collection import Collection
 from rich import print
@@ -75,7 +75,9 @@ class OpenAlexAPI():
             if request == 'institutions_openalex':
                 print('running OpenAlexQuery for institutions')
                 OpenAlexQuery(self.mongoclient, self.mongoclient.institutions_openalex, 'institutions', self.requested_institutions).run()
-
+            if request == 'topics_openalex':
+                print('running OpenAlexQuery for topics')
+                OpenAlexQuery(self.mongoclient, self.mongoclient.topics_openalex, 'topics', self.requested_topics).run()
 class OpenAlexQuery():
     '''
     Generic class to query OpenAlex and store results in MongoDB
@@ -107,7 +109,8 @@ class OpenAlexQuery():
             'authors': Authors,
             'sources': Sources,
             'funders': Funders,
-            'institutions': Institutions
+            'institutions': Institutions,
+            'topics': Topics
         }
         self.pyalextype = pyalextype
 
@@ -118,8 +121,9 @@ class OpenAlexQuery():
         '''
         if not query:
             # first try making query using item_ids if provided
-            by_ids = self.add_query_by_ids()
-            if not by_ids:
+            if self.item_ids:
+                self.add_query_by_ids()
+            else:
                 # no item_ids, no query: make default query for itemtype
                 if self.pyalextype == 'works':
                     # works have a single default query
@@ -128,12 +132,13 @@ class OpenAlexQuery():
                             institutions={"ror":"https://ror.org/006hf6230"},
                             publication_year=year))
                 else:
+                    if not self.item_ids:
+                        self.item_ids = []
+                    templist = []
+
                     # all other types: generate a list of ids extracted from available works
                     # then call add_query_by_ids to construct the batched queries
                     if self.pyalextype == 'authors':
-                        if not self.item_ids:
-                            self.item_ids = []
-                        templist = []
                         for work in self.mongoclient.works_openalex.find():
                             if 'authorships' in work:
                                 for authorship in work['authorships']:
@@ -144,36 +149,47 @@ class OpenAlexQuery():
                                             or 'twente' in institution['display_name'].lower():
                                                 templist.append(authorship['author']['id'])
                                                 break
-                        templist=list(set(self.item_ids))
-                        for a in templist:
-                            if not self.mongoclient.authors_openalex.find_one({'id':a}):
-                                self.item_ids.append(a)
-                        self.item_ids=list(set(self.item_ids))
+
                     elif self.pyalextype == 'sources':
-                        # note: only retrieves journals, not all sources
-                        if not self.item_ids:
-                            self.item_ids = []
-                        elif not isinstance(self.item_ids, list):
-                            self.item_ids = [self.item_ids]
                         for item in self.mongoclient.works_openalex.find():
                             if 'locations' in item:
                                 for location in item['locations']:
                                     try:
                                         if 'source' in location.keys():
-                                            if 'type' in location['source'].keys():
-                                                if location['source']['type']=='journal':
-                                                    self.item_ids.append(location['source']['id'])
+                                            if location['source']:
+                                                templist.append(location['source']['id'])
                                     except AttributeError:
                                         pass
-                        self.item_ids=list(set(self.item_ids))
-                    elif self.pyalextype == 'funders':
-                        self.add_funder_query()
-                    elif self.pyalextype == 'institutions':
-                        self.add_institution_query()
 
-                    self.add_query_by_ids()
+                    elif self.pyalextype == 'funders':
+                        for item in self.mongoclient.works_openalex.find():
+                            if 'grants' in item:
+                                for grant in item['grants']:        
+                                    templist.append(grant['funder'])
+
+                    elif self.pyalextype == 'institutions':
+                        for item in self.mongoclient.works_openalex.find():
+                            for authorship in item['authorships']:
+                                if 'institutions' in authorship:
+                                    for institution in authorship['institutions']:
+                                        templist.append(institution['id'])
+                    elif self.pyalextype == 'topics':
+                        for item in self.mongoclient.works_openalex.find():
+                            if 'topics' in item:
+                                for topic in item['topics']:
+                                    templist.append(topic['id'])
+                    # process the ids in templist: remove dupes and items already in collection, 
+                    # then build the queries
+                    templist=list(set(templist))
+                    print(f'found {len(templist)} {self.pyalextype} ids')
+                    for t in templist:
+                        if not self.collection.find_one({'id':t}):
+                            self.item_ids.append(t)
+                    print(f'{len(self.item_ids)} {self.pyalextype} ids remaining after filtering')
+                    if self.item_ids:
+                        self.add_query_by_ids()
         else:
-            # query is provided: add to list
+            # query is provided: just add to the list
             if not isinstance(query, list):
                 self.querylist.append(query)
             else:
@@ -194,10 +210,8 @@ class OpenAlexQuery():
                     batch = []
             itemids="|".join(batch)
             self.querylist.append(self.pyalexmapping[self.pyalextype]().filter(openalex=itemids))
-            return True
         else:
-            return False
-
+            raise Exception(f'no item_ids present in this instance of OpenAlexQuery for {self.pyalextype}')
     def add_query_by_orcid(self, orcids:list[str]) -> None:
         '''
         from a list of orcids, create queries for this instance of OpenAlexQuery
@@ -216,7 +230,6 @@ class OpenAlexQuery():
 
     def run(self) -> None:
             print(f'running {self.pyalextype}')
-
             if self.pyalextype == 'works' and not self.querylist:
                 added = defaultdict(int)
                 for year in self.years:
@@ -268,6 +281,9 @@ class OpenAlexQuery():
                 if not self.querylist:
                     print('adding default queries')
                     self.add_to_querylist()
+                if not self.querylist:
+                    print(f'no queries to run for {self.pyalextype}.')
+                    return
                 print('running queries')
                 for i, query in enumerate(self.querylist):
                     querynum=i+1
