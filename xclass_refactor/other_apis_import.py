@@ -14,7 +14,6 @@ import aiometer
 import functools
 
 APIEMAIL = getattr(settings, "APIEMAIL", "no@email.com")
-client = httpx.AsyncClient()
 console = Console()
 class DataCiteAPI():
     def __init__(self, mongoclient):
@@ -130,8 +129,11 @@ class OpenAIREAPI():
         self.mongoclient = mongoclient
         self.collection = mongoclient.items_openaire
         self.results = {'ids':[], 'dois':[], 'total':0}
+        self.url = 'https://api.openaire.eu/search/researchProducts'
         self.token = getattr(settings, "OPENAIRETOKEN", "")
         self.refreshurl=f'https://services.openaire.eu/uoa-user-management/api/users/getAccessToken?refreshToken={self.token}'
+        self.refresh_headers()
+        self.client = httpx.AsyncClient()
     def run(self):
         self.get_paperlist()
         if not self.paperlist:
@@ -139,9 +141,13 @@ class OpenAIREAPI():
             return
         else:
             asyncio.get_event_loop().run_until_complete(self.get_results_from_dois())
-    def get_token(self):
+    def refresh_headers(self):
         tokendata = httpx.get(self.refreshurl).json()
-        return tokendata.get("access_token")
+        token = tokendata.get("access_token")
+        self.headers = {
+            'Authorization': f'Bearer {token}'
+        }
+
     def get_paperlist(self):
         ptable = table.Table(title="Retrieved openalex works")
         ptable.add_column("# checked", style="green")
@@ -153,60 +159,65 @@ class OpenAIREAPI():
             task1 = p.add_task("getting dois to query openaire", total=numpapers)
             for paper in self.mongoclient.works_openalex.find(projection={'id':1, 'doi':1}):
                 i+=1
+                p.update(task1, advance=1)
                 if paper.get('doi'):
                     if self.collection.find_one({'id':paper['id']}, projection={'id': 1}):
                         continue
                     j+=1
                     self.paperlist.append({'doi':paper['doi'].replace('https://doi.org/',''), 'id':paper['id']})
-                p.update(task1, advance=1)
-
         ptable.add_row(str(i), str(j))
         console.print(ptable)
         
 
     async def get_results_from_dois(self):
-        time = datetime.now()
-        url = 'https://api.openaire.eu/search/researchProducts'
-        headers = {
-            'Authorization': f'Bearer {self.get_token()}'
-        }
+        self.refresh_headers()
         numpapers = len(self.paperlist)
         with progress.Progress() as p:
             task1 = p.add_task("getting openaire results", total=numpapers)
-            async with aiometer.amap(functools.partial(self.call_api, url, headers), self.paperlist, max_at_once=5, max_per_second=2) as results:
-                if datetime.now()-time > timedelta(minutes=50):
-                    try:
-                        headers = {
-                            'Authorization': f'Bearer {self.get_token()}'
-                        }
-                        time = datetime.now()
-                    except Exception as e:
-                        console.print(f'error {e} while refreshing OpenAire token')
-                        input('...')
+            async with aiometer.amap(functools.partial(self.call_api), self.paperlist, max_at_once=5, max_per_second=2) as results:
                 async for result in results:
                     if result:
                         p.update(task1, advance=1)
         console.print(f'added {self.results["total"]} items to openaire')
 
-    async def call_api(self, url, headers, item):
-        doi = item.get('doi')
-        id = item.get('id')
-        params = {
-            'doi': doi
-        }
-        
-        try:
-            r = await client.get(url, params=params, headers=headers)
-        except Exception as e:
-            console.print(f'error querying openaire for doi {doi}: {e}')
-            return False
-        try:
-            if not r.text:
+    async def call_api(self, item):
+        async def httpget(self, item):
+            doi = item.get('doi')
+            params = {
+                'doi': doi
+            }
+            r = await self.client.get(self.url, params=params, headers=self.headers)
+            try: 
+                parsedxml = xmltodict.parse(r.text, attr_prefix='',dict_constructor=dict,cdata_key='text', process_namespaces=True)
+            except Exception as e:
+                console.print(f'error querying openaire for doi {item.get("doi")}: {e}')
+                if ('token' in str(e)):
+                    return 'token'
+                else:
+                    return 'error'
+            if not parsedxml.get('response').get('results'):
                 return False
-            metadata = xmltodict.parse(r.text, attr_prefix='',dict_constructor=dict,cdata_key='text', process_namespaces=True).get('response').get('results').get('result').get('metadata').get('http://namespace.openaire.eu/oaf:entity').get('http://namespace.openaire.eu/oaf:result')
-        except Exception as e:
-            console.print(f'error parsing openaire result for doi {doi}: {e}')
+            elif isinstance(parsedxml.get('response').get('results').get('result'),list):
+                if len(parsedxml.get('response').get('results').get('result')) > 1:
+                    print('multiple results (?) only returning the first')
+                return parsedxml.get('response').get('results').get('result')[0].get('metadata').get('http://namespace.openaire.eu/oaf:entity').get('http://namespace.openaire.eu/oaf:result')
+            else:
+                return parsedxml.get('response').get('results').get('result').get('metadata').get('http://namespace.openaire.eu/oaf:entity').get('http://namespace.openaire.eu/oaf:result')
+        
+        metadata = await httpget(self, item)
+        if metadata == 'token':
+            console.print('refreshing openaire token...')
+            try:
+                self.refresh_headers()
+                metadata = await httpget(self, item)
+            except Exception as e:
+                console.print(f'error refreshing openaire token: {e}')
+                input('...')
+                return False
+        if not metadata or metadata == 'error':
             return False
+        id = item.get('id')
+        doi = item.get('doi')
         metadata['id']=id
         self.collection.insert_one(metadata)
         self.results['total'] += 1
