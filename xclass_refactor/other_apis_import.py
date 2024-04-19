@@ -176,17 +176,18 @@ class OpenAIREAPI():
             task1 = p.add_task("getting openaire results", total=numpapers)
             async with aiometer.amap(functools.partial(self.call_api), self.paperlist, max_at_once=5, max_per_second=2) as results:
                 async for result in results:
-                    if result:
-                        p.update(task1, advance=1)
+                    p.update(task1, advance=1)
         console.print(f'added {self.results["total"]} items to openaire')
 
     async def call_api(self, item):
-        async def httpget(self, item):
+        async def httpget(client: httpx.AsyncClient, item: dict):
             doi = item.get('doi')
             params = {
                 'doi': doi
             }
-            r = await self.client.get(self.url, params=params, headers=self.headers)
+            print(f'querying openaire with params {params}')
+            r = await client.get(self.url, params=params, headers=self.headers)
+            print(f'got response {r.status_code}')
             try: 
                 parsedxml = xmltodict.parse(r.text, attr_prefix='',dict_constructor=dict,cdata_key='text', process_namespaces=True)
             except Exception as e:
@@ -195,7 +196,9 @@ class OpenAIREAPI():
                     return 'token'
                 else:
                     return 'error'
+            
             if not parsedxml.get('response').get('results'):
+                print(f'no results for {doi}')
                 return False
             elif isinstance(parsedxml.get('response').get('results').get('result'),list):
                 if len(parsedxml.get('response').get('results').get('result')) > 1:
@@ -204,12 +207,12 @@ class OpenAIREAPI():
             else:
                 return parsedxml.get('response').get('results').get('result').get('metadata').get('http://namespace.openaire.eu/oaf:entity').get('http://namespace.openaire.eu/oaf:result')
         
-        metadata = await httpget(self, item)
+        metadata = await httpget(self.client,item)
         if metadata == 'token':
             console.print('refreshing openaire token...')
             try:
                 self.refresh_headers()
-                metadata = await httpget(self, item)
+                metadata = await httpget(self.client, item)
             except Exception as e:
                 console.print(f'error refreshing openaire token: {e}')
                 input('...')
