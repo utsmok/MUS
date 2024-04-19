@@ -222,3 +222,33 @@ class SemanticScholarAPI():
     def __init__(self, mongoclient):
         self.mongoclient = mongoclient
         self.results = {}
+
+class OpenCitationsAPI():
+    def __init__(self, mongoclient):
+        self.mongoclient = mongoclient
+        self.results = {}
+
+class ScopusAPI():
+    def __init__(self, mongoclient):
+        self.mongoclient = mongoclient
+        self.results = {}
+
+class ORCIDAPI():
+    def __init__(self, mongoclient):
+        self.mongoclient = mongoclient
+        self.results = {}
+
+class COREAPI():
+    def __init__(self, mongoclient):
+        self.mongoclient = mongoclient
+        self.results = {}
+
+class BASEAPI():
+    def __init__(self, mongoclient):
+        self.mongoclient = mongoclient
+        self.results = {}
+
+class OCLCAPI():
+    def __init__(self, mongoclient):
+        self.mongoclient = mongoclient
+        self.results = {}
