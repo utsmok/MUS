@@ -217,15 +217,19 @@ class OpenAIREAPI():
                 console.print(f'error refreshing openaire token: {e}')
                 input('...')
                 return False
-        if not metadata or metadata == 'error':
+        if metadata == 'error':
             return False
         id = item.get('id')
         doi = item.get('doi')
-        metadata['id']=id
-        self.collection.insert_one(metadata)
-        self.results['total'] += 1
-        self.results['ids'].append(id)
-        self.results['dois'].append(doi)
+        if not metadata:
+            metadata = {'id':id, 'doi':doi}
+            self.collection.insert_one(metadata)
+        else:
+            metadata['id']=id
+            self.collection.insert_one(metadata)
+            self.results['total'] += 1
+            self.results['ids'].append(id)
+            self.results['dois'].append(doi)
         return True
 class ZenodoAPI():
     def __init__(self, mongoclient):
