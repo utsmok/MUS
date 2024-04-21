@@ -29,7 +29,8 @@ class MusMongoClient:
         self.items_zenodo = self.mongoclient['items_zenodo']
         self.items_semantic_scholar = self.mongoclient['items_semantic_scholar']
         self.items_crossref_xml = self.mongoclient['items_crossref_xml']
-
+        self.items_orcid = self.mongoclient['items_orcid']
+        
         self.deals_journalbrowser = self.mongoclient['deals_journalbrowser']
         self.employees_peoplepage = self.mongoclient['employees_peoplepage']
 

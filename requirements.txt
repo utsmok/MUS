@@ -46,3 +46,4 @@ django-celery-results
 polyfuzz[all]
 django-sonar
 aiometer
+motor
