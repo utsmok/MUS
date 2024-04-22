@@ -18,6 +18,7 @@ ZOTERO_PRIVATE = str(os.getenv('ZOTERO_PRIVATE'))
 SCRAPEOPSKEY = str(os.getenv('SCRAPEOPSKEY'))
 ORCID_CLIENT_ID = str(os.getenv('ORCID_CLIENT_ID'))
 ORCID_CLIENT_SECRET = str(os.getenv('ORCID_CLIENT_SECRET'))
+ORCID_ACCESS_TOKEN = str(os.getenv('ORCID_ACCESS_TOKEN'))
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = str(os.getenv('DJANGOSECRETKEY'))

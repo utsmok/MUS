@@ -1,7 +1,7 @@
 
 from xclass_refactor.mus_mongo_client import MusMongoClient
 from habanero import Crossref
-from django.conf import settings
+from xclass_refactor.constants import APIEMAIL, OPENAIRETOKEN, MONGOURL, ORCID_CLIENT_ID, ORCID_CLIENT_SECRET, ORCID_ACCESS_TOKEN
 import httpx
 import xmltodict
 from rich.console import Console
@@ -12,9 +12,11 @@ import functools
 import motor.motor_asyncio
 import re
 from collections import defaultdict
-APIEMAIL = getattr(settings, "APIEMAIL", "no@email.com")
+from datetime import datetime, timedelta
 console = Console()
-
+'''
+------------- Base class --------------
+'''
 class GenericAPI():
     '''
     Generic API class, with default methods
@@ -28,7 +30,6 @@ class GenericAPI():
     - call_api: method to call the api for a single item and process it (if needed), returns the item
     '''
 
-    MONGOURL : str = getattr(settings, "MONGOURL")
     motorclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unificiation_system
     NAMESPACES : dict = {}
     api_settings : dict = {
@@ -94,22 +95,51 @@ class GenericAPI():
         '''
         calls the api for a single item and processes it (if needed) before returning result
         '''
-        print('call_api is an abstract function -- overload in subclass')
+        print('call_api is an abstract function and it needs to be overloaded in subclass')
         result = {}
         return result
+'''
+---------------- Not implemented yet ----------------
+'''
 
-class DataCiteAPI(GenericAPI):
-    def __init__(self, mongoclient):
-        self.mongoclient = mongoclient
-        self.results = {}
+class SemanticScholarAPI(GenericAPI):
+    def __init__(self):
+        ...
 
+class OCLCAPI(GenericAPI):
+    def __init__(self):
+        ...
+
+class OpenCitationsAPI(GenericAPI):
+    def __init__(self):
+        ...
+
+class ZenodoAPI(GenericAPI):
+    def __init__(self):
+        ...
+
+class ScopusAPI(GenericAPI):
+    def __init__(self):
+        ...
+
+class COREAPI(GenericAPI):
+    def __init__(self):
+        ...
+
+class BASEAPI(GenericAPI):
+    def __init__(self):
+        ...
+
+'''
+---------------------- Needs updates ---------------------------
+'''
 class CrossrefAPI():
     '''
+    TODO: subclass from GenericAPI
     TODO: import xml data instead of json, see https://www.crossref.org/documentation/retrieve-metadata/xml-api/doi-to-metadata-query/
     '''
     def __init__(self, years: list = [2023, 2024, 2025], mongoclient: MusMongoClient = None, dois: list[str] = None):
         self.mongoclient = mongoclient
-
         self.collection = mongoclient.items_crossref_xml
         self.results = []
         self.crossref = Crossref(mailto=APIEMAIL)
@@ -205,14 +235,95 @@ class CrossrefAPI():
     def run(self):
         print('getting crossref results')
         asyncio.get_event_loop().run_until_complete(self.get_xml_crossref_results_from_dois())
+'''
+---------------------------- Done ------------------------------
+'''
+class DataCiteAPI(GenericAPI):
+    def __init__(self):
+        super().__init__('items_datacite', 'doi')
+        self.set_api_settings(headers = {"accept": "application/vnd.api+json"},
+                            max_per_second=5,
+                            max_at_once=5,
+                            )
+        
+    async def get_ut_items(self) -> None:
+        ut_results = []
+        url = "https://api.datacite.org/dois?affiliation=true&query=creators.affiliation.affiliationIdentifier:%22https://ror.org/006hf6230%22&page[size]=1000&affiliation=true&detail=true&publisher=true"
+        try:
+            response = await self.httpxclient.get(url, headers=self.api_settings['headers'])
+            if response.status_code != 200:
+                raise Exception(f"DataCite API response code {response.status_code}")
+            response_json = response.json()
+        except Exception as e:
+            print(f'Error while retrieving all UT datacite items: {e}')
+        for item in response_json["data"]:
+            tmp={}
+            attrs=item['attributes']
+            for key, value in attrs.items():
+                if value is not None:
+                    if isinstance(value, list):
+                        if value!=[]:
+                            tmp[key]=value
+                    elif isinstance(value, dict):
+                        if value!={}:
+                            tmp[key]=value
+                    elif isinstance(value, str):
+                        if value != "":
+                            tmp[key]=value
+            tmp['id']=item['id']
+            tmp['type']=item['type']
+            tmp['relationships']=item['relationships']
+            ut_results.append(tmp)
 
+        return ut_results
+    async def make_itemlist(self) -> None:
+        ptable = table.Table(title=f"{self.item_id_type}s from OpenAlex works")
+        ptable.add_column("# checked", style="green")
+        ptable.add_column("# added",style="magenta")
+        i=0
+        j=0
+        numpapers = await self.motorclient['works_openalex'].count_documents({})
+        with progress.Progress() as p:
+            task1 = p.add_task(f"getting {self.item_id_type}s to query DataCite", total=numpapers)
+            async for paper in self.motorclient['works_openalex'].find(projection={'id':1, 'doi':1}):
+                i+=1
+                p.update(task1, advance=1)
+                if paper.get('doi'):
+                    if await self.collection.find_one({'id':paper['id']}, projection={'id': 1}):
+                        continue
+                    self.itemlist.append({self.item_id_type:paper['doi'].replace('https://doi.org/',''), 'id':paper['id']})
+        ptable.add_row(str(i), str(len(self.itemlist)))
+        console.print(ptable)
+
+    async def call_api(self, item) -> dict:
+        async def httpget(doi: str):
+            try:
+                url = f'https://api.datacite.org/dois?query=relatedIdentifiers.relatedIdentifier:{doi}&affiliation=true&publisher=true&detail=true'
+                r = await self.httpxclient.get(url)
+                return r.json()
+            except Exception as e:
+                print(f'error querying datacite for doi {doi}: {e}')
+                return None
+        doi = item.get('doi')
+        id = item.get('id')
+        result = await httpget(doi)
+        if not result:
+            return {'id': id, 'doi': doi}
+        else:
+            result['id']=id
+            return result
 class OpenAIREAPI(GenericAPI):
     def __init__(self):
+        '''
+        Creates a new OpenAIREAPI instance
+        call OpenAIREAPI().run() to execute standard queries & update mongodb -- no parameters needed.
+        see docs for advanced usage.
+        '''
         super().__init__('items_openaire', 'doi')
         self.set_api_settings(
                             url='https://api.openaire.eu/search/researchProducts',
                             headers={'Authorization': f'Bearer {self.update_access_token()}'},
-                            tokens={'refresh_token': getattr(settings, "OPENAIRETOKEN", ""),
+                            tokens={'refresh_token': OPENAIRETOKEN,
                                     'acces_token':''
                             },
                             max_at_once=5,
@@ -220,8 +331,14 @@ class OpenAIREAPI(GenericAPI):
                         )
 
     def update_access_token(self) -> str:
-        tokendata = httpx.get(f'https://services.openaire.eu/uoa-user-management/api/users/getAccessToken?refreshToken={self.api_settings['tokens']['refresh_token']}').json()
-        self.api_settings['tokens']['access_token'] = tokendata.get("access_token")
+        if not self.refreshtime or datetime.now() - self.refreshtime > timedelta(minutes=55):
+            try:
+                self.refreshtime = datetime.now()
+                tokendata = httpx.get(f'https://services.openaire.eu/uoa-user-management/api/users/getAccessToken?refreshToken={self.api_settings['tokens']['refresh_token']}').json()
+                self.api_settings['tokens']['access_token'] = tokendata.get("access_token")
+            except Exception as e:
+                print(f'error refreshing OpenAIRE access token: {e}')
+                raise LookupError('Cannot refresh OpenAIRE access token')
         return self.api_settings['tokens']['access_token']
 
     async def get_itemlist(self):
@@ -256,9 +373,9 @@ class OpenAIREAPI(GenericAPI):
                 console.print(f'error querying openaire for doi {item.get("doi")}: {e}')
                 if ('token' in str(e)):
                     self.update_access_token()
-                    return httpget(item)
+                    return await httpget(item)
                 else:
-                    return 'error'
+                    return False
             if not parsedxml.get('response').get('results'):
                 print(f'no results for {doi}')
                 return False
@@ -269,40 +386,17 @@ class OpenAIREAPI(GenericAPI):
             else:
                 return parsedxml.get('response').get('results').get('result').get('metadata').get('http://namespace.openaire.eu/oaf:entity').get('http://namespace.openaire.eu/oaf:result')
         self.update_access_token()
-        metadata = {'id':id, 'doi':doi}
-        metadata = await httpget(item)
-        if metadata == 'error':
-            return False
         id = item.get('id')
         doi = item.get('doi')
-        if metadata.get('id'):
-            metadata['id']=id
-
-        self.results['total'] += 1
-        self.results['ids'].append(id)
-        self.results['dois'].append(doi)
-        return metadata
-
-class ZenodoAPI():
-    def __init__(self, mongoclient):
-        self.mongoclient = mongoclient
-        self.results = {}
-
-class SemanticScholarAPI():
-    def __init__(self, mongoclient):
-        self.mongoclient = mongoclient
-        self.results = {}
-
-class OpenCitationsAPI():
-    def __init__(self, mongoclient):
-        self.mongoclient = mongoclient
-        self.results = {}
-
-class ScopusAPI():
-    def __init__(self, mongoclient):
-        self.mongoclient = mongoclient
-        self.results = {}
-
+        result = await httpget(item)
+        if result:
+            result['id']=id
+            self.results['total'] += 1
+            self.results['ids'].append(id)
+            self.results['dois'].append(doi)
+        else:
+            result = {'id':id, 'doi':doi}
+        return result
 class ORCIDAPI(GenericAPI):
     NAMESPACES = {
             'http://www.orcid.org/ns/internal':'internal',
@@ -336,7 +430,7 @@ class ORCIDAPI(GenericAPI):
         }
     def __init__(self) -> None:
         super().__init__('items_orcid', 'orcid')
-        self.api_settings['tokens']['access_token'] = getattr(settings, "ORCID_TOKEN", "")
+        self.api_settings['tokens']['access_token'] = ORCID_ACCESS_TOKEN
         self.refresh_access_token()
         self.set_api_settings(headers={'Accept': 'application/orcid+xml', 'Authorization': f'Bearer {self.api_settings['tokens']['access_token']}'}, max_at_once=10, max_per_second=10)
 
@@ -345,8 +439,8 @@ class ORCIDAPI(GenericAPI):
             url = 'https://orcid.org/oauth/token'
             header = {'Accept': 'application/json'}
             data = {
-                'client_id':getattr(settings, "ORCID_CLIENT_ID", ""),
-                'client_secret':getattr(settings, "ORCID_CLIENT_SECRET", ""),
+                'client_id':ORCID_CLIENT_ID,
+                'client_secret':ORCID_CLIENT_SECRET,
                 'grant_type':'client_credentials',
                 'scope':'/read-public'
             }
@@ -375,7 +469,7 @@ class ORCIDAPI(GenericAPI):
         console.print(ptable)
 
     async def call_api(self, item: dict) -> dict:
-        async def httpget(client: httpx.AsyncClient, item_id: str):
+        async def httpget(item_id: str):
             def remove_colon_from_keys(item):
                 if isinstance(item, dict):
                     newitem = {}
@@ -391,7 +485,7 @@ class ORCIDAPI(GenericAPI):
             try:
                 url = f'https://pub.orcid.org/v3.0/{item_id}/record'
                 r = None
-                r = await client.get(url, headers=self.api_settings['headers'])
+                r = await self.httpxclient.get(url, headers=self.api_settings['headers'])
                 parsedxml = xmltodict.parse(r.text, process_namespaces=True, namespaces=self.NAMESPACES, attr_prefix='')
                 if r.status_code == 301 or parsedxml.get('error:error') or '' in 'error xmlns="http://www.orcid.org/ns/error"' in r.text:
                     if parsedxml.get('error:developer-message'):
@@ -400,20 +494,16 @@ class ORCIDAPI(GenericAPI):
                             foundorcids = re.findall(r'(\w{4}-){3}\w{4}', msg)
                             neworcid = foundorcids[0] # first found orcid should be  the new one
                             console.print(f'[bold red]ORCID {item_id}[/bold red] moved permanently to [bold cyan]{neworcid}[/bold cyan] - retrying')
-                            return await httpget(client, neworcid)
+                            return await httpget(neworcid)
                 record = parsedxml.get('record:record')
                 del record['xmlns']
                 del record['path']
                 return remove_colon_from_keys(record)
             except Exception as e:
                 console.print(f'error querying for {item_id}: {e}')
-                if r:
-                    console.print(f'[magenta]r.text contents: \n {r.text}[/magenta]')
-                else:
-                    console.print('[red] no r.text received [/red]')
                 return None
 
-        result = await httpget(self.httpxclient,item[self.item_id_type])
+        result = await httpget(item[self.item_id_type])
         if not result:
             print(f'no result for {item}.')
             result = {'id':item['id']}
@@ -423,19 +513,3 @@ class ORCIDAPI(GenericAPI):
             self.results['ids'].append(item['id'])
             self.results['orcids'].append(item[self.item_id_type])
         return result
-
-
-class COREAPI():
-    def __init__(self, mongoclient):
-        self.mongoclient = mongoclient
-        self.results = {}
-
-class BASEAPI():
-    def __init__(self, mongoclient):
-        self.mongoclient = mongoclient
-        self.results = {}
-
-class OCLCAPI():
-    def __init__(self, mongoclient):
-        self.mongoclient = mongoclient
-        self.results = {}

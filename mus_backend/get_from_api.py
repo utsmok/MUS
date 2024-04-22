@@ -225,7 +225,7 @@ def getDataCiteItems(years):
     # returns json, with {data:..., meta:..., links:...} as root.
     # data is a list of dicts, one per item.
     #The rest is not important for us; this query returns max 1000 items, and in feb 2024 there were 320 items total for this query.
-    url = "https://api.datacite.org/dois?affiliation=true&query=creators.affiliation.affiliationIdentifier:%22https://ror.org/006hf6230%22&page[size]=1000"
+    url = "https://api.datacite.org/dois?affiliation=true&query=creators.affiliation.affiliationIdentifier:%22https://ror.org/006hf6230%22&page[size]=1000&affiliation=true"
     # retrieve json from url
     try:
         response = requests.get(url)
