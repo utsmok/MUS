@@ -1,16 +1,15 @@
 from django.conf import settings
-from pymongo import MongoClient
-
+import motor.motor_asyncio
 
 class MusMongoClient:
     '''
-    creates connections to mongodb
+    creates connections to mongodb using asyncio motor client
     stores references to the relevant collections as attributes
     wraps search and update functions
     '''
     def __init__(self):
         MONGOURL = getattr(settings, "MONGOURL")
-        self.mongoclient = MongoClient(MONGOURL)['metadata_unificiation_system']
+        self.mongoclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unificiation_system
 
         self.works_openalex = self.mongoclient['works_openalex']
         self.authors_openalex = self.mongoclient['authors_openalex']
@@ -33,4 +32,7 @@ class MusMongoClient:
         
         self.deals_journalbrowser = self.mongoclient['deals_journalbrowser']
         self.employees_peoplepage = self.mongoclient['employees_peoplepage']
+    
+    def call_async(self, function: callable):
+        return self.mongoclient.get_io_loop().run_until_complete(function)
 

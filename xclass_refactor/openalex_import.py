@@ -6,10 +6,10 @@ import pyalex
 from xclass_refactor.mus_mongo_client import MusMongoClient
 from pyalex import Authors, Funders, Institutions, Sources, Works, Topics
 from pyalex.api import BaseOpenAlex
-from pymongo.collection import Collection
 from rich import print
 import httpx
 from collections import defaultdict
+import motor.motor_asyncio
 
 class OpenAlexAPI():
     '''
@@ -95,14 +95,15 @@ class OpenAlexQuery():
     run() - runs the query and updates the database, if no queries are initialized, it calls add_to_querylist() to add default queries based on itemtype
 
     '''
-    def __init__(self, mongoclient:MusMongoClient, mongocollection:Collection, pyalextype:str, item_ids:Iterable[str]=None, years:list[int]=[2023,2024,2025]):
+    def __init__(self, mongoclient:MusMongoClient, mongocollection:motor.motor_asyncio.AsyncIOMotorCollection, pyalextype:str, item_ids:Iterable[str]=None, years:list[int]=[2023,2024,2025]):
         self.mongoclient:MusMongoClient = mongoclient
-        self.collection:Collection = mongocollection
+        self.collection:motor.motor_asyncio.AsyncIOMotorCollection = mongocollection
         self.item_ids:Iterable[str]  = item_ids
         if self.item_ids:
             self.set_query()
         self.querylist:list[BaseOpenAlex] = []
         self.years = years
+        self.httpxclient : httpx.AsyncClient = httpx.AsyncClient()
 
         self.pyalexmapping = {
             'works': Works,
@@ -114,7 +115,7 @@ class OpenAlexQuery():
         }
         self.pyalextype = pyalextype
 
-    def add_to_querylist(self,query: BaseOpenAlex=None) -> None:
+    async def add_to_querylist(self,query: BaseOpenAlex=None) -> None:
         '''
         adds the pyalex query to the list of queries to run for this itemtype
         if no query is provided, it will add a default query for the itemtype
@@ -139,7 +140,7 @@ class OpenAlexQuery():
                     # all other types: generate a list of ids extracted from available works
                     # then call add_query_by_ids to construct the batched queries
                     if self.pyalextype == 'authors':
-                        for work in self.mongoclient.works_openalex.find():
+                        async for work in self.mongoclient.works_openalex.find():
                             if 'authorships' in work:
                                 for authorship in work['authorships']:
                                     if 'institutions' in authorship:
@@ -151,7 +152,7 @@ class OpenAlexQuery():
                                                 break
 
                     elif self.pyalextype == 'sources':
-                        for item in self.mongoclient.works_openalex.find():
+                        async for item in self.mongoclient.works_openalex.find():
                             if 'locations' in item:
                                 for location in item['locations']:
                                     try:
@@ -162,19 +163,19 @@ class OpenAlexQuery():
                                         pass
 
                     elif self.pyalextype == 'funders':
-                        for item in self.mongoclient.works_openalex.find():
+                        async for item in self.mongoclient.works_openalex.find():
                             if 'grants' in item:
                                 for grant in item['grants']:        
                                     templist.append(grant['funder'])
 
                     elif self.pyalextype == 'institutions':
-                        for item in self.mongoclient.works_openalex.find():
+                        async for item in self.mongoclient.works_openalex.find():
                             for authorship in item['authorships']:
                                 if 'institutions' in authorship:
                                     for institution in authorship['institutions']:
                                         templist.append(institution['id'])
                     elif self.pyalextype == 'topics':
-                        for item in self.mongoclient.works_openalex.find():
+                        async for item in self.mongoclient.works_openalex.find():
                             if 'topics' in item:
                                 for topic in item['topics']:
                                     templist.append(topic['id'])
@@ -183,7 +184,7 @@ class OpenAlexQuery():
                     templist=list(set(templist))
                     print(f'found {len(templist)} {self.pyalextype} ids')
                     for t in templist:
-                        if not self.collection.find_one({'id':t}):
+                        if not await self.collection.find_one({'id':t}):
                             self.item_ids.append(t)
                     print(f'{len(self.item_ids)} {self.pyalextype} ids remaining after filtering')
                     if self.item_ids:
@@ -228,17 +229,17 @@ class OpenAlexQuery():
         orcid_batch="|".join(batch)
         self.querylist.append(self.pyalexmapping[self.pyalextype]().filter(orcid=orcid_batch))
 
-    def run(self) -> None:
+    async def run(self) -> None:
             print(f'running {self.pyalextype}')
             if self.pyalextype == 'works' and not self.querylist:
                 added = defaultdict(int)
-                for year in self.years:
+                async for year in self.years:
                     stop = False
                     cursor = '*'
                     amountperpage = 25
                     while not stop:
                         try:
-                            response = httpx.get(f'https://api.openalex.org/works?filter=publication_year:{year},institutions.ror:https://ror.org/006hf6230&per-page={amountperpage}&cursor={cursor}')
+                            response = await self.httpxclient.get(f'https://api.openalex.org/works?filter=publication_year:{year},institutions.ror:https://ror.org/006hf6230&per-page={amountperpage}&cursor={cursor}')
                         except Exception as e:
                             print(f'error {e} while getting response, retrying with less papers per page')
                             amountperpage = amountperpage-5
@@ -270,17 +271,17 @@ class OpenAlexQuery():
                                 break
                         items=[]
                         if json_r.get('results'):
-                            for item in json_r['results']:
-                                if not self.collection.find_one({"id":item['id']}):
+                            async for item in json_r['results']:
+                                if not await self.collection.find_one({"id":item['id']}):
                                     items.append(item)
                             if items:
-                                self.collection.insert_many(items)
+                                await self.collection.insert_many(items)
                                 added[year] += len(items)
                     print(added)
             else:
                 if not self.querylist:
                     print('adding default queries')
-                    self.add_to_querylist()
+                    self.mongoclient.call_async(self.add_to_querylist())
                 if not self.querylist:
                     print(f'no queries to run for {self.pyalextype}.')
                     return
@@ -290,7 +291,7 @@ class OpenAlexQuery():
                     print(f'running query {querynum} of {len(self.querylist)} of {self.pyalextype}')
                     try:
                         for item in chain(*query.paginate(per_page=100, n_max=None)):
-                                self.collection.find_one_and_update({"id":item['id']}, {'$set':item}, upsert=True)
+                                await self.collection.find_one_and_update({"id":item['id']}, {'$set':item}, upsert=True)
                     except Exception as e:
                         print(f'error {e} while retrieving {self.pyalextype}')
                         continue

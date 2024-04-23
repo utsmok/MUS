@@ -26,7 +26,7 @@ from xclass_refactor.mus_mongo_client import MusMongoClient
 from xclass_refactor.journal_browser_scraper import JournalBrowserScraper
 from xclass_refactor.other_apis_import import CrossrefAPI, DataCiteAPI, OpenAIREAPI, SemanticScholarAPI, ZenodoAPI, ORCIDAPI
 from xclass_refactor.people_page_scraper import PeoplePageScraper
-from xclass_refactor.author_matching import AuthorMatcher
+from xclass_refactor.matching import AuthorMatcher
 
 
 class UpdateManager:
@@ -101,9 +101,9 @@ class UpdateManager:
             self.queries.append(PeoplePageScraper(self.mongoclient))
 
 def main():
-    
-    DataCiteAPI().run()
-    #AuthorMatcher(MusMongoClient()).run()
+    PureAPI([2024,2023]).run()
+    #DataCiteAPI().run()
+    #AuthorMatcher().run()
     #mngr = UpdateManager(list(range(2012,2025)), {'works_openalex':True, 'authors_openalex':True, 'sources_openalex':True, 'funders_openalex':True, 'institutions_openalex':True, 'topics_openalex':True})
     #mngr.run()
     ...
