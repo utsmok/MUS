@@ -62,23 +62,23 @@
       @keyframes fade-in {
         from { opacity: 0; }
       }
-   
+
       @keyframes fade-out {
         to { opacity: 0; }
       }
-   
+
       @keyframes slide-from-right {
         from { transform: translateX(90px); }
       }
-   
+
       @keyframes slide-to-left {
         to { transform: translateX(-90px); }
       }
-   
+
       .htmx-slide {
         view-transition-name: htmx-slide;
       }
-   
+
       ::view-transition-old(htmx-slide) {
         animation: 180ms cubic-bezier(0.4, 0, 1, 1) both fade-out,
       }
@@ -87,6 +87,9 @@
       }
 
     </style>
+    <!-- franken-ui / uikit -->
+    <script src="https://cdn.jsdelivr.net/npm/uikit@3.19.2/dist/js/uikit.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/uikit@3.19.2/dist/js/uikit-icons.min.js"></script>
 
     <!-- Font Awesome --> <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet"/>
     <!-- MDB --><link href="https://cdnjs.cloudflare.com/ajax/libs/mdb-ui-kit/7.1.0/mdb.min.css" rel="stylesheet"/>
