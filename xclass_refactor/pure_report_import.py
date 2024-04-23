@@ -124,28 +124,32 @@ class PureReport():
             print(id, count)
             print(self.namemapping[id])
 
+        from rich.terminal_theme import MONOKAI
 
         idlist.sort(key=lambda x: x['count'], reverse=True)
         idtable = table.Table(title='Papers entered by ...', show_lines=True)
-        idtable.add_column('id', justify='right')
-        idtable.add_column('name', justify='left')
-        idtable.add_column('faculty', justify='left')
-        idtable.add_column('group', justify='left')
-        idtable.add_column('role', justify='left')
-        idtable.add_column('# papers added', justify='right')
+        idtable.add_column('id', justify='right', style='dim')
+        idtable.add_column('name', justify='left', style='yellow')
+        idtable.add_column('faculty', justify='left', style='dim')
+        idtable.add_column('group', justify='left', style='dim')
+        idtable.add_column('role', justify='left', style='green')
+        idtable.add_column('# papers added', justify='right', style='cyan')
 
         for item in idlist:
             idtable.add_row(*[str(i) for i in item.values()])
             perrole[item['role']] += 1
             pergroup[item['group']] += 1
-        cons = console.Console()
-        cons.print(idtable)
-        statstable = table.Table(title='Overall stats', show_lines=True)
-        idtable.add_column('stat', justify='left')
-        idtable.add_column('value', justify='right')
-        idtable.add_column('percentage', justify='right')
-        statstable.add_row('total', str(len(ids)), str('-'))
-        statstable.add_row('added by library', str(sum([i['count'] for i in idlist if i['role'] == 'library'])), str(sum([i['count'] for i in idlist if i['role'] == 'library'])/len(ids)))
-        statstable.add_row('added by researchers', str(sum([i['count'] for i in idlist if i['role'] == 'researcher'])), str(sum([i['count'] for i in idlist if i['role'] == 'researcher'])/len(ids)))
-        statstable.add_row('added by secretaries', str(sum([i['count'] for i in idlist if i['role'] == 'secretary'])), str(sum([i['count'] for i in idlist if i['role'] == 'secretary'])/len(ids)))
+        cons = console.Console(record=True)
+        statstable = table.Table(title_justify='center', title='Papers added to Pure for TCS groups between 6 March 2024 and 23 April 2024', show_lines=True)
+        statstable.add_column('grouping', justify='left', style='yellow')
+        statstable.add_column('# of papers added', justify='center', style='green')
+        statstable.add_column('% of total', justify='center', style='cyan')
+        statstable.add_row('total', str(len(ids)), '-')
+        statstable.add_row('added by library', str(sum([i['count'] for i in idlist if i['role'] == 'library'])), str(round(sum([i['count'] for i in idlist if i['role'] == 'library'])*100/len(ids)))+'%')
+        statstable.add_row('added by researchers', str(sum([i['count'] for i in idlist if i['role'] == 'researcher'])), str(round(sum([i['count'] for i in idlist if i['role'] == 'researcher'])*100/len(ids)))+'%')
+        statstable.add_row('added by secretaries', str(sum([i['count'] for i in idlist if i['role'] == 'secretary'])), str(round(sum([i['count'] for i in idlist if i['role'] == 'secretary'])*100/len(ids)))+'%')
+
         cons.print(statstable)
+        cons.print(idtable)
+
+        cons.save_svg("example.svg", theme=MONOKAI)
