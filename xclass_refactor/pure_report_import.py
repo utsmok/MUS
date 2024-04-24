@@ -5,9 +5,12 @@ from collections import defaultdict
 import pandas as pd
 import csv
 import aiometer
-from rich import print, console, table
+from rich import print, console, table, panel, layout, text
 import openpyxl_dictreader
 from zipfile import BadZipFile
+from datetime import datetime, timedelta
+import termcharts
+
 class PureReport():
     def __init__(self, filenames: list[str] = None):
         MONGOURL = getattr(settings, "MONGOURL")
@@ -89,11 +92,17 @@ class PureReport():
         duringpilot = self.mongoclient['eemcs_pure_report_midterm_pilot_23-04-2024.csv']
         oldpapers = []
         newpapers = []
+        monthdatalist = []
         pureids = set()
+        comparisonlist = []
         async for item in beforepilot.find():
             oldpapers.append(item)
             pureids.add(item['pureid'])
         async for item in duringpilot.find():
+            created = datetime.strptime(item['date_created'][0:10], '%Y-%m-%d')
+            if created < datetime(2024, 1, 1) and created > datetime(2022, 12, 31):
+                comparisonlist.append(item)
+            monthdatalist.append(created)
             if item['pureid'] not in pureids:
                 if item['creator'] in self.library_employees:
                     item['pilot_paper'] = True
@@ -101,55 +110,105 @@ class PureReport():
                     item['pilot_paper'] = False
                 newpapers.append(item)
 
-        print('old papers', len(oldpapers))
-        print('new papers', len(newpapers))
-        ids = [x['creator'] for x in newpapers]
-        counts = defaultdict(int)
-        pergroup = defaultdict(int)
-        perrole = defaultdict(int)
-        idlist = []
-        for id in ids:
-            counts[id] += 1
-        try:
-            for id, count in counts.items():
-                idlist.append({'id': id,
-                        'name': self.namemapping[id].split('(')[0] if id in self.namemapping else '-',
-                        'faculty': self.namemapping[id].split('(UT-')[1].split(')')[0] if id in self.namemapping else '-',
-                        'group': self.namemapping[id].split('[')[2].split(']')[0] if id in self.namemapping else '-',
-                        'role': self.namemapping[id].split('[')[1].split(']')[0] if id in self.namemapping else '-',
-                        'count': count
-                    })
-        except Exception as e:
-            print(e)
-            print(id, count)
-            print(self.namemapping[id])
+        monthmapping = {1:'Jan', 2:'Feb', 3:'Mar', 4:'Apr', 5:'May', 6:'Jun', 7:'Jul', 8:'Aug', 9:'Sep', 10:'Oct', 11:'Nov', 12:'Dec'}
+        data_per_month = {2023:{}, 2024:{}}
+        for year in range(2023, 2025):
+            for month in range(1, 13):
+                if year == 2024:
+                    if month > 4:
+                        continue
+                data_per_month[year][monthmapping[month]] = sum([1 for x in monthdatalist if x.month == month and x.year == year])
+        listnum = 0
+        charts = []
+        statstables = []
+        titles = []
+        for paperset in [newpapers, comparisonlist]:
+            listnum += 1
+            ids = [x['creator'] for x in paperset]
 
-        from rich.terminal_theme import MONOKAI
+            counts = defaultdict(int)
+            pergroup = defaultdict(int)
+            perrole = defaultdict(int)
+            idlist = []
+            for id in ids:
+                counts[id] += 1
+            try:
+                for id, count in counts.items():
+                    idlist.append({'id': id,
+                            'name': self.namemapping[id].split('(')[0] if id in self.namemapping else '-',
+                            'faculty': self.namemapping[id].split('(UT-')[1].split(')')[0] if id in self.namemapping else '-',
+                            'group': self.namemapping[id].split('[')[2].split(']')[0] if id in self.namemapping else '-',
+                            'role': self.namemapping[id].split('[')[1].split(']')[0] if id in self.namemapping else '-',
+                            'count': count
+                        })
+            except Exception as e:
+                print(e)
+                print(id, count)
+                print(self.namemapping[id])
 
-        idlist.sort(key=lambda x: x['count'], reverse=True)
-        idtable = table.Table(title='Papers entered by ...', show_lines=True)
-        idtable.add_column('id', justify='right', style='dim')
-        idtable.add_column('name', justify='left', style='yellow')
-        idtable.add_column('faculty', justify='left', style='dim')
-        idtable.add_column('group', justify='left', style='dim')
-        idtable.add_column('role', justify='left', style='green')
-        idtable.add_column('# papers added', justify='right', style='cyan')
 
-        for item in idlist:
-            idtable.add_row(*[str(i) for i in item.values()])
-            perrole[item['role']] += 1
-            pergroup[item['group']] += 1
+            idlist.sort(key=lambda x: x['count'], reverse=True)
+            idtable = table.Table(title='Papers entered by ...', show_lines=True)
+            idtable.add_column('id', justify='right', style='dim')
+            idtable.add_column('name', justify='left', style='yellow', overflow='ellipsis')
+            idtable.add_column('faculty', justify='left', style='dim')
+            idtable.add_column('group', justify='left', style='dim')
+            idtable.add_column('role', justify='left', style='green')
+            idtable.add_column('# papers added', justify='right', style='cyan')
+
+            for item in idlist:
+                idtable.add_row(*[str(i) for i in item.values()])
+                perrole[item['role']] += 1
+                pergroup[item['group']] += 1
+            if listnum == 1:
+                charts.append(termcharts.bar(data_per_month[2024], title=f'peak={max(data_per_month[2024].values())}', rich=True, mode = 'v'))
+                days = datetime(2024, 4, 23) - datetime(2024, 3, 6)
+                numpapers = len(paperset)
+                papers_per_day = round(numpapers/days.days, 1)
+                titles.append(f'TCS items added [cyan]during pilot[/cyan] (~{papers_per_day} per day)')
+            elif listnum == 2:
+                days = datetime(2023, 12, 31) - datetime(2023, 1, 1)
+                numpapers = len(paperset)
+                papers_per_day = round(numpapers/days.days, 1)
+                charts.append(termcharts.bar(data_per_month[2023], title=f'peak={max(data_per_month[2023].values())}', rich=True, mode = 'v'))
+                titles.append(f'TCS items added in [red]all of 2023[/red] (~{papers_per_day} per day)')
+
+            nums = {}
+            for item in [['Article'], ['Preprint'], ['Conference contribution', 'Conference article'], ['Book', 'Chapter']]:
+                nums[item[0]]=sum([1 for i in paperset if i['item_type'] in item])
+            statstable = table.Table(show_lines=True)
+            statstable.add_column('', justify='left', style='yellow')
+            statstable.add_column('#', justify='center', style='green')
+            statstable.add_column('%', justify='center', style='cyan')
+            statstable.add_row('total', str(len(ids)), '-')
+            statstable.add_row('by library backoffice', str(sum([i['count'] for i in idlist if i['role'] == 'library'])), str(round(sum([i['count'] for i in idlist if i['role'] == 'library'])*100/len(ids)))+'%')
+            statstable.add_row('articles', str(nums['Article']), str(round(nums['Article']*100/len(ids)))+'%')
+            statstable.add_row('preprints', str(nums['Preprint']), str(round(nums['Preprint']*100/len(ids)))+'%')
+            statstable.add_row('conference papers', str(nums['Conference contribution']), str(round(nums['Conference contribution']*100/len(ids)))+'%')
+            statstable.add_row('book (/chapters)', str(nums['Book']), str(round(nums['Book']*100/len(ids)))+'%')
+            statstables.append(statstable)
+
+        lay = layout.Layout()
+        lay.split_column(
+            layout.Layout(name='tables'),
+            layout.Layout(name='charts'),
+        )
+        lay['tables'].split_row(
+            layout.Layout(name='table1'),
+            layout.Layout(name='table2'),
+        )
+        lay['charts'].split_row(
+            layout.Layout(name='chart1'),
+            layout.Layout(name='chart2'),
+        )
+
+        lay['chart1'].update(panel.Panel(charts[1], title='papers/month [cyan]2024[/cyan]', expand=False))
+        lay['chart2'].update(panel.Panel(charts[0], title='papers/month [red]2023[/red]', expand=False))
+        lay['table1'].update(panel.Panel(statstables[0], title=titles[0], expand=False))
+        lay['table2'].update(panel.Panel(statstables[1], title=titles[1], expand=False))
         cons = console.Console(record=True)
-        statstable = table.Table(title_justify='center', title='Papers added to Pure for TCS groups between 6 March 2024 and 23 April 2024', show_lines=True)
-        statstable.add_column('grouping', justify='left', style='yellow')
-        statstable.add_column('# of papers added', justify='center', style='green')
-        statstable.add_column('% of total', justify='center', style='cyan')
-        statstable.add_row('total', str(len(ids)), '-')
-        statstable.add_row('added by library', str(sum([i['count'] for i in idlist if i['role'] == 'library'])), str(round(sum([i['count'] for i in idlist if i['role'] == 'library'])*100/len(ids)))+'%')
-        statstable.add_row('added by researchers', str(sum([i['count'] for i in idlist if i['role'] == 'researcher'])), str(round(sum([i['count'] for i in idlist if i['role'] == 'researcher'])*100/len(ids)))+'%')
-        statstable.add_row('added by secretaries', str(sum([i['count'] for i in idlist if i['role'] == 'secretary'])), str(round(sum([i['count'] for i in idlist if i['role'] == 'secretary'])*100/len(ids)))+'%')
 
-        cons.print(statstable)
-        cons.print(idtable)
+        cons.print(lay)
+        from rich.terminal_theme import MONOKAI
 
         cons.save_svg("example.svg", theme=MONOKAI)
