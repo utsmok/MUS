@@ -20,7 +20,8 @@ from concurrent.futures import ProcessPoolExecutor
 '''
 
 from loguru import logger
-from xclass_refactor.pure_import import PureAPI, PureReports, PureAuthorCSV
+from xclass_refactor.pure_report_import import PureReport
+from xclass_refactor.pure_import import PureAPI,PureAuthorCSV
 from xclass_refactor.openalex_import import OpenAlexAPI, OpenAlexQuery
 from xclass_refactor.mus_mongo_client import MusMongoClient
 from xclass_refactor.journal_browser_scraper import JournalBrowserScraper
@@ -83,7 +84,7 @@ class UpdateManager:
         if self.include.get('items_pure_oaipmh'):
             self.queries.append(PureAPI(self.years, self.mongoclient))
         if self.include.get('items_pure_reports'):
-            self.queries.append(PureReports(self.mongoclient))
+            self.queries.append(PureReport(self.mongoclient))
         if self.include.get('items_datacite'):
             self.queries.append(DataCiteAPI(self.mongoclient))
         if self.include.get('items_crossref'):
@@ -101,7 +102,12 @@ class UpdateManager:
             self.queries.append(PeoplePageScraper(self.mongoclient))
 
 def main():
+<<<<<<< HEAD
     PureAPI(list(range(2012,2025))).run()
+=======
+    PureReport().run()
+    #PureAPI([2024,2023]).run()
+>>>>>>> 72aff20f2815cb5954699ddde4434cb2572ddd75
     #DataCiteAPI().run()
     #AuthorMatcher().run()
     #mngr = UpdateManager(list(range(2012,2025)), {'works_openalex':True, 'authors_openalex':True, 'sources_openalex':True, 'funders_openalex':True, 'institutions_openalex':True, 'topics_openalex':True})

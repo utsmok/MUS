@@ -25,10 +25,10 @@ class PureAPI(GenericAPI):
         self.years.sort(reverse=True)
         self.set_api_settings(max_at_once=5,
                             max_per_second=5,)
-    
+
     def run(self):
         self.motorclient.get_io_loop().run_until_complete(self.get_item_results())
-    
+
     async def get_item_results(self) -> None:
         '''
         uses call_api() to get the result for each item in itemlist and puts them in the mongodb collection
@@ -75,10 +75,7 @@ class PureAPI(GenericAPI):
             else:
                 return True
 
-class PureReports():
-    def __init__(self, mongoclient):
-        self.mongoclient = mongoclient
-        self.results = {}
+
 
 class PureAuthorCSV():
     '''
