@@ -116,7 +116,7 @@ class PureReport():
             for month in range(1, 13):
                 if year == 2024:
                     if month > 4:
-                        continue
+                        data_per_month[year][monthmapping[month]] = 0
                 data_per_month[year][monthmapping[month]] = sum([1 for x in monthdatalist if x.month == month and x.year == year])
         listnum = 0
         charts = []
@@ -161,7 +161,7 @@ class PureReport():
                 perrole[item['role']] += 1
                 pergroup[item['group']] += 1
             if listnum == 1:
-                charts.append(termcharts.bar(data_per_month[2024], title=f'peak={max(data_per_month[2024].values())}', rich=True, mode = 'v'))
+                charts.append(termcharts.bar(data_per_month[2024], rich=True, mode = 'v'))
                 days = datetime(2024, 4, 23) - datetime(2024, 3, 6)
                 numpapers = len(paperset)
                 papers_per_day = round(numpapers/days.days, 1)
@@ -170,18 +170,19 @@ class PureReport():
                 days = datetime(2023, 12, 31) - datetime(2023, 1, 1)
                 numpapers = len(paperset)
                 papers_per_day = round(numpapers/days.days, 1)
-                charts.append(termcharts.bar(data_per_month[2023], title=f'peak={max(data_per_month[2023].values())}', rich=True, mode = 'v'))
+                charts.append(termcharts.bar(data_per_month[2023], rich=True, mode = 'v'))
                 titles.append(f'TCS items added in [red]all of 2023[/red] (~{papers_per_day} per day)')
 
             nums = {}
             for item in [['Article'], ['Preprint'], ['Conference contribution', 'Conference article'], ['Book', 'Chapter']]:
                 nums[item[0]]=sum([1 for i in paperset if i['item_type'] in item])
             statstable = table.Table(show_lines=True)
-            statstable.add_column('', justify='left', style='yellow')
+            statstable.add_column('Added', justify='left', style='yellow')
             statstable.add_column('#', justify='center', style='green')
             statstable.add_column('%', justify='center', style='cyan')
             statstable.add_row('total', str(len(ids)), '-')
             statstable.add_row('by library backoffice', str(sum([i['count'] for i in idlist if i['role'] == 'library'])), str(round(sum([i['count'] for i in idlist if i['role'] == 'library'])*100/len(ids)))+'%')
+            statstable.add_row('Item types', '#', '%', style='white')
             statstable.add_row('articles', str(nums['Article']), str(round(nums['Article']*100/len(ids)))+'%')
             statstable.add_row('preprints', str(nums['Preprint']), str(round(nums['Preprint']*100/len(ids)))+'%')
             statstable.add_row('conference papers', str(nums['Conference contribution']), str(round(nums['Conference contribution']*100/len(ids)))+'%')
@@ -202,13 +203,13 @@ class PureReport():
             layout.Layout(name='chart2'),
         )
 
-        lay['chart1'].update(panel.Panel(charts[1], title='papers/month [cyan]2024[/cyan]', expand=False))
-        lay['chart2'].update(panel.Panel(charts[0], title='papers/month [red]2023[/red]', expand=False))
-        lay['table1'].update(panel.Panel(statstables[0], title=titles[0], expand=False))
-        lay['table2'].update(panel.Panel(statstables[1], title=titles[1], expand=False))
+        lay['chart1'].update(panel.Panel(charts[0], title='papers/month [cyan]2024[/cyan]'))
+        lay['chart2'].update(panel.Panel(charts[1], title='papers/month [red]2023[/red]', style='on grey27'))
+        lay['table1'].update(panel.Panel(statstables[0], title=titles[0]))
+        lay['table2'].update(panel.Panel(statstables[1], title=titles[1], style='on grey27'))
         cons = console.Console(record=True)
 
         cons.print(lay)
-        from rich.terminal_theme import MONOKAI
+        from rich.terminal_theme import SVG_EXPORT_THEME
 
-        cons.save_svg("example.svg", theme=MONOKAI)
+        cons.save_svg("example.svg", title="Pure pilot update", theme=SVG_EXPORT_THEME)

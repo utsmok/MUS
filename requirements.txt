@@ -48,3 +48,4 @@ django-sonar
 aiometer
 motor
 openpyxl-dictreader
+termcharts
