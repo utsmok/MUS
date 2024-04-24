@@ -101,7 +101,7 @@ class UpdateManager:
             self.queries.append(PeoplePageScraper(self.mongoclient))
 
 def main():
-    PureAPI([2024,2023]).run()
+    PureAPI(list(range(2012,2025))).run()
     #DataCiteAPI().run()
     #AuthorMatcher().run()
     #mngr = UpdateManager(list(range(2012,2025)), {'works_openalex':True, 'authors_openalex':True, 'sources_openalex':True, 'funders_openalex':True, 'institutions_openalex':True, 'topics_openalex':True})
