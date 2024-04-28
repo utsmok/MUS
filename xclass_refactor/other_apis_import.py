@@ -7,7 +7,7 @@ import xmltodict
 from rich.console import Console
 from rich import table, print, progress
 import asyncio
-from xclass_refactor.generic_api import GenericAPI
+from xclass_refactor.generics import GenericAPI
 import re
 from datetime import datetime, timedelta
 
