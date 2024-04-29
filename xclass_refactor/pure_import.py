@@ -9,6 +9,7 @@ import aiometer
 import xmltodict
 import rich
 import time
+import asyncio
 
 class PureAPI(GenericAPI):
     NAMESPACES = {
@@ -26,15 +27,18 @@ class PureAPI(GenericAPI):
     }
 
     
-    def __init__(self, years: list[int]):
+    def __init__(self, years: list[int] = None):
         super().__init__('items_pure_oaipmh', 'doi')
-        self.years : list[int] = years
+        if years:
+            self.years : list[int] = years
+        else:
+            self.years : list[int] = [2020, 2021, 2022, 2023, 2024]
         self.years.sort(reverse=True)
         self.set_api_settings(max_at_once=5,
                             max_per_second=5,)
 
     def run(self):
-        self.motorclient.get_io_loop().run_until_complete(self.get_item_results())
+        asyncio.run(self.get_item_results())
 
     async def get_item_results(self) -> None:
         '''
@@ -66,6 +70,9 @@ class PureAPI(GenericAPI):
                 return parsed['OAI-PMH']['ListRecords']
             except Exception as e:
                 print(f'error fetching {url}: {e}')
+                print(r.text)
+                print(parsed)
+                raise Exception(f'error fetching {url}: {e}')
                 return None
         base_url = "https://ris.utwente.nl/ws/oai"
         metadata_prefix = "oai_dc"

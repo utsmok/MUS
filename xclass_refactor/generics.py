@@ -5,7 +5,7 @@ import httpx
 from rich import print, progress, console
 import aiometer
 import functools
-
+import asyncio
 class GenericScraper():
     '''
     Generic Scraper class, with default methods
@@ -86,7 +86,6 @@ class GenericAPI():
     - call_api: method to call the api for a single item and process it (if needed), returns the item
     '''
 
-    motorclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unificiation_system
     NAMESPACES : dict = {}
     api_settings : dict = {
         'url':'',
@@ -101,6 +100,7 @@ class GenericAPI():
         collection: the name of the mongodb collection to store results in
         item_id_type: the type of unique id this item uses (e.g. 'orcid' 'doi' 'pmid')
         '''
+        self.motorclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unificiation_system
         self.itemlist : list = []
         self.collection : motor.motor_asyncio.AsyncIOMotorCollection = self.motorclient[collection] # the collection to store results in
         self.results : dict = {'ids':[], item_id_type+'s':[], 'total':0}
@@ -143,8 +143,9 @@ class GenericAPI():
                     if i >= 500 or len(apiresponses) == len(self.itemlist):
                         newlist = [x for x in apiresponses if x not in insertlist]
                         insertlist.extend(newlist)
-                        await self.collection.insert_many(newlist)
-                        console.print(f'[bold green]{len(insertlist)}[/bold green] {self.item_id_type}s added to mongodb ([bold cyan]+{len(newlist)}[/bold cyan])')
+                        for item in newlist:
+                            await self.collection.find_one_and_update({"id":item['id']}, {'$set':item}, upsert=True)
+                        print(f'[bold green]{len(insertlist)}[/bold green] {self.item_id_type}s added to mongodb ([bold cyan]+{len(newlist)}[/bold cyan])')
                         i=0
 
     async def call_api(self, item) -> dict:

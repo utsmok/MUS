@@ -597,8 +597,6 @@ def process_pure_uuids_authors():
         else:
             pure_org_mapping.insert_one(org)
 
-
-
 def get_cerif_ut_authors():
     def get_ut_groups():
         result = {}

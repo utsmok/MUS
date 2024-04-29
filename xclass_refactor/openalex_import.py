@@ -10,7 +10,7 @@ from rich import print
 import httpx
 from collections import defaultdict
 import motor.motor_asyncio
-
+import asyncio
 class OpenAlexAPI():
     '''
     class to get data from the OpenAlex API and store it in MongoDB
@@ -27,7 +27,7 @@ class OpenAlexAPI():
     mongoclient: MusMongoClientq
 
     '''
-    def __init__(self, openalex_requests:dict, years:list[int], mongoclient: MusMongoClient):
+    def __init__(self,years:list[int]=None, openalex_requests:dict = None, ):
         if openalex_requests:
             self.openalex_requests = openalex_requests
         else:
@@ -45,8 +45,11 @@ class OpenAlexAPI():
         self.requested_funders = self.openalex_requests.get('funders_openalex')
         self.requested_institutions = self.openalex_requests.get('institutions_openalex')
         self.requested_topics = self.openalex_requests.get('topics_openalex')
-        self.years = years
-        self.mongoclient = mongoclient
+        if not years:
+            self.years = [2020,2021,2022,2023,2024,2025]
+        else:
+            self.years = years
+        self.mongoclient = MusMongoClient()
         self.results = {}
         self.init_pyalex()
 
@@ -58,26 +61,26 @@ class OpenAlexAPI():
         pyalex.config.retry_http_codes = [429, 500, 503]
 
     def run(self):
-        # make parallel/async/mp?
+        # make parallel/async/mp? -> No, api limit!
         for request in self.openalex_requests:
             if request == 'works_openalex':
-                print('running OpenAlexQuery for works')
-                OpenAlexQuery(mongoclient=self.mongoclient, mongocollection=self.mongoclient.works_openalex, pyalextype='works', item_ids=self.requested_works, years=self.years).run()
+                print('skipping OpenAlexQuery for works')
+                #asyncio.run(OpenAlexQuery(mongoclient=self.mongoclient, mongocollection=self.mongoclient.works_openalex, pyalextype='works', item_ids=self.requested_works, years=self.years).run())
             if request == 'authors_openalex':
                 print('running OpenAlexQuery for authors')
-                OpenAlexQuery(self.mongoclient, self.mongoclient.authors_openalex, 'authors', self.requested_authors).run()
+                asyncio.run(OpenAlexQuery(self.mongoclient, self.mongoclient.authors_openalex, 'authors', self.requested_authors).run())
             if request == 'sources_openalex':
                 print('running OpenAlexQuery for sources')
-                OpenAlexQuery(self.mongoclient, self.mongoclient.sources_openalex, 'sources', self.requested_sources).run()
+                asyncio.run(OpenAlexQuery(self.mongoclient, self.mongoclient.sources_openalex, 'sources', self.requested_sources).run())
             if request == 'funders_openalex':
                 print('running OpenAlexQuery for funders')
-                OpenAlexQuery(self.mongoclient, self.mongoclient.funders_openalex, 'funders', self.requested_funders).run()
+                asyncio.run(OpenAlexQuery(self.mongoclient, self.mongoclient.funders_openalex, 'funders', self.requested_funders).run())
             if request == 'institutions_openalex':
                 print('running OpenAlexQuery for institutions')
-                OpenAlexQuery(self.mongoclient, self.mongoclient.institutions_openalex, 'institutions', self.requested_institutions).run()
+                asyncio.run(OpenAlexQuery(self.mongoclient, self.mongoclient.institutions_openalex, 'institutions', self.requested_institutions).run())
             if request == 'topics_openalex':
                 print('running OpenAlexQuery for topics')
-                OpenAlexQuery(self.mongoclient, self.mongoclient.topics_openalex, 'topics', self.requested_topics).run()
+                asyncio.run(OpenAlexQuery(self.mongoclient, self.mongoclient.topics_openalex, 'topics', self.requested_topics).run())
 class OpenAlexQuery():
     '''
     Generic class to query OpenAlex and store results in MongoDB
@@ -232,8 +235,7 @@ class OpenAlexQuery():
     async def run(self) -> None:
             print(f'running {self.pyalextype}')
             if self.pyalextype == 'works' and not self.querylist:
-                added = defaultdict(int)
-                async for year in self.years:
+                for year in self.years:
                     stop = False
                     cursor = '*'
                     amountperpage = 25
@@ -269,19 +271,13 @@ class OpenAlexQuery():
                             else:
                                 print(f'error {e} while getting json')
                                 break
-                        items=[]
                         if json_r.get('results'):
-                            async for item in json_r['results']:
-                                if not await self.collection.find_one({"id":item['id']}):
-                                    items.append(item)
-                            if items:
-                                await self.collection.insert_many(items)
-                                added[year] += len(items)
-                    print(added)
+                            for item in json_r['results']:
+                                await self.collection.find_one_and_update({"id":item['id']}, {'$set':item}, upsert=True)
             else:
                 if not self.querylist:
                     print('adding default queries')
-                    self.mongoclient.call_async(self.add_to_querylist())
+                    await asyncio.gather(self.add_to_querylist())
                 if not self.querylist:
                     print(f'no queries to run for {self.pyalextype}.')
                     return

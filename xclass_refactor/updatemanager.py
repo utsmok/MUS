@@ -22,87 +22,47 @@ from concurrent.futures import ProcessPoolExecutor
 from loguru import logger
 from xclass_refactor.pure_report_import import PureReport
 from xclass_refactor.pure_import import PureAPI,PureAuthorCSV
-from xclass_refactor.openalex_import import OpenAlexAPI, OpenAlexQuery
+from xclass_refactor.openalex_import import OpenAlexAPI
 from xclass_refactor.mus_mongo_client import MusMongoClient
 from xclass_refactor.journal_browser_scraper import JournalBrowserScraper
-from xclass_refactor.other_apis_import import CrossrefAPI, DataCiteAPI, OpenAIREAPI, SemanticScholarAPI, ZenodoAPI, ORCIDAPI
+from xclass_refactor.other_apis_import import CrossrefAPI, DataCiteAPI, OpenAIREAPI, ORCIDAPI
 from xclass_refactor.people_page_scraper import PeoplePageScraper
 from xclass_refactor.matching import AuthorMatcher
+import multiprocessing 
 
 
 class UpdateManager:
-    def __init__(self, years: list[int], include: dict):
+    def __init__(self, years: list[int] = None):
         '''
-        years: the publication years of the items to retrieve
-        include: a dict detailing which apis/scrapes to run.
-            default:
-            {
-                'works_openalex': True,
-                'items_pure_oaipmh': True,
-            }
-            instead of True, you can also pass a list of ids to retrieve from that api as a value instead.
-            e.g. {'works_openalex': ['https://openalex.org/W2105846236', 'https://openalex.org/W2105846237'], 'items_pure_oaipmh': True}
-            '''
+        years: get items published in these years -- used for retrieving works from pure OAI-PMH & openalex for instance
 
-        if not include:
-            include = {
-                'works_openalex': True,
-                'authors_openalex': True,
-                'items_pure_oaipmh': True,
-            }
-
-        self.years = years
-        self.include = include
-        self.mongoclient = MusMongoClient()
-        self.results = {}
-        self.queries = []
+        '''
+        if years:
+            self.years = years
+        else:
+            self.years = None
 
     def run(self):
         '''
         runs the queries based on the include dict
         note: add some sort of multiprocessing/threading/asyncio/scheduling here
         '''
-        print(self.include)
-        print(self.years)
-        openalex_results = ['works_openalex', 'authors_openalex', 'sources_openalex', 'funders_openalex', 'institutions_openalex', 'topics_openalex']
-        if not self.include.keys():
-            raise KeyError('dict UpdateManager.include is empty or invalid -- no updates to run.')
-        openalex_requests = {}
-        for key,item in self.include.items():
-            if key in openalex_results:
-                if not isinstance(item, list):
-                    openalex_requests[key]=None
-                else:
-                    openalex_requests[key]=item
+        #OpenAlexAPI(openalex_requests={'sources_openalex':None}).run()
+        #OpenAlexAPI(openalex_requests={'funders_openalex': None}).run()
+        #OpenAlexAPI(openalex_requests={'institutions_openalex': None}).run()
+        #OpenAlexAPI(openalex_requests={'topics_openalex': None}).run()
+        #PureAPI().run()
+        #kDataCiteAPI().run()
+        OpenAIREAPI().run()
+        ORCIDAPI().run()
+        AuthorMatcher().run()
+        JournalBrowserScraper().run()
+        PeoplePageScraper().run()
 
-        if openalex_requests:
-            print('running OpenAlexAPI')
-            OpenAlexAPI(openalex_requests, self.years, self.mongoclient).run()
-            if 'authors_openalex' in openalex_requests:
-                print('running AuthorMatcher')
-                AuthorMatcher(self.mongoclient).run()
-        if self.include.get('items_pure_oaipmh'):
-            self.queries.append(PureAPI(self.years, self.mongoclient))
-        if self.include.get('items_pure_reports'):
-            self.queries.append(PureReport(self.mongoclient))
-        if self.include.get('items_datacite'):
-            self.queries.append(DataCiteAPI(self.mongoclient))
-        if self.include.get('items_crossref'):
-            print('running CrossrefAPI')
-            CrossrefAPI(self.years, self.mongoclient).run()
-        if self.include.get('items_openaire'):
-            self.queries.append(OpenAIREAPI(self.mongoclient))
-        if self.include.get('items_zenodo'):
-            self.queries.append(ZenodoAPI(self.mongoclient))
-        if self.include.get('items_semantic_scholar'):
-            self.queries.append(SemanticScholarAPI(self.mongoclient))
-        if self.include.get('deals_journalbrowser'):
-            self.queries.append(JournalBrowserScraper(self.mongoclient))
-        if self.include.get('employees_peoplepage'):
-            self.queries.append(PeoplePageScraper(self.mongoclient))
+
+
 
 def main():
-    JournalBrowserScraper().run()
-    #mngr = UpdateManager(list(range(2012,2025)), {'works_openalex':True, 'authors_openalex':True, 'sources_openalex':True, 'funders_openalex':True, 'institutions_openalex':True, 'topics_openalex':True})
-    #mngr.run()
+    mngr = UpdateManager()
+    mngr.run()
     ...

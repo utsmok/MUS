@@ -72,5 +72,5 @@ class AuthorMatcher():
 
     def run(self):
         self.motorclient.get_io_loop().run_until_complete(self.get_authors())
-        #self.motorclient.get_io_loop().run_until_complete(self.match_orcids())
-        #self.motorclient.get_io_loop().run_until_complete(self.match_names())
+        self.motorclient.get_io_loop().run_until_complete(self.match_orcids())
+        self.motorclient.get_io_loop().run_until_complete(self.match_names())
