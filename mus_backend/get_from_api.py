@@ -217,7 +217,6 @@ def getPureItems(years):
         result['ris_pages'].extend(t['ris_pages'])
         result['total']+=t['total']
     return result if result['total']>0 else None
-
 def getDataCiteItems(years):
     api_responses_datacite = db["api_responses_datacite"]
     result = {'dois':[], 'total':0}

@@ -2,13 +2,14 @@
 import csv
 from datetime import datetime
 from xclass_refactor.mus_mongo_client import MusMongoClient
-from xclass_refactor.generic_api import GenericAPI
+from xclass_refactor.generics import GenericAPI
 from rich import progress, console, print
 import functools
 import aiometer
 import xmltodict
 import rich
 import time
+import asyncio
 
 class PureAPI(GenericAPI):
     NAMESPACES = {
@@ -19,15 +20,25 @@ class PureAPI(GenericAPI):
         'http://www.w3.org/XML/1998/namespace':None,
         'http://purl.org/dc/terms/':None,
     }
-    def __init__(self, years: list[int]):
+    KEYS_TO_FIX = {
+        'title':'value',
+        'subject': ['value'],
+        'description': 'value',
+    }
+
+    
+    def __init__(self, years: list[int] = None):
         super().__init__('items_pure_oaipmh', 'doi')
-        self.years : list[int] = years
+        if years:
+            self.years : list[int] = years
+        else:
+            self.years : list[int] = [2020, 2021, 2022, 2023, 2024]
         self.years.sort(reverse=True)
         self.set_api_settings(max_at_once=5,
                             max_per_second=5,)
 
-    def run(self):
-        self.motorclient.get_io_loop().run_until_complete(self.get_item_results())
+    async def run(self):
+        await self.get_item_results()
 
     async def get_item_results(self) -> None:
         '''
@@ -35,13 +46,27 @@ class PureAPI(GenericAPI):
         '''
         print(f"calling api to get data for {self.item_id_type}s")
         async with aiometer.amap(functools.partial(self.call_api), self.years, max_at_once=self.api_settings['max_at_once'], max_per_second=self.api_settings['max_per_second']) as responses:
+                # do something with the returned items?
                 ...
 
     async def call_api(self, year) -> list[dict]:
         async def fetch_response(url):
+            async def remove_lang_fields(json):
+                for key, value in json.items():
+                    if key in self.KEYS_TO_FIX:
+                        mapping = self.KEYS_TO_FIX[key]
+                        if isinstance(mapping, str):
+                            tmp = value['value']
+                        elif isinstance(mapping, list):
+                            tmp = []
+                            for i in value:
+                                tmp.append(i['value'])
+                        json[key] = tmp
+                return json
             try:
                 r = await self.httpxclient.get(url)
                 parsed = xmltodict.parse(r.text, process_namespaces=True, namespaces=self.NAMESPACES, attr_prefix="", cdata_key='value')
+                parsed = await remove_lang_fields(parsed)
                 return parsed['OAI-PMH']['ListRecords']
             except Exception as e:
                 print(f'error fetching {url}: {e}')

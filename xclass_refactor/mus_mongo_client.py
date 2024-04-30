@@ -33,6 +33,5 @@ class MusMongoClient:
         self.deals_journalbrowser = self.mongoclient['deals_journalbrowser']
         self.employees_peoplepage = self.mongoclient['employees_peoplepage']
     
-    def call_async(self, function: callable):
-        return self.mongoclient.get_io_loop().run_until_complete(function)
+
 

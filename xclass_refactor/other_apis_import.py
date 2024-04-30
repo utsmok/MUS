@@ -1,16 +1,16 @@
 
 from xclass_refactor.mus_mongo_client import MusMongoClient
 from habanero import Crossref
-from xclass_refactor.constants import APIEMAIL, OPENAIRETOKEN, ORCID_CLIENT_ID, ORCID_CLIENT_SECRET, ORCID_ACCESS_TOKEN
+from xclass_refactor.constants import MONGOURL, APIEMAIL, OPENAIRETOKEN, ORCID_CLIENT_ID, ORCID_CLIENT_SECRET, ORCID_ACCESS_TOKEN
 import httpx
 import xmltodict
 from rich.console import Console
 from rich import table, print, progress
 import asyncio
-from xclass_refactor.generic_api import GenericAPI
+from xclass_refactor.generics import GenericAPI
 import re
 from datetime import datetime, timedelta
-
+import motor.motor_asyncio
 console = Console()
 
 '''
@@ -235,11 +235,15 @@ class OpenAIREAPI(GenericAPI):
         see docs for advanced usage.
         '''
         super().__init__('items_openaire', 'doi')
+        self.motorclient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unificiation_system
+        self.collection = self.motorclient['items_openaire']
+        self.refreshtime = datetime.now() - timedelta(hours=3)
+        self.api_settings['tokens'] = {'refresh_token':OPENAIRETOKEN}
         self.set_api_settings(
                             url='https://api.openaire.eu/search/researchProducts',
                             headers={'Authorization': f'Bearer {self.update_access_token()}'},
                             tokens={'refresh_token': OPENAIRETOKEN,
-                                    'acces_token':''
+                                    'access_token':''
                             },
                             max_at_once=5,
                             max_per_second=2
@@ -256,7 +260,7 @@ class OpenAIREAPI(GenericAPI):
                 raise LookupError('Cannot refresh OpenAIRE access token')
         return self.api_settings['tokens']['access_token']
 
-    async def get_itemlist(self):
+    async def make_itemlist(self):
         ptable = table.Table(title=f"{self.item_id_type}s from OpenAlex works")
         ptable.add_column("# checked", style="green")
         ptable.add_column("# added",style="magenta")
