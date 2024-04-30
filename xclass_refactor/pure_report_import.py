@@ -122,9 +122,14 @@ class PureReport():
         charts = []
         statstables = []
         titles = []
+        idtables = []
+        publishertables = []
         for paperset in [newpapers, comparisonlist]:
             listnum += 1
             ids = [x['creator'] for x in paperset]
+            publishers = defaultdict(int)
+            for paper in paperset:
+                publishers[paper['publisher_journal']] += 1
 
             counts = defaultdict(int)
             pergroup = defaultdict(int)
@@ -148,6 +153,7 @@ class PureReport():
 
 
             idlist.sort(key=lambda x: x['count'], reverse=True)
+
             idtable = table.Table(title='Papers entered by ...', show_lines=True)
             idtable.add_column('id', justify='right', style='dim')
             idtable.add_column('name', justify='left', style='yellow', overflow='ellipsis')
@@ -156,10 +162,17 @@ class PureReport():
             idtable.add_column('role', justify='left', style='green')
             idtable.add_column('# papers added', justify='right', style='cyan')
 
+            publishertable = table.Table(title='Publishers', show_lines=True)
+            publishertable.add_column('publisher', justify='left', style='yellow', overflow='ellipsis')
+            publishertable.add_column('# papers', justify='right', style='cyan')
+            for item in publishers.items():
+                publishertable.add_row(*[str(i) for i in item])
+            publishertables.append(publishertable)
             for item in idlist:
                 idtable.add_row(*[str(i) for i in item.values()])
                 perrole[item['role']] += 1
                 pergroup[item['group']] += 1
+            idtables.append(idtable)
             if listnum == 1:
                 charts.append(termcharts.bar(data_per_month[2024], rich=True, mode = 'v'))
                 days = datetime(2024, 4, 23) - datetime(2024, 3, 6)
@@ -213,3 +226,10 @@ class PureReport():
         from rich.terminal_theme import SVG_EXPORT_THEME
 
         cons.save_svg("example.svg", title="Pure pilot update", theme=SVG_EXPORT_THEME)
+        '''
+        cons.print(idtables[0])
+        cons.print(idtables[1])
+
+        cons.print(publishertables[0])
+        cons.print(publishertables[1])
+        '''
