@@ -44,9 +44,9 @@ class GenericScraper():
         '''
         for key, value in kwargs.items():
             self.scraper_settings[key] = value
-    def run(self) -> dict:
-        self.motorclient.get_io_loop().run_until_complete(self.make_itemlist())
-        self.motorclient.get_io_loop().run_until_complete(self.get_item_results())
+    async def run(self) -> dict:
+        await self.make_itemlist()
+        await self.get_item_results()
         return self.results
 
     async def make_itemlist(self) -> None:
@@ -113,13 +113,13 @@ class GenericAPI():
         self.api_settings['max_at_once'] = max_at_once
         self.api_settings['max_per_second'] = max_per_second
 
-    def run(self) -> dict:
+    async def run(self) -> dict:
         '''
         convience method that runs the standard query and puts the results in the mongodb collection
         returns the 'self.results' dict
         '''
-        self.motorclient.get_io_loop().run_until_complete(self.make_itemlist())
-        self.motorclient.get_io_loop().run_until_complete(self.get_item_results())
+        await self.make_itemlist()
+        await self.get_item_results()
         return self.results
     async def make_itemlist(self) -> None:
         print('make_itemlist is an abstract function -- overload in subclass')

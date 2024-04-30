@@ -70,7 +70,7 @@ class AuthorMatcher():
             openalexid = openalexid['id']
             await self.motorclient.authors_pure.update_one({'author_name': from_name}, {'$set': {'openalex_match': {'name':to_name, 'id': openalexid}, 'id': openalexid}})
 
-    def run(self):
-        self.motorclient.get_io_loop().run_until_complete(self.get_authors())
-        self.motorclient.get_io_loop().run_until_complete(self.match_orcids())
-        self.motorclient.get_io_loop().run_until_complete(self.match_names())
+    async def run(self):
+        await self.get_authors()
+        await self.match_orcids()
+        await self.match_names()

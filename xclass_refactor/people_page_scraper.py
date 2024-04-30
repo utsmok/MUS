@@ -19,8 +19,8 @@ class PeoplePageScraper(GenericScraper):
                                     "Accept": "*/*",
                                     "Accept-Encoding": "gzip, deflate, br",
                                 },
-                                max_at_once=5,
-                                max_per_second=1
+                                max_at_once=30,
+                                max_per_second=5
                                 )
     async def make_itemlist(self) -> None:
         async for author in self.motorclient['authors_openalex'].find():

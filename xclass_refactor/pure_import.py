@@ -37,8 +37,8 @@ class PureAPI(GenericAPI):
         self.set_api_settings(max_at_once=5,
                             max_per_second=5,)
 
-    def run(self):
-        asyncio.run(self.get_item_results())
+    async def run(self):
+        await self.get_item_results()
 
     async def get_item_results(self) -> None:
         '''
@@ -70,9 +70,6 @@ class PureAPI(GenericAPI):
                 return parsed['OAI-PMH']['ListRecords']
             except Exception as e:
                 print(f'error fetching {url}: {e}')
-                print(r.text)
-                print(parsed)
-                raise Exception(f'error fetching {url}: {e}')
                 return None
         base_url = "https://ris.utwente.nl/ws/oai"
         metadata_prefix = "oai_dc"
