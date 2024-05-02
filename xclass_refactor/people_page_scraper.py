@@ -75,7 +75,7 @@ class PeoplePageScraper(GenericScraper):
                 return output
             else:
                 return None
-        
+
         names = []
         result_list = []
         return_value = {
@@ -98,7 +98,7 @@ class PeoplePageScraper(GenericScraper):
                         elif len(r)>1:
                             for rr in r:
                                 result_list.append(rr)
-        
+
         #now find the best namematch in list of results
         if not result_list:
             return None
@@ -123,5 +123,5 @@ class PeoplePageScraper(GenericScraper):
                     if k not in return_value:
                         return_value[k] = v
         self.collection.update_one({'id':item.get('id')}, {'$set':return_value}, upsert=True)
-        
+
 

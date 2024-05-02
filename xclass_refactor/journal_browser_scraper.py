@@ -4,11 +4,11 @@ from bs4 import BeautifulSoup as bs
 from rich import print, progress, console
 import aiometer
 import functools
-
+from xclass_refactor.constants import JOURNAL_BROWSER_URL
 class JournalBrowserScraper(GenericScraper):
     def __init__(self):
         super().__init__('deals_journalbrowser')
-        self.set_scraper_settings(url='https://library.wur.nl/WebQuery/utbrowser?q="',
+        self.set_scraper_settings(url=JOURNAL_BROWSER_URL,
                                 max_at_once=40,
                                 max_per_second=10
                                 )
@@ -25,7 +25,7 @@ class JournalBrowserScraper(GenericScraper):
                     tmp['issn']=journal['issn']
             self.itemlist.append(tmp)
         print(f'number of journals added: {len(self.itemlist)}')
-    
+
     async def get_item_results(self) -> None:
         with progress.Progress() as p:
             task1 = p.add_task(f"calling api to get data from {self.scraper_settings['url']}", total=len(self.itemlist))
@@ -37,6 +37,7 @@ class JournalBrowserScraper(GenericScraper):
     async def call_api(self, journal) -> dict:
         soup = {}
         query = (self.scraper_settings['url']
+            + '?q="'
             + urllib.parse.quote(f"""{journal['name']}""")
             + f'"&wq_srt_desc=refs-and-pubs/referenties/aantal&wq_ofs={0}&wq_max=200'
         )

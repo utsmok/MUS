@@ -2,10 +2,9 @@ import motor.motor_asyncio
 from collections import defaultdict
 from xclass_refactor.constants import MONGOURL
 import httpx
-from rich import print, progress, console
+from rich import print, progress
 import aiometer
 import functools
-import asyncio
 class GenericScraper():
     '''
     Generic Scraper class, with default methods
@@ -64,7 +63,7 @@ class GenericScraper():
             async with aiometer.amap(functools.partial(self.call_api), self.itemlist, max_at_once=self.scraper_settings['max_at_once'], max_per_second=self.scraper_settings['max_per_second']) as responses:
                 async for response in responses:
                     p.update(task1, advance=1)
-                    
+
 
     async def call_api(self, item) -> dict:
         '''

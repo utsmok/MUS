@@ -1,7 +1,7 @@
 
 from xclass_refactor.mus_mongo_client import MusMongoClient
 from habanero import Crossref
-from xclass_refactor.constants import MONGOURL, APIEMAIL, OPENAIRETOKEN, ORCID_CLIENT_ID, ORCID_CLIENT_SECRET, ORCID_ACCESS_TOKEN
+from xclass_refactor.constants import ROR, MONGOURL, APIEMAIL, OPENAIRETOKEN, ORCID_CLIENT_ID, ORCID_CLIENT_SECRET, ORCID_ACCESS_TOKEN
 import httpx
 import xmltodict
 from rich.console import Console
@@ -160,10 +160,10 @@ class DataCiteAPI(GenericAPI):
                             max_per_second=5,
                             max_at_once=5,
                             )
-        
+
     async def get_ut_items(self) -> None:
         ut_results = []
-        url = "https://api.datacite.org/dois?affiliation=true&query=creators.affiliation.affiliationIdentifier:%22https://ror.org/006hf6230%22&page[size]=1000&affiliation=true&detail=true&publisher=true"
+        url = f"https://api.datacite.org/dois?affiliation=true&query=creators.affiliation.affiliationIdentifier:%22{ROR}%22&page[size]=1000&affiliation=true&detail=true&publisher=true"
         try:
             response = await self.httpxclient.get(url, headers=self.api_settings['headers'])
             if response.status_code != 200:

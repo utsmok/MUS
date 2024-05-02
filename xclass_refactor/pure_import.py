@@ -3,6 +3,7 @@ import csv
 from datetime import datetime
 from xclass_refactor.mus_mongo_client import MusMongoClient
 from xclass_refactor.generics import GenericAPI
+from xclass_refactor.constants import OAI_PMH_URL
 from rich import progress, console, print
 import functools
 import aiometer
@@ -26,13 +27,13 @@ class PureAPI(GenericAPI):
         'description': 'value',
     }
 
-    
+
     def __init__(self, years: list[int] = None):
         super().__init__('items_pure_oaipmh', 'doi')
         if years:
             self.years : list[int] = years
         else:
-            self.years : list[int] = [2020, 2021, 2022, 2023, 2024]
+            self.years : list[int] = [2022, 2023, 2024]
         self.years.sort(reverse=True)
         self.set_api_settings(max_at_once=5,
                             max_per_second=5,)
@@ -71,7 +72,7 @@ class PureAPI(GenericAPI):
             except Exception as e:
                 print(f'error fetching {url}: {e}')
                 return None
-        base_url = "https://ris.utwente.nl/ws/oai"
+        base_url = OAI_PMH_URL
         metadata_prefix = "oai_dc"
         set_name = f"publications:year{year}"
         url = (

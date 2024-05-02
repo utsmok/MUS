@@ -10,7 +10,8 @@ from rich import print
 import httpx
 from collections import defaultdict
 import motor.motor_asyncio
-import asyncio
+from xclass_refactor.constants import ROR, INSTITUTE_ALT_NAME, INSTITUTE_NAME, OPENALEX_INSTITUTE_ID
+
 class OpenAlexAPI():
     '''
     class to get data from the OpenAlex API and store it in MongoDB
@@ -46,7 +47,7 @@ class OpenAlexAPI():
         self.requested_institutions = self.openalex_requests.get('institutions_openalex')
         self.requested_topics = self.openalex_requests.get('topics_openalex')
         if not years:
-            self.years = [2020,2021,2022,2023,2024,2025]
+            self.years = [2022,2023,2024,2025]
         else:
             self.years = years
         self.mongoclient = MusMongoClient()
@@ -62,25 +63,39 @@ class OpenAlexAPI():
 
     async def run(self):
         # make parallel/async/mp? -> No, api limit!
+        from datetime import datetime
         for request in self.openalex_requests:
             if request == 'works_openalex':
-                print('skipping OpenAlexQuery for works')
-                #await OpenAlexQuery(mongoclient=self.mongoclient, mongocollection=self.mongoclient.works_openalex, pyalextype='works', item_ids=self.requested_works, years=self.years).run()
+                start = datetime.now()
+                print('running OpenAlexQuery for works')
+                await OpenAlexQuery(mongoclient=self.mongoclient, mongocollection=self.mongoclient.works_openalex, pyalextype='works', item_ids=self.requested_works, years=self.years).run()
+                print(f'took {datetime.now()-start}')
+            break
             if request == 'authors_openalex':
+                start = datetime.now()
                 print('running OpenAlexQuery for authors')
                 await OpenAlexQuery(self.mongoclient, self.mongoclient.authors_openalex, 'authors', self.requested_authors).run()
+                print(f'took {datetime.now()-start}')
             if request == 'sources_openalex':
+                start = datetime.now()
                 print('running OpenAlexQuery for sources')
                 await OpenAlexQuery(self.mongoclient, self.mongoclient.sources_openalex, 'sources', self.requested_sources).run()
+                print(f'took {datetime.now()-start}')
             if request == 'funders_openalex':
+                start = datetime.now()
                 print('running OpenAlexQuery for funders')
                 await OpenAlexQuery(self.mongoclient, self.mongoclient.funders_openalex, 'funders', self.requested_funders).run()
+                print(f'took {datetime.now()-start}')
             if request == 'institutions_openalex':
+                start = datetime.now()
                 print('running OpenAlexQuery for institutions')
                 await OpenAlexQuery(self.mongoclient, self.mongoclient.institutions_openalex, 'institutions', self.requested_institutions).run()
+                print(f'took {datetime.now()-start}')
             if request == 'topics_openalex':
+                start = datetime.now()
                 print('running OpenAlexQuery for topics')
                 await OpenAlexQuery(self.mongoclient, self.mongoclient.topics_openalex, 'topics', self.requested_topics).run()
+                print(f'took {datetime.now()-start}')
 class OpenAlexQuery():
     '''
     Generic class to query OpenAlex and store results in MongoDB
@@ -133,7 +148,7 @@ class OpenAlexQuery():
                     # works have a single default query
                     for year in self.years:
                         self.querylist.append(Works().filter(
-                            institutions={"ror":"https://ror.org/006hf6230"},
+                            institutions={"ror":ROR},
                             publication_year=year))
                 else:
                     if not self.item_ids:
@@ -152,9 +167,10 @@ class OpenAlexQuery():
                                 for authorship in work['authorships']:
                                     if 'institutions' in authorship:
                                         for institution in authorship['institutions']:
-                                            if institution['ror'] == 'https://ror.org/006hf6230' \
-                                            or institution['id'] == 'https://openalex.org/I94624287' \
-                                            or 'twente' in institution['display_name'].lower():
+                                            if any(institution['ror'] == ROR,
+                                            institution['id'] == OPENALEX_INSTITUTE_ID,
+                                            INSTITUTE_NAME.lower() in institution['display_name'].lower(),
+                                            INSTITUTE_ALT_NAME.lower() in institution['display_name'].lower()):
                                                 authorlist.add(authorship['author']['id'])
                                                 break
                         if self.pyalextype == 'sources':
@@ -168,7 +184,7 @@ class OpenAlexQuery():
                                         pass
                         if self.pyalextype == 'funders':
                             if 'grants' in work:
-                                for grant in work['grants']:        
+                                for grant in work['grants']:
                                     funderlist.add(grant['funder'])
                         if self.pyalextype == 'institutions':
                             for authorship in work['authorships']:
@@ -179,8 +195,7 @@ class OpenAlexQuery():
                             if 'topics' in work:
                                 for topic in work['topics']:
                                     topiclist.add(topic['id'])
-                    # process the ids in templist: remove dupes and items already in collection, 
-                    # then build the queries
+
                     for l in [authorlist, sourcelist, funderlist, institutionlist, topiclist]:
                         l=list(l)
                         if l:
@@ -240,7 +255,7 @@ class OpenAlexQuery():
                     amountperpage = 25
                     while not stop:
                         try:
-                            response = await self.httpxclient.get(f'https://api.openalex.org/works?filter=publication_year:{year},institutions.ror:https://ror.org/006hf6230&per-page={amountperpage}&cursor={cursor}')
+                            response = await self.httpxclient.get(f'https://api.openalex.org/works?filter=publication_year:{year},institutions.ror:{ROR}&per-page={amountperpage}&cursor={cursor}')
                         except Exception as e:
                             print(f'error {e} while getting response, retrying with less papers per page')
                             amountperpage = amountperpage-5
