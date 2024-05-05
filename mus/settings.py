@@ -24,7 +24,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = str(os.getenv('DJANGOSECRETKEY'))
 ACCOUNT_ADAPTER = "accounts.adapter.NoNewUsersAccountAdapter"
 
-DEBUG = True
+DEBUG = False
 LOGLEVEL = "DEBUG"
 LOGFMT = "{time:[%m %d] %H:%M:%S} | {name}>{function}() [{level}] |> {message}"
 logger.remove()

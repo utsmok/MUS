@@ -248,8 +248,11 @@ def getris(request):
     filters = None
     if request.POST.items():
         for key, value in request.POST.items():
-            if 'filters' in key:
-                filters = ast.literal_eval(value)
+            try:
+                if 'filters' in key:
+                    filters = ast.literal_eval(value)
+            except Exception:
+                pass
     if filters:
         articles = Paper.objects.filter_by(filters)
     else:
@@ -278,8 +281,11 @@ def getcsv(request):
     filters = None
     if request.POST.items():
         for key, value in request.POST.items():
-            if 'filters' in key:
-                filters = ast.literal_eval(value)
+            try:
+                if 'filters' in key:
+                    filters = ast.literal_eval(value)
+            except Exception:
+                pass
     if filters:
         articles = Paper.objects.filter_by(filters)
     else:

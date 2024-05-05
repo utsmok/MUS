@@ -235,7 +235,7 @@ class OpenAIREAPI(GenericAPI):
         see docs for advanced usage.
         '''
         super().__init__('items_openaire', 'doi')
-        self.motorclient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unification_system
+        self.motorclient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unificiation_system
         self.collection = self.motorclient['items_openaire']
         self.refreshtime = datetime.now() - timedelta(hours=3)
         self.api_settings['tokens'] = {'refresh_token':OPENAIRETOKEN}

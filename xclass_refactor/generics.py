@@ -18,7 +18,7 @@ class GenericScraper():
     - scrape_items: this is the method that actually scrapes the url for each item in the itemlist
     '''
 
-    motorclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unification_system
+    motorclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unificiation_system
     scraperclient : httpx.AsyncClient = httpx.AsyncClient(timeout=30)
     scraper_settings : dict = {
         'url':'',
@@ -100,7 +100,7 @@ class GenericAPI():
         collection: the name of the mongodb collection to store results in
         item_id_type: the type of unique id this item uses (e.g. 'orcid' 'doi' 'pmid')
         '''
-        self.motorclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unification_system
+        self.motorclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unificiation_system
         self.itemlist : list = []
         self.collection : motor.motor_asyncio.AsyncIOMotorCollection = self.motorclient[collection] # the collection to store results in
         self.results : dict = {'ids':[], item_id_type+'s':[], 'total':0}

@@ -9,7 +9,7 @@ class MusMongoClient:
     '''
     def __init__(self):
         MONGOURL = getattr(settings, "MONGOURL")
-        self.mongoclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unification_system
+        self.mongoclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unificiation_system
 
         self.works_openalex = self.mongoclient['works_openalex']
         self.authors_openalex = self.mongoclient['authors_openalex']

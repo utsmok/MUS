@@ -8,7 +8,7 @@ import motor.motor_asyncio
 from xclass_refactor.constants import APIEMAIL, OPENAIRETOKEN, MONGOURL, ORCID_CLIENT_ID, ORCID_CLIENT_SECRET, ORCID_ACCESS_TOKEN
 
 class AuthorMatcher():
-    motorclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unification_system
+    motorclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unificiation_system
 
     def __init__(self):
         self.double_check_names = [
