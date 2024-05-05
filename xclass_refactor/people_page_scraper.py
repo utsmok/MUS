@@ -19,11 +19,11 @@ class PeoplePageScraper(GenericScraper):
                                     "Accept": "*/*",
                                     "Accept-Encoding": "gzip, deflate, br",
                                 },
-                                max_at_once=30,
-                                max_per_second=5
+                                max_at_once=100,
+                                max_per_second=20
                                 )
     async def make_itemlist(self) -> None:
-        async for author in self.motorclient['authors_openalex'].find():
+        async for author in self.motorclient['authors_openalex'].find({}, projection={'id':1, 'display_name':1, 'display_name_alternatives':1, 'ids':1, 'affiliations':1}, sort=[('id', 1)]):
             if author.get('affiliations'):
                 for affl in author['affiliations']:
                     inst = affl.get('institution')
@@ -123,5 +123,6 @@ class PeoplePageScraper(GenericScraper):
                     if k not in return_value:
                         return_value[k] = v
         self.collection.update_one({'id':item.get('id')}, {'$set':return_value}, upsert=True)
-
+        self.results['total'] = self.results['total'] + 1
+        self.results['items_added'].append(return_value['id'])
 

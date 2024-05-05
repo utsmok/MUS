@@ -33,13 +33,14 @@ class PureAPI(GenericAPI):
         if years:
             self.years : list[int] = years
         else:
-            self.years : list[int] = [2022, 2023, 2024]
+            self.years : list[int] = [2020, 2021, 2022, 2023, 2024]
         self.years.sort(reverse=True)
         self.set_api_settings(max_at_once=5,
                             max_per_second=5,)
 
     async def run(self):
         await self.get_item_results()
+        return self.results
 
     async def get_item_results(self) -> None:
         '''
@@ -84,16 +85,22 @@ class PureAPI(GenericAPI):
                 time.sleep(5)
                 continue
             results = []
-
-            for result in response.get('record'):
+            items = response.get('record')
+            if not isinstance(items, list):
+                items = [items]
+            for result in items:
                 del result['metadata']['dc']['xmlns']
                 del result['metadata']['dc']['schemaLocation']
                 temp = result['metadata']['dc']
                 temp['pure_identifier'] = result['header']['identifier']
                 temp['pure_datestamp'] = result['header']['datestamp']
                 results.append(temp)
+            
             if results:
-                await self.collection.insert_many(results)
+                for result in results:
+                    await self.collection.find_one_and_update({"pure_identifier":result['pure_identifier']}, {'$set':result}, upsert=True)
+                    self.results['ids'].append(result['pure_identifier'])
+                    self.results['total'] += 1 
             if response.get('resumptionToken'):
                 resumetoken = response.get('resumptionToken').get('value')
                 url = f"{base_url}?verb=ListRecords&resumptionToken={resumetoken}"

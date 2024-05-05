@@ -47,7 +47,7 @@ class OpenAlexAPI():
         self.requested_institutions = self.openalex_requests.get('institutions_openalex')
         self.requested_topics = self.openalex_requests.get('topics_openalex')
         if not years:
-            self.years = [2022,2023,2024,2025]
+            self.years = [2020, 2021, 2022, 2023, 2024 , 2025]
         else:
             self.years = years
         self.mongoclient = MusMongoClient()
@@ -64,38 +64,50 @@ class OpenAlexAPI():
     async def run(self):
         # make parallel/async/mp? -> No, api limit!
         from datetime import datetime
+        results = []
         for request in self.openalex_requests:
             if request == 'works_openalex':
                 start = datetime.now()
                 print('running OpenAlexQuery for works')
-                await OpenAlexQuery(mongoclient=self.mongoclient, mongocollection=self.mongoclient.works_openalex, pyalextype='works', item_ids=self.requested_works, years=self.years).run()
+                res = await OpenAlexQuery(mongoclient=self.mongoclient, mongocollection=self.mongoclient.works_openalex, pyalextype='works', item_ids=self.requested_works, years=self.years).run()
                 print(f'took {datetime.now()-start}')
-            break
+                results.append({'results':res,'type':'works'})
             if request == 'authors_openalex':
                 start = datetime.now()
                 print('running OpenAlexQuery for authors')
-                await OpenAlexQuery(self.mongoclient, self.mongoclient.authors_openalex, 'authors', self.requested_authors).run()
+                res = await OpenAlexQuery(self.mongoclient, self.mongoclient.authors_openalex, 'authors', self.requested_authors).run()
                 print(f'took {datetime.now()-start}')
+                results.append({'results':res,'type':'authors'})
+
             if request == 'sources_openalex':
                 start = datetime.now()
                 print('running OpenAlexQuery for sources')
-                await OpenAlexQuery(self.mongoclient, self.mongoclient.sources_openalex, 'sources', self.requested_sources).run()
+                res = await OpenAlexQuery(self.mongoclient, self.mongoclient.sources_openalex, 'sources', self.requested_sources).run()
                 print(f'took {datetime.now()-start}')
+                results.append({'results':res,'type':'sources'})
+
             if request == 'funders_openalex':
                 start = datetime.now()
                 print('running OpenAlexQuery for funders')
-                await OpenAlexQuery(self.mongoclient, self.mongoclient.funders_openalex, 'funders', self.requested_funders).run()
+                res = await OpenAlexQuery(self.mongoclient, self.mongoclient.funders_openalex, 'funders', self.requested_funders).run()
                 print(f'took {datetime.now()-start}')
+                results.append({'results':res,'type':'funders'})
+
             if request == 'institutions_openalex':
                 start = datetime.now()
                 print('running OpenAlexQuery for institutions')
-                await OpenAlexQuery(self.mongoclient, self.mongoclient.institutions_openalex, 'institutions', self.requested_institutions).run()
+                res = await OpenAlexQuery(self.mongoclient, self.mongoclient.institutions_openalex, 'institutions', self.requested_institutions).run()
                 print(f'took {datetime.now()-start}')
+                results.append({'results':res,'type':'institutions'})
+
             if request == 'topics_openalex':
                 start = datetime.now()
                 print('running OpenAlexQuery for topics')
-                await OpenAlexQuery(self.mongoclient, self.mongoclient.topics_openalex, 'topics', self.requested_topics).run()
+                res = await OpenAlexQuery(self.mongoclient, self.mongoclient.topics_openalex, 'topics', self.requested_topics).run()
                 print(f'took {datetime.now()-start}')
+                results.append({'results':res,'type':'topics'})
+
+        return results
 class OpenAlexQuery():
     '''
     Generic class to query OpenAlex and store results in MongoDB
@@ -132,7 +144,7 @@ class OpenAlexQuery():
             'topics': Topics
         }
         self.pyalextype = pyalextype
-
+        self.results = []
     async def add_to_querylist(self,query: BaseOpenAlex=None) -> None:
         '''
         adds the pyalex query to the list of queries to run for this itemtype
@@ -161,19 +173,20 @@ class OpenAlexQuery():
 
                     # all other types: generate a list of ids extracted from available works
                     # then call add_query_by_ids to construct the batched queries
-                    async for work in self.mongoclient.works_openalex.find():
-                        if self.pyalextype == 'authors':
+                    if self.pyalextype == 'authors':
+                        async for work in self.mongoclient.works_openalex.find({}, projection={'authorships':1}, sort=[('authorships.0.author.id', 1)]):
                             if 'authorships' in work:
                                 for authorship in work['authorships']:
                                     if 'institutions' in authorship:
                                         for institution in authorship['institutions']:
-                                            if any(institution['ror'] == ROR,
+                                            if any([institution['ror'] == ROR,
                                             institution['id'] == OPENALEX_INSTITUTE_ID,
                                             INSTITUTE_NAME.lower() in institution['display_name'].lower(),
-                                            INSTITUTE_ALT_NAME.lower() in institution['display_name'].lower()):
+                                            INSTITUTE_ALT_NAME.lower() in institution['display_name'].lower()]):
                                                 authorlist.add(authorship['author']['id'])
                                                 break
-                        if self.pyalextype == 'sources':
+                    if self.pyalextype == 'sources':
+                        async for work in self.mongoclient.works_openalex.find({}, projection={'locations':1}, sort=[('locations.0.source.id', 1)]):
                             if 'locations' in work:
                                 for location in work['locations']:
                                     try:
@@ -182,16 +195,19 @@ class OpenAlexQuery():
                                                 sourcelist.add(location['source']['id'])
                                     except AttributeError:
                                         pass
-                        if self.pyalextype == 'funders':
+                    if self.pyalextype == 'funders':
+                        async for work in self.mongoclient.works_openalex.find({}, projection={'grants':1}, sort=[('grants.0.funder.id', 1)]):
                             if 'grants' in work:
                                 for grant in work['grants']:
                                     funderlist.add(grant['funder'])
-                        if self.pyalextype == 'institutions':
+                    if self.pyalextype == 'institutions':
+                        async for work in self.mongoclient.works_openalex.find({}, projection={'authorships':1}, sort=[('authorships.0.institutions.0.id', 1)]):
                             for authorship in work['authorships']:
                                 if 'institutions' in authorship:
                                     for institution in authorship['institutions']:
                                         institutionlist.add(institution['id'])
-                        if self.pyalextype == 'topics':
+                    if self.pyalextype == 'topics':
+                        async for work in self.mongoclient.works_openalex.find({}, projection={'topics':1}, sort=[('topics.0.id', 1)]):
                             if 'topics' in work:
                                 for topic in work['topics']:
                                     topiclist.add(topic['id'])
@@ -246,62 +262,68 @@ class OpenAlexQuery():
         orcid_batch="|".join(batch)
         self.querylist.append(self.pyalexmapping[self.pyalextype]().filter(orcid=orcid_batch))
 
-    async def run(self) -> None:
-            print(f'running {self.pyalextype}')
-            if self.pyalextype == 'works' and not self.querylist:
-                for year in self.years:
-                    stop = False
-                    cursor = '*'
-                    amountperpage = 25
-                    while not stop:
-                        try:
-                            response = await self.httpxclient.get(f'https://api.openalex.org/works?filter=publication_year:{year},institutions.ror:{ROR}&per-page={amountperpage}&cursor={cursor}')
-                        except Exception as e:
-                            print(f'error {e} while getting response, retrying with less papers per page')
-                            amountperpage = amountperpage-5
-                            if amountperpage < 5:
-                                print('too many retries, stopping this iteration')
-                                stop = True
-                                continue
-                            continue
-                        if response.status_code == 403 and 'pagination' in str(response.content).lower():
+    async def run(self) -> list:
+        print(f'running {self.pyalextype}')
+        if self.pyalextype == 'works' and not self.querylist:
+            for year in self.years:
+                stop = False
+                cursor = '*'
+                amountperpage = 25
+                while not stop:
+                    try:
+                        response = await self.httpxclient.get(f'https://api.openalex.org/works?filter=publication_year:{year},institutions.ror:{ROR}&per-page={amountperpage}&cursor={cursor}')
+                    except Exception as e:
+                        print(f'error {e} while getting response, retrying with less papers per page')
+                        amountperpage = amountperpage-5
+                        if amountperpage < 5:
+                            print('too many retries, stopping this iteration')
                             stop = True
                             continue
-                        if response.status_code == 503 or response.status_code == 473:
-                            print('503 or 473 error, retrying with less papers per page')
-                            amountperpage = amountperpage-5
-                            if amountperpage < 1:
-                                amountperpage = 1
-                            continue
-                        amountperpage = 25
-                        try:
-                            json_r = response.json()
-                            cursor = json_r['meta']['next_cursor']
-                        except Exception as e:
-                            if json_r.get('error'):
-                                if json_r['error'] == 'Pagination error.':
-                                    stop = True
-                                    continue
-                            else:
-                                print(f'error {e} while getting json')
-                                break
-                        if json_r.get('results'):
-                            for item in json_r['results']:
-                                await self.collection.find_one_and_update({"id":item['id']}, {'$set':item}, upsert=True)
-            else:
-                if not self.querylist:
-                    print('adding default queries')
-                    await self.add_to_querylist()
-                if not self.querylist:
-                    print(f'no queries to run for {self.pyalextype}.')
-                    return
-                print('running queries')
-                for i, query in enumerate(self.querylist):
-                    querynum=i+1
-                    print(f'running query {querynum} of {len(self.querylist)} of {self.pyalextype}')
-                    try:
-                        for item in chain(*query.paginate(per_page=100, n_max=None)):
-                                await self.collection.find_one_and_update({"id":item['id']}, {'$set':item}, upsert=True)
-                    except Exception as e:
-                        print(f'error {e} while retrieving {self.pyalextype}')
                         continue
+                    if response.status_code == 403 and 'pagination' in str(response.content).lower():
+                        stop = True
+                        continue
+                    if response.status_code == 503 or response.status_code == 473:
+                        print('503 or 473 error, retrying with less papers per page')
+                        amountperpage = amountperpage-5
+                        if amountperpage < 1:
+                            amountperpage = 1
+                        continue
+                    amountperpage = 25
+                    try:
+                        json_r = response.json()
+                        cursor = json_r['meta']['next_cursor']
+                    except Exception as e:
+                        if json_r.get('error'):
+                            if json_r['error'] == 'Pagination error.':
+                                stop = True
+                                continue
+                        else:
+                            print(f'error {e} while getting json')
+                            break
+                    if json_r.get('results'):
+                        for item in json_r['results']:
+                            await self.collection.find_one_and_update({"id":item['id']}, {'$set':item}, upsert=True)
+                            self.results.append(item['id'])
+        else:
+            if not self.querylist:
+                print('adding default queries')
+                await self.add_to_querylist()
+            if not self.querylist:
+                print(f'no queries to run for {self.pyalextype}.')
+                return self.results
+            print('running queries')
+            for i, query in enumerate(self.querylist):
+                querynum=i+1
+                print(f'running query {querynum} of {len(self.querylist)} of {self.pyalextype}')
+                try:
+                    for item in chain(*query.paginate(per_page=100, n_max=None)):
+                            updt =await self.collection.find_one_and_update({"id":item['id']}, {'$set':item}, upsert=True)
+                            if updt:
+                                if updt['updated_date']==item['updated_date']:
+                                    self.results.append(item['id'])
+                except Exception as e:
+                    print(f'error {e} while retrieving {self.pyalextype}')
+                    continue
+        print(f'finished {self.pyalextype}, added/updated {len(self.results)} {self.pyalextype}')
+        return self.results

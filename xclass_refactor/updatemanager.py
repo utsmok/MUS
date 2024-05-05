@@ -55,52 +55,106 @@ class UpdateManager:
         rowlist = []
         start = datetime.now()
         rowlist.append(('start',str(start),'-'))
-        cons: Console = Console(style='yellow')
-        cons.print(f'starttime: {start}')
-        await OpenAlexAPI().run()
+        print(f'starttime: {start}')
+        try:
+            res = await OpenAlexAPI().run()
+        except Exception as e:
+            ...
         doneoa = datetime.now()
-        rowlist.append(('OpenAlex',str(doneoa),str(doneoa-start)))
-        cons.print(f'time to get openalex data: {(doneoa-start)}')
-        await PureAPI().run()
+        try:
+            total = 0
+            for r in res:
+                total += len(r['results'])
+            rowlist.append(('OpenAlex',str(doneoa),str(doneoa-start),str(total)))
+            for r in res:
+                rowlist.append((r['type'],'-','-',str(len(r['results']))))
+            print(f'time to get openalex data: {(doneoa-start)}')
+        except Exception as e:
+            ...
+        try:
+            res = await PureAPI().run()
+        except Exception as e:
+            ...
         donepure = datetime.now()
-        rowlist.append(('Pure',str(donepure),str(donepure-doneoa)))
-        cons.print(f'time to get pure data: {(donepure-doneoa)}')
-        await DataCiteAPI().run()
+        try:
+            rowlist.append(('Pure',str(donepure),str(donepure-doneoa),str(res['total'])))
+            print(f'time to get pure data: {(donepure-doneoa)}')
+        except Exception as e:
+            ...
+        try:
+            res = await DataCiteAPI().run()
+        except Exception as e:
+            ...
         donecite = datetime.now()
-        rowlist.append(('DataCite',str(donecite),str(donecite-donepure)))
-        cons.print(f'time to get datacite data: {(donecite-donepure)}')
-        await OpenAIREAPI().run()
+        try:
+            rowlist.append(('DataCite',str(donecite),str(donecite-donepure),str(res['total'])))
+            print(f'time to get datacite data: {(donecite-donepure)}')
+        except Exception as e:
+            ...
+        try:
+            res = await OpenAIREAPI().run()
+        except Exception as e:
+            ...
         doneopen = datetime.now()
-        rowlist.append(('OpenAIRE',str(doneopen),str(doneopen-donecite)))
-        cons.print(f'time to get openaire data: {(doneopen-donecite)}')
-        await ORCIDAPI().run()
+        try:
+            rowlist.append(('OpenAIRE',str(doneopen),str(doneopen-donecite),str(res['total'])))
+            print(f'time to get openaire data: {(doneopen-donecite)}')
+        except Exception as e:
+            ...
+        try:
+            res = await ORCIDAPI().run()
+        except Exception as e:
+            ...
         doneorcid = datetime.now()
-        rowlist.append(('ORCID',str(doneorcid),str(doneorcid-doneopen)))
-        cons.print(f'time to get orcid data: {(doneorcid-doneopen)}')
-        await AuthorMatcher().run()
+        try:
+            rowlist.append(('ORCID',str(doneorcid),str(doneorcid-doneopen),str(res['total'])))
+            print(f'time to get orcid data: {(doneorcid-doneopen)}')
+        except Exception as e:
+            ...
+        try:
+            res = await AuthorMatcher().run()
+        except Exception as e:
+            ...
         doneauthor = datetime.now()
-        rowlist.append(('AuthorMatcher',str(doneauthor),str(doneauthor-doneorcid)))
-        cons.print(f'time to match authors: {(doneauthor-doneorcid)}')
-        await JournalBrowserScraper().run()
+        try:
+            rowlist.append(('AuthorMatcher',str(doneauthor),str(doneauthor-start),str(res['total'])))
+            print(f'time to match authors: {(doneauthor-start)}')
+        except Exception as e:
+            ...
+        
+        try:
+            res = await JournalBrowserScraper().run()
+        except Exception as e:
+            ...
         donejournal = datetime.now()
-        rowlist.append(('JournalBrowserScraper',str(donejournal),str(donejournal-doneauthor)))
-        cons.print(f'time to scrape journal deals: {(donejournal-doneauthor)}')
-        await PeoplePageScraper().run()
+        try:
+            rowlist.append(('JournalBrowserScraper',str(donejournal),str(donejournal-doneauthor),str(res['total'])))
+            print(f'time to scrape journal deals: {(donejournal-doneauthor)}')
+        except Exception as e:
+            ...
+        try:
+            res = await PeoplePageScraper().run()
+        except Exception as e:
+            ...
         donepeople = datetime.now()
-        rowlist.append(('PeoplePageScraper',str(donepeople),str(donepeople-donejournal)))
-        cons.print(f'time to scrape people pages: {(donepeople-donejournal)}')
-        cons.print(f'total time: {(donepeople-start)}')
-        rowlist.append('total','-',str(donepeople-start))
+        try:
+            rowlist.append(('PeoplePageScraper',str(donepeople),str(donepeople-donejournal),str(res['total'])))
+            print(f'time to scrape people pages: {(donepeople-donejournal)}')
+        except Exception as e:
+            ...
+        print(f'total time: {(datetime.now()-start)}')
+        rowlist.append(('total','-',str(datetime.now()-start)))
 
-        tbl = Table(title='Time taken to update from all apis for 2022-2024 ', show_lines=False)
+        tbl = Table(title='Time taken to update from apis for all UT works published between 2020-2024', show_lines=False)
         tbl.add_column('func', justify='left', style='cyan')
         tbl.add_column('time when done', justify='center', style='yellow')
-        tbl.add_column('dt', justify='right', style='yellow')
+        tbl.add_column('dt', justify='right', style='bold yellow')
+        tbl.add_column('# items', justify='right', style='magenta')
         for item in rowlist:
             tbl.add_row(*item)
         cons2 = Console(record=True)
         cons2.print(tbl)
-        cons2.save_svg("time_taken_all_updates.svg", title="All times", theme=SVG_EXPORT_THEME)
+        cons2.save_svg(f"time_taken_all_updates_{datetime.now().day}_{datetime.now().month}_{datetime.now().year}_{datetime.now().hour}_{datetime.now().minute}.svg", title="All times", theme=SVG_EXPORT_THEME)
 
 
 
@@ -110,3 +164,7 @@ def main():
     asyncio.run(mngr.run())
     print('yo')
     ...
+
+
+# NOTE FOR MONGODB find calls:
+# force use of index, see https://www.mongodb.com/community/forums/t/how-to-speed-up-find-projection-id-true-on-a-large-collection/124514

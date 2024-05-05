@@ -18,7 +18,7 @@ class GenericScraper():
     - scrape_items: this is the method that actually scrapes the url for each item in the itemlist
     '''
 
-    motorclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unificiation_system
+    motorclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unification_system
     scraperclient : httpx.AsyncClient = httpx.AsyncClient(timeout=30)
     scraper_settings : dict = {
         'url':'',
@@ -43,6 +43,7 @@ class GenericScraper():
         '''
         for key, value in kwargs.items():
             self.scraper_settings[key] = value
+            
     async def run(self) -> dict:
         await self.make_itemlist()
         await self.get_item_results()
@@ -99,7 +100,7 @@ class GenericAPI():
         collection: the name of the mongodb collection to store results in
         item_id_type: the type of unique id this item uses (e.g. 'orcid' 'doi' 'pmid')
         '''
-        self.motorclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unificiation_system
+        self.motorclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unification_system
         self.itemlist : list = []
         self.collection : motor.motor_asyncio.AsyncIOMotorCollection = self.motorclient[collection] # the collection to store results in
         self.results : dict = {'ids':[], item_id_type+'s':[], 'total':0}
@@ -144,6 +145,8 @@ class GenericAPI():
                         insertlist.extend(newlist)
                         for item in newlist:
                             await self.collection.find_one_and_update({"id":item['id']}, {'$set':item}, upsert=True)
+                            self.results['ids'].append(item['id'])
+                            self.results['total'] = self.results['total'] + 1
                         print(f'[bold green]{len(insertlist)}[/bold green] {self.item_id_type}s added to mongodb ([bold cyan]+{len(newlist)}[/bold cyan])')
                         i=0
 

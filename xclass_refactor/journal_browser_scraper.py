@@ -9,11 +9,11 @@ class JournalBrowserScraper(GenericScraper):
     def __init__(self):
         super().__init__('deals_journalbrowser')
         self.set_scraper_settings(url=JOURNAL_BROWSER_URL,
-                                max_at_once=40,
-                                max_per_second=10
+                                max_at_once=100,
+                                max_per_second=50
                                 )
     async def make_itemlist(self) -> None:
-        async for journal in self.motorclient['sources_openalex'].find():
+        async for journal in self.motorclient['sources_openalex'].find({}, projection={'id':1, 'display_name':1, 'issn_l':1, 'issn':1}, sort=[('id', 1)]):
             tmp = {}
             tmp['id'] = journal['id']
             tmp['name'] = journal['display_name']
@@ -34,6 +34,8 @@ class JournalBrowserScraper(GenericScraper):
                     p.update(task1, advance=1)
                     if response:
                         self.collection.update_one({'id':response['id']}, {'$set':response}, upsert=True)
+                        self.results['total'] = self.results['total'] + 1
+                        self.results['items_added'].append(response['id'])
     async def call_api(self, journal) -> dict:
         soup = {}
         query = (self.scraper_settings['url']

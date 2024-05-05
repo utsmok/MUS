@@ -235,7 +235,7 @@ class OpenAIREAPI(GenericAPI):
         see docs for advanced usage.
         '''
         super().__init__('items_openaire', 'doi')
-        self.motorclient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unificiation_system
+        self.motorclient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unification_system
         self.collection = self.motorclient['items_openaire']
         self.refreshtime = datetime.now() - timedelta(hours=3)
         self.api_settings['tokens'] = {'refresh_token':OPENAIRETOKEN}
@@ -269,7 +269,7 @@ class OpenAIREAPI(GenericAPI):
         numpapers = await self.motorclient['works_openalex'].count_documents({})
         with progress.Progress() as p:
             task1 = p.add_task(f"getting {self.item_id_type}s to query openaire", total=numpapers)
-            async for paper in self.motorclient['works_openalex'].find(projection={'id':1, 'doi':1}):
+            async for paper in self.motorclient['works_openalex'].find({}, projection={'id':1, 'doi':1}, sort=[('id', 1)]):
                 i+=1
                 p.update(task1, advance=1)
                 if paper.get('doi'):
@@ -316,6 +316,8 @@ class OpenAIREAPI(GenericAPI):
         else:
             result = {'id':id, 'doi':doi}
         return result
+    
+
 class ORCIDAPI(GenericAPI):
     NAMESPACES = {
             'http://www.orcid.org/ns/internal':'internal',
@@ -419,16 +421,13 @@ class ORCIDAPI(GenericAPI):
                 del record['path']
                 return remove_colon_from_keys(record)
             except Exception as e:
-                console.print(f'error querying for {item_id}: {e}')
+                console.print(f'error querying for ORCID {item_id}: {e}')
+                
                 return None
 
         result = await httpget(item[self.item_id_type])
+        if isinstance(result, dict):
+            result['id'] = item['id']
         if not result:
-            print(f'no result for {item}.')
-            result = {'id':item['id']}
-        else:
-            result['id']=item['id']
-            self.results['total'] += 1
-            self.results['ids'].append(item['id'])
-            self.results['orcids'].append(item[self.item_id_type])
+            return {'id': item['id']}
         return result
