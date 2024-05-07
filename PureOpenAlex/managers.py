@@ -1180,6 +1180,7 @@ class PaperQuerySet(models.QuerySet):
         Param:
         groups: filter the groups included in the 'ut_groups' column. Defaults to 'None': all ut groups are shown.
         '''
+        from rich import print, inspect
         data=[]
         Journal = apps.get_model('PureOpenAlex', 'Journal')
         Authorship = apps.get_model('PureOpenAlex', 'Authorship')
@@ -1193,13 +1194,13 @@ class PaperQuerySet(models.QuerySet):
         logger.info(f'Creating list with data for CSV for {self.count()} papers')
         paperlist = self.all().distinct().prefetch_related('journal', 'authorships','authorships__author', 'authors', 'authors__utdata','pure_entries', 'pure_entries__pilot_pure_data', 'locations')
         for paper in paperlist:
-            authors = list(paper.authors.all())
-            pure_entries = list(paper.pure_entries.all())
+            authors = paper.authors.all()
+            pure_entries = paper.pure_entries.all()
             journal = paper.journal if paper.journal else ''
-            utauthors = [a for a in authors if 'utdata' in a.__dict__]
+            utauthors = [a for a in authors if hasattr(a,'utdata')]
             authorgroups = [author.utdata.current_group for author in utauthors]
             corresponding_authors = [authorship.author for authorship in paper.authorships.all()]
-            ut_corresponding_author = ' | '.join([author.name for author in corresponding_authors if 'utdata' in author.__dict__])
+            ut_corresponding_author = ' | '.join([author.name for author in corresponding_authors if hasattr(author,'utdata')])
             best_oa, oa_list = paper.get_oa_links()
             mapping = {}
             for keyname in keys:
@@ -1230,65 +1231,65 @@ class PaperQuerySet(models.QuerySet):
                         mapping[keyname] = paperauthors.filter(Q(utdata__current_group__in=TCSGROUPSABBR)).exists(),
                     '''
                     if keyname == 'ut_corresponding_author':
-                        mapping[keyname] = ut_corresponding_author if ut_corresponding_author != [] else '',
+                        mapping[keyname] = ut_corresponding_author if ut_corresponding_author != [] else ''
                     if keyname == 'all_authors':
-                        mapping[keyname] = ' | '.join([author.name for author in authors]),
+                        mapping[keyname] = ' | '.join([author.name for author in authors])
                     if keyname == 'Openaccessinfo ->':
-                        mapping[keyname] = '',
+                        mapping[keyname] = ''
                     if keyname == 'is_openaccess':
-                        mapping[keyname] = paper.is_oa,
+                        mapping[keyname] = paper.is_oa
                     if keyname == 'openaccess_type':
-                        mapping[keyname] = paper.openaccess,
+                        mapping[keyname] = paper.openaccess
                     if keyname == 'found_as_green':
-                        mapping[keyname] = paper.is_in_pure,
+                        mapping[keyname] = paper.is_in_pure
                     if keyname == 'present_in_pure':
-                        mapping[keyname] = paper.has_pure_oai_match,
+                        mapping[keyname] = paper.has_pure_oai_match
                     if keyname == 'license':
-                        mapping[keyname] = paper.license,
+                        mapping[keyname] = paper.license
                     if keyname == 'URLs ->':
-                        mapping[keyname] = '',
+                        mapping[keyname] = ''
                     if keyname == 'primary_link':
-                        mapping[keyname] = paper.primary_link,
+                        mapping[keyname] = paper.primary_link
                     if keyname == 'pdf_link_primary':
-                        mapping[keyname] = paper.pdf_link_primary,
+                        mapping[keyname] = paper.pdf_link_primary
                     if keyname == 'best_oa_link':
-                        mapping[keyname] = best_oa['landing_page_url'],
+                        mapping[keyname] = best_oa['landing_page_url']
                     if keyname == 'pdf_link_best_oa':
-                        mapping[keyname] = best_oa['pdf_url'],
+                        mapping[keyname] = best_oa['pdf_url']
                     if keyname == 'other_oa_links':
-                        mapping[keyname] = ' | '.join(oa_list) if oa_list else '',
+                        mapping[keyname] = ' | '.join(oa_list) if oa_list else ''
                     if keyname == 'openalex_url':
-                        mapping[keyname] = paper.openalex_url,
+                        mapping[keyname] = paper.openalex_url
                     if keyname == 'pure_page_link':
-                        mapping[keyname] = pure_entries[0].researchutwente if pure_entries else '',
+                        mapping[keyname] = pure_entries[0].researchutwente if pure_entries else ''
                     if keyname == 'pure_file_link':
-                        mapping[keyname] = pure_entries[0].risutwente if pure_entries else '',
+                        mapping[keyname] = pure_entries[0].risutwente if pure_entries else ''
                     if keyname == 'scopus_link':
-                        mapping[keyname] = pure_entries[0].scopus if pure_entries else '',
+                        mapping[keyname] = pure_entries[0].scopus if pure_entries else ''
                     if keyname == 'Journalinfo ->':
-                        mapping[keyname] = '',
+                        mapping[keyname] = ''
                     if keyname == 'journal':
-                        mapping[keyname] = journal.name if journal else '',
+                        mapping[keyname] = journal.name if journal else ''
                     if keyname == 'journal_issn':
-                        mapping[keyname] = journal.issn if journal else '',
+                        mapping[keyname] = journal.issn if journal else ''
                     if keyname == 'journal_e_issn':
-                        mapping[keyname] = journal.e_issn if journal else '',
+                        mapping[keyname] = journal.e_issn if journal else ''
                     if keyname == 'journal_publisher':
-                        mapping[keyname] = journal.publisher if journal else '',
+                        mapping[keyname] = journal.publisher if journal else ''
                     if keyname == 'volume':
-                        mapping[keyname] = paper.volume,
+                        mapping[keyname] = paper.volume
                     if keyname == 'issue':
-                        mapping[keyname] = paper.issue,
+                        mapping[keyname] = paper.issue
                     if keyname == 'pages':
-                        mapping[keyname] = paper.pages,
+                        mapping[keyname] = paper.pages
                     if keyname == 'pagescount':
-                        mapping[keyname] = paper.pagescount,
+                        mapping[keyname] = paper.pagescount
                     if keyname == 'MUS links ->':
-                        mapping[keyname] = '',
+                        mapping[keyname] = ''
                     if keyname == 'mus_paper_details':
-                        mapping[keyname] = mus_url+'article/'+str(paper.id),
+                        mapping[keyname] = mus_url+'article/'+str(paper.id)
                     if keyname == 'mus_api_url_paper':
-                        mapping[keyname] = mus_api_url+'paper/'+str(paper.id),
+                        mapping[keyname] = mus_api_url+'paper/'+str(paper.id)
 
             pureentrylist=''
             pilotpuredatalist=''
@@ -1307,6 +1308,9 @@ class PaperQuerySet(models.QuerySet):
             mapping['mus_api_url_pure_entry']=pureentrylist
             mapping['mus_api_url_pure_report_details']=pilotpuredatalist
             data.append(mapping)
+
+
+
         return data
 
     def exportris(self):
