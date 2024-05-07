@@ -303,6 +303,8 @@ def getcsv(request):
         "Content-Type": 'text/csv',
         "Content-Disposition": contentdisp,
     })
+    #for debugging the query:
+    #response = render(request, "csv.html", {"csvfile": csvfile, "contentdisp": contentdisp})
 
     return response
 

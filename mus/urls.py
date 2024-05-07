@@ -25,7 +25,7 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("accounts/", include("allauth.urls")),
     path("data-browser/", include("data_browser.urls")),
-   # path("__debug__/", include("debug_toolbar.urls")),
+    path("__debug__/", include("debug_toolbar.urls")),
     path("api/", api.urls),
     path('explorer/', include('explorer.urls')),
     path('sonar/', include('django_sonar.urls')),

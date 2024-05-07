@@ -24,7 +24,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = str(os.getenv('DJANGOSECRETKEY'))
 ACCOUNT_ADAPTER = "accounts.adapter.NoNewUsersAccountAdapter"
 
-DEBUG = False
+DEBUG = True
 LOGLEVEL = "DEBUG"
 LOGFMT = "{time:[%m %d] %H:%M:%S} | {name}>{function}() [{level}] |> {message}"
 logger.remove()
@@ -72,14 +72,14 @@ INSTALLED_APPS = [
     'django_celery_results',
     'xclass_refactor.apps.XClassRefactorConfig',
     'django_sonar',
-    # 'debug_toolbar',
+    'debug_toolbar',
 
 ]
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     "django.middleware.security.SecurityMiddleware",
-    #"debug_toolbar.middleware.DebugToolbarMiddleware",
+    "debug_toolbar.middleware.DebugToolbarMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",

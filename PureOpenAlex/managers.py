@@ -1,5 +1,5 @@
 from django.db import models, transaction
-from django.db.models import Q, Prefetch, Exists, OuterRef, Count
+from django.db.models import Q, Prefetch, Exists, OuterRef, Count, prefetch_related_objects
 from collections import defaultdict
 from loguru import logger
 from .constants import TCSGROUPS, TCSGROUPSABBR, EEGROUPS, EEGROUPSABBR, FACULTYNAMES, CSV_EXPORT_KEYS, CSV_EEMCS_KEYS
@@ -13,7 +13,6 @@ import os
 import requests
 from io import StringIO
 import csv
-
 MONGOURL = getattr(settings, "MONGOURL")
 client=pymongo.MongoClient(MONGOURL)
 db=client['mus']
@@ -1182,19 +1181,25 @@ class PaperQuerySet(models.QuerySet):
         groups: filter the groups included in the 'ut_groups' column. Defaults to 'None': all ut groups are shown.
         '''
         data=[]
+        Journal = apps.get_model('PureOpenAlex', 'Journal')
+        Authorship = apps.get_model('PureOpenAlex', 'Authorship')
+        Author = apps.get_model('PureOpenAlex', 'Author')
+        PureEntry = apps.get_model('PureOpenAlex', 'PureEntry')
+        PilotPureData = apps.get_model('PureOpenAlex', 'PilotPureData')
+        UTData = apps.get_model('PureOpenAlex', 'UTData')
+
         mus_url = 'https://openalex.samuelmok.cc/'
         mus_api_url = 'https://openalex.samuelmok.cc/api/'
         logger.info(f'Creating list with data for CSV for {self.count()} papers')
-        for paper in self.all().distinct():
-            paperauthors=paper.authors.filter(utdata__isnull=False)
-            authorgroups = paperauthors.get_ut_groups(groups)
-            ut_corresponding_author = paperauthors.get_ut_corresponding_authors(paper)
-            if ut_corresponding_author!=[]:
-                if isinstance(ut_corresponding_author, list):
-                    if len(ut_corresponding_author)>1:
-                        ut_corresponding_author = ' | '.join([author.name for author in ut_corresponding_author])
-                    else:
-                        ut_corresponding_author = ut_corresponding_author[0].name
+        paperlist = self.all().distinct().prefetch_related('journal', 'authorships','authorships__author', 'authors', 'authors__utdata','pure_entries', 'pure_entries__pilot_pure_data', 'locations')
+        for paper in paperlist:
+            authors = list(paper.authors.all())
+            pure_entries = list(paper.pure_entries.all())
+            journal = paper.journal if paper.journal else ''
+            utauthors = [a for a in authors if 'utdata' in a.__dict__]
+            authorgroups = [author.utdata.current_group for author in utauthors]
+            corresponding_authors = [authorship.author for authorship in paper.authorships.all()]
+            ut_corresponding_author = ' | '.join([author.name for author in corresponding_authors if 'utdata' in author.__dict__])
             best_oa, oa_list = paper.get_oa_links()
             mapping = {}
             for keyname in keys:
@@ -1207,25 +1212,27 @@ class PaperQuerySet(models.QuerySet):
                     if keyname == 'itemtype':
                         mapping[keyname] = paper.itemtype
                     if keyname == 'isbn':
-                        mapping[keyname] = paper.pure_entries.first().isbn if paper.pure_entries.first() else ''
+                        mapping[keyname] = pure_entries[0].isbn if pure_entries else ''
                     if keyname == 'topics':
                         mapping[keyname] = ' | '.join([topic.get('display_name') for topic in paper.topics]) if paper.topics else ''
                     if keyname == 'Authorinfo ->':
                         mapping[keyname] = ''
                     if keyname == 'ut_authors':
-                        mapping[keyname] = ' | '.join([author.name for author in paperauthors]) if paperauthors else ''
+                        mapping[keyname] = ' | '.join([author.name for author in utauthors])
                     if keyname == 'ut_groups':
                         mapping[keyname] = ' | '.join(authorgroups) if authorgroups else ''
+                    '''
                     if keyname == 'is_eemcs?':
                         mapping[keyname] = paperauthors.filter(Q(utdata__current_faculty__iexact='EEMCS') | Q(utdata__employment_data__contains=[{'faculty':'EEMCS'}])).exists()
                     if keyname == 'is_ee?':
                         mapping[keyname] = paperauthors.filter(Q(utdata__current_group__in=EEGROUPSABBR)).exists() ,
                     if keyname == 'is_tcs?':
                         mapping[keyname] = paperauthors.filter(Q(utdata__current_group__in=TCSGROUPSABBR)).exists(),
+                    '''
                     if keyname == 'ut_corresponding_author':
                         mapping[keyname] = ut_corresponding_author if ut_corresponding_author != [] else '',
                     if keyname == 'all_authors':
-                        mapping[keyname] = ' | '.join([author.name for author in paper.authors.all()]),
+                        mapping[keyname] = ' | '.join([author.name for author in authors]),
                     if keyname == 'Openaccessinfo ->':
                         mapping[keyname] = '',
                     if keyname == 'is_openaccess':
@@ -1253,21 +1260,21 @@ class PaperQuerySet(models.QuerySet):
                     if keyname == 'openalex_url':
                         mapping[keyname] = paper.openalex_url,
                     if keyname == 'pure_page_link':
-                        mapping[keyname] = paper.pure_entries.first().researchutwente if paper.pure_entries.first() else '',
+                        mapping[keyname] = pure_entries[0].researchutwente if pure_entries else '',
                     if keyname == 'pure_file_link':
-                        mapping[keyname] = paper.pure_entries.first().risutwente if paper.pure_entries.first() else '',
+                        mapping[keyname] = pure_entries[0].risutwente if pure_entries else '',
                     if keyname == 'scopus_link':
-                        mapping[keyname] = paper.pure_entries.first().scopus if paper.pure_entries.first() else '',
+                        mapping[keyname] = pure_entries[0].scopus if pure_entries else '',
                     if keyname == 'Journalinfo ->':
                         mapping[keyname] = '',
                     if keyname == 'journal':
-                        mapping[keyname] = paper.journal.name if paper.journal else '',
+                        mapping[keyname] = journal.name if journal else '',
                     if keyname == 'journal_issn':
-                        mapping[keyname] = paper.journal.issn if paper.journal else '',
+                        mapping[keyname] = journal.issn if journal else '',
                     if keyname == 'journal_e_issn':
-                        mapping[keyname] = paper.journal.e_issn if paper.journal else '',
+                        mapping[keyname] = journal.e_issn if journal else '',
                     if keyname == 'journal_publisher':
-                        mapping[keyname] = paper.journal.publisher if paper.journal else '',
+                        mapping[keyname] = journal.publisher if journal else '',
                     if keyname == 'volume':
                         mapping[keyname] = paper.volume,
                     if keyname == 'issue':
@@ -1285,13 +1292,13 @@ class PaperQuerySet(models.QuerySet):
 
             pureentrylist=''
             pilotpuredatalist=''
-            if paper.pure_entries.first():
-                for pure_entry in paper.pure_entries.all():
+            if pure_entries:
+                for pure_entry in pure_entries:
                     if pureentrylist != '':
                         pureentrylist = ' | '.join([pureentrylist, mus_api_url+'pureentry/'+str(pure_entry.id)])
                     else:
                         pureentrylist = mus_api_url+'pureentry/'+str(pure_entry.id)
-                    if pure_entry.pilot_pure_data:
+                    if 'pilot_pure_data' in pure_entry.__dict__:
                         if pilotpuredatalist != '':
                             pilotpuredatalist = ' | '.join([pilotpuredatalist, mus_api_url+'pilotpure/'+str(pure_entry.pilot_pure_data.id)])
                         else:

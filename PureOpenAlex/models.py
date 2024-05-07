@@ -233,7 +233,7 @@ class Paper(TimeStampedModel, models.Model):
                                 'is_in_pure',
                                 'has_pure_oai_match',
                                 'openaccess',
-                                'date'
+                                'date',
                                 ]),
         ]
 
