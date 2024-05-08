@@ -1136,7 +1136,7 @@ class PaperQuerySet(models.QuerySet):
         )
         return stats
 
-    def get_csv(self, filters=[], papers=None):
+    def get_csv(self, filters=[], papers=None, use_api=False):
         if filters:
             logger.info(f'Getting csv data using filters: {filters}')
         else:
@@ -1165,7 +1165,14 @@ class PaperQuerySet(models.QuerySet):
             keys = CSV_EXPORT_KEYS
 
         grouplist=list(set(grouplist))
-        raw_data=papers.create_csv(grouplist, keys)
+        if use_api:
+            from PureOpenAlex.serializers import serialize_as_list_of_dicts
+            papers = papers.prefetch_related('locations', 'locations__source','journal', 'journal__dealdata', 'pure_entries', 'authors', 'authors__utdata', 'authors__affils')
+            raw_data = serialize_as_list_of_dicts(papers)
+            keys = raw_data[0].keys()
+        else:
+            raw_data=papers.create_csv(grouplist, keys)
+
         content = StringIO()
         with content as f:
             writer = csv.DictWriter(f, fieldnames=keys)
