@@ -6,7 +6,7 @@ load_dotenv(dotenv_path)
 # API keys / ID's / e-mails / tokens
 ORCID_CLIENT_ID = str(os.getenv('ORCID_CLIENT_ID'))
 ORCID_CLIENT_SECRET = str(os.getenv('ORCID_CLIENT_SECRET'))
-ORCID_ACCESS_TOKEN = str(os.getenv('ORCID_ACCESS_TOKEN'))
+ORCID_ACCESS_TOKEN = os.getenv('ORCID_ACCESS_TOKEN')
 APIEMAIL = str(os.getenv('APIEMAIL'))
 OPENAIRETOKEN = str(os.getenv('OPENAIRETOKEN'))
 

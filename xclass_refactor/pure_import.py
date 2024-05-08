@@ -11,33 +11,32 @@ import xmltodict
 import rich
 import time
 import asyncio
-
+import aiocsv
+import aiofiles
 class PureAPI(GenericAPI):
-    NAMESPACES = {
+    #! Note: check documentation for the correct namespaces and keys to use -- maybe switch to openaire cerif style??
+    def __init__(self, years: list[int] = None):
+        super().__init__('items_pure_oaipmh', 'doi')
+        if years:
+            self.years : list[int] = years
+        else:
+            self.years : list[int] = [2018, 2019, 2020, 2021, 2022, 2023, 2024]
+        self.years.sort(reverse=True)
+        self.set_api_settings(max_at_once=5,
+                            max_per_second=5)
+        self.NAMESPACES = {
         "http://www.openarchives.org/OAI/2.0/":None,
         "http://www.openarchives.org/OAI/2.0/oai_dc/":None,
         'http://purl.org/dc/elements/1.1/':None,
         'http://www.w3.org/2001/XMLSchema-instance':None,
         'http://www.w3.org/XML/1998/namespace':None,
         'http://purl.org/dc/terms/':None,
-    }
-    KEYS_TO_FIX = {
+        }
+        self.KEYS_TO_FIX = {
         'title':'value',
         'subject': ['value'],
         'description': 'value',
-    }
-
-
-    def __init__(self, years: list[int] = None):
-        super().__init__('items_pure_oaipmh', 'doi')
-        if years:
-            self.years : list[int] = years
-        else:
-            self.years : list[int] = [2020, 2021, 2022, 2023, 2024]
-        self.years.sort(reverse=True)
-        self.set_api_settings(max_at_once=5,
-                            max_per_second=5,)
-
+        }
     async def run(self):
         await self.get_item_results()
         return self.results
@@ -50,9 +49,11 @@ class PureAPI(GenericAPI):
         async with aiometer.amap(functools.partial(self.call_api), self.years, max_at_once=self.api_settings['max_at_once'], max_per_second=self.api_settings['max_per_second']) as responses:
                 # do something with the returned items?
                 ...
-
+        print(f"finished gathering Pure Data for {self.years}")
     async def call_api(self, year) -> list[dict]:
+        print(f"gathering Pure Data for year {year}")
         async def fetch_response(url):
+            print(f'fetching {url}')
             async def remove_lang_fields(json):
                 for key, value in json.items():
                     if key in self.KEYS_TO_FIX:
@@ -86,6 +87,7 @@ class PureAPI(GenericAPI):
                 continue
             results = []
             items = response.get('record')
+            print(f"got {len(items)} items from {url}")
             if not isinstance(items, list):
                 items = [items]
             for result in items:
@@ -95,17 +97,20 @@ class PureAPI(GenericAPI):
                 temp['pure_identifier'] = result['header']['identifier']
                 temp['pure_datestamp'] = result['header']['datestamp']
                 results.append(temp)
-            
+
             if results:
+                print(f"adding {len(results)} pure results for year {year}")
                 for result in results:
                     await self.collection.find_one_and_update({"pure_identifier":result['pure_identifier']}, {'$set':result}, upsert=True)
                     self.results['ids'].append(result['pure_identifier'])
-                    self.results['total'] += 1 
+                    self.results['total'] += 1
             if response.get('resumptionToken'):
+                print(f'getting next page of pure results for year {year}')
                 resumetoken = response.get('resumptionToken').get('value')
                 url = f"{base_url}?verb=ListRecords&resumptionToken={resumetoken}"
                 continue
             else:
+                print(f'no more pure results for year {year}')
                 return True
 
 
@@ -116,15 +121,15 @@ class PureAuthorCSV():
     and store the data in MongoDB
     '''
 
-    def __init__(self, filepath: str, mongoclient: MusMongoClient):
+    def __init__(self, filepath: str = 'eemcs_author_details.csv'):
         self.filepath = filepath
-        self.mongoclient = mongoclient
-        self.collection = mongoclient.authors_pure
+        self.mongoclient = MusMongoClient()
+        self.collection = self.mongoclient.authors_pure
 
-    def run(self):
-        with open(self.filepath, 'r', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
+    async def run(self):
+        async with aiofiles.open(self.filepath, 'r', encoding='utf-8') as f:
+            print(f"reading in {self.filepath}")
+            async for row in aiocsv.AsyncDictReader(f):
                 for key, value in row.items():
                     if 'affl_periods' in key:
                         # data looks like this: '1/01/81 → 1/01/18 | 2/08/01 → 2/08/01'
@@ -148,4 +153,5 @@ class PureAuthorCSV():
                             row[key] = [datetime.strptime(i.strip().split(' ')[0], '%Y-%m-%d') for i in value.split('|')]
                     elif '|' in value:
                         row[key] = [i.strip() for i in value.split('|')]
-                self.collection.insert_one(row)
+                await self.collection.insert_one(row)
+        print(f"finished reading in {self.filepath}")

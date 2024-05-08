@@ -491,7 +491,7 @@ def getOpenAlexJournalData():
     def getJournalListFromDB():
         journals={}
         i=0
-        api_responses_openalex = db["api_responses_openalex"]
+        api_responses_openalex = db["api_responses_works_openalex"]
         for article in api_responses_openalex.find():
             i=i+1
             if 'locations' in article:
@@ -509,12 +509,12 @@ def getOpenAlexJournalData():
 
     journals_openalex = db["api_responses_journals_openalex"]
     journals=getJournalListFromDB()
-    
+
     mongojournals=set()
     for journal in journals_openalex.find():
         mongojournals.add(journal['id'])
-    
-    
+
+
     for journal in journals.keys():
         if journal in mongojournals:
             del journals[journal]

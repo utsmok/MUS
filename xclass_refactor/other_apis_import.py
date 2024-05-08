@@ -48,12 +48,12 @@ class BASEAPI(GenericAPI):
 '''
 ---------------------- Needs updates ---------------------------
 '''
-class CrossrefAPI():
+class CrossrefAPI(GenericAPI):
     '''
     TODO: subclass from GenericAPI
     TODO: import xml data instead of json, see https://www.crossref.org/documentation/retrieve-metadata/xml-api/doi-to-metadata-query/
     '''
-    def __init__(self, years: list = [2023, 2024, 2025], mongoclient: MusMongoClient = None, dois: list[str] = None):
+    def __init__(self, years: list = [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025], mongoclient: MusMongoClient = None, dois: list[str] = None):
         self.mongoclient = mongoclient
         self.collection = mongoclient.items_crossref_xml
         self.results = []
@@ -198,15 +198,14 @@ class DataCiteAPI(GenericAPI):
         i=0
 
         numpapers = await self.motorclient['works_openalex'].count_documents({})
-        with progress.Progress() as p:
-            task1 = p.add_task(f"getting {self.item_id_type}s to query DataCite", total=numpapers)
-            async for paper in self.motorclient['works_openalex'].find(projection={'id':1, 'doi':1}):
-                i+=1
-                p.update(task1, advance=1)
-                if paper.get('doi'):
-                    if await self.collection.find_one({'id':paper['id']}, projection={'id': 1}):
-                        continue
-                    self.itemlist.append({self.item_id_type:paper['doi'].replace('https://doi.org/',''), 'id':paper['id']})
+        print(f'getting dois from {numpapers} openalexworks to find in datacite')
+
+        async for paper in self.motorclient['works_openalex'].find(projection={'id':1, 'doi':1}):
+            i+=1
+            if paper.get('doi'):
+                if await self.collection.find_one({'id':paper['id']}, projection={'id': 1}):
+                    continue
+                self.itemlist.append({self.item_id_type:paper['doi'].replace('https://doi.org/',''), 'id':paper['id']})
         ptable.add_row(str(i), str(len(self.itemlist)))
         console.print(ptable)
 
@@ -250,13 +249,15 @@ class OpenAIREAPI(GenericAPI):
                         )
 
     def update_access_token(self) -> str:
-        if not self.refreshtime or datetime.now() - self.refreshtime > timedelta(minutes=55):
+        if not self.refreshtime or datetime.now() - self.refreshtime > timedelta(minutes=55) or not self.api_settings['tokens'].get('access_token'):
             try:
                 self.refreshtime = datetime.now()
                 tokendata = httpx.get(f'https://services.openaire.eu/uoa-user-management/api/users/getAccessToken?refreshToken={self.api_settings['tokens']['refresh_token']}').json()
                 self.api_settings['tokens']['access_token'] = tokendata.get("access_token")
+                console.print('OpenAIRE access token updated')
             except Exception as e:
-                print(f'error refreshing OpenAIRE access token: {e}')
+                console.print(f'error refreshing OpenAIRE access token: {e}')
+                console.print(f'{self.api_settings=}')
                 raise LookupError('Cannot refresh OpenAIRE access token')
         return self.api_settings['tokens']['access_token']
 
@@ -265,17 +266,15 @@ class OpenAIREAPI(GenericAPI):
         ptable.add_column("# checked", style="green")
         ptable.add_column("# added",style="magenta")
         i=0
-
         numpapers = await self.motorclient['works_openalex'].count_documents({})
-        with progress.Progress() as p:
-            task1 = p.add_task(f"getting {self.item_id_type}s to query openaire", total=numpapers)
-            async for paper in self.motorclient['works_openalex'].find({}, projection={'id':1, 'doi':1}, sort=[('id', 1)]):
-                i+=1
-                p.update(task1, advance=1)
-                if paper.get('doi'):
-                    if await self.collection.find_one({'id':paper['id']}, projection={'id': 1}):
-                        continue
-                    self.itemlist.append({self.item_id_type:paper['doi'].replace('https://doi.org/',''), 'id':paper['id']})
+        print(f'getting dois from {numpapers} openalexworks to find in openaire')
+
+        async for paper in self.motorclient['works_openalex'].find({}, projection={'id':1, 'doi':1}, sort=[('id', 1)]):
+            i+=1
+            if paper.get('doi'):
+                if await self.collection.find_one({'id':paper['id']}, projection={'id': 1}):
+                    continue
+                self.itemlist.append({self.item_id_type:paper['doi'].replace('https://doi.org/',''), 'id':paper['id']})
         ptable.add_row(str(i), str(len(self.itemlist)))
         console.print(ptable)
 
@@ -316,7 +315,7 @@ class OpenAIREAPI(GenericAPI):
         else:
             result = {'id':id, 'doi':doi}
         return result
-    
+
 
 class ORCIDAPI(GenericAPI):
     NAMESPACES = {
@@ -351,23 +350,21 @@ class ORCIDAPI(GenericAPI):
         }
     def __init__(self) -> None:
         super().__init__('items_orcid', 'orcid')
-        self.api_settings['tokens']['access_token'] = ORCID_ACCESS_TOKEN
         self.refresh_access_token()
         self.set_api_settings(headers={'Accept': 'application/orcid+xml', 'Authorization': f'Bearer {self.api_settings['tokens']['access_token']}'}, max_at_once=10, max_per_second=10)
 
     def refresh_access_token(self) -> None:
-        if not self.api_settings['tokens']['access_token']:
-            url = 'https://orcid.org/oauth/token'
-            header = {'Accept': 'application/json'}
-            data = {
-                'client_id':ORCID_CLIENT_ID,
-                'client_secret':ORCID_CLIENT_SECRET,
-                'grant_type':'client_credentials',
-                'scope':'/read-public'
-            }
-            r = httpx.post(url, headers=header, data=data)
-            self.api_settings['tokens']['access_token'] = r.json().get('access_token')
-            self.api_settings['tokens']['refresh_token'] = r.json().get('refresh_token')
+        url = 'https://orcid.org/oauth/token'
+        header = {'Accept': 'application/json'}
+        data = {
+            'client_id':ORCID_CLIENT_ID,
+            'client_secret':ORCID_CLIENT_SECRET,
+            'grant_type':'client_credentials',
+            'scope':'/read-public'
+        }
+        r = httpx.post(url, headers=header, data=data)
+        self.api_settings['tokens']['access_token'] = r.json().get('access_token')
+        self.api_settings['tokens']['refresh_token'] = r.json().get('refresh_token')
 
     async def make_itemlist(self) -> None:
         ptable = table.Table(title="Retrieved ORCID iDs")
@@ -375,17 +372,14 @@ class ORCIDAPI(GenericAPI):
         ptable.add_column("orcids added to list",style="magenta")
         checked=0
         numauths = await self.motorclient['authors_openalex'].count_documents({'ids.orcid':{'$exists':True}})
-        with progress.Progress() as p:
-            task1 = p.add_task(f"getting {self.item_id_type}s", total=numauths)
-            async for auth in self.motorclient['authors_openalex'].find({'ids.orcid':{'$exists':True}}, projection={'id':1, 'ids':1}):
-                checked+=1
-                p.update(task1, advance=1)
-                if auth.get('ids').get('orcid'):
-                    check = await self.collection.find_one({'id':auth['id']}, projection={'id': 1, 'orcid-identifier': 1})
-                    if check:
-                        if check.get('orcid-identifier'):
-                            continue
-                    self.itemlist.append({self.item_id_type:auth['ids']['orcid'].replace('https://orcid.org/',''), 'id':auth['id']})
+        async for auth in self.motorclient['authors_openalex'].find({'ids.orcid':{'$exists':True}}, projection={'id':1, 'ids':1}):
+            checked+=1
+            if auth.get('ids').get('orcid'):
+                check = await self.collection.find_one({'id':auth['id']}, projection={'id': 1, 'orcid-identifier': 1})
+                if check:
+                    if check.get('orcid-identifier'):
+                        continue
+                self.itemlist.append({self.item_id_type:auth['ids']['orcid'].replace('https://orcid.org/',''), 'id':auth['id']})
         ptable.add_row(str(checked), str(len(self.itemlist)))
         console.print(ptable)
 
@@ -422,7 +416,10 @@ class ORCIDAPI(GenericAPI):
                 return remove_colon_from_keys(record)
             except Exception as e:
                 console.print(f'error querying for ORCID {item_id}: {e}')
-                
+                try:
+                    console.print(f'{r.text}, {r.status_code}')
+                except:
+                    console.print(f'no response')
                 return None
 
         result = await httpget(item[self.item_id_type])

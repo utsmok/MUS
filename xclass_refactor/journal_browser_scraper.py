@@ -27,15 +27,12 @@ class JournalBrowserScraper(GenericScraper):
         print(f'number of journals added: {len(self.itemlist)}')
 
     async def get_item_results(self) -> None:
-        with progress.Progress() as p:
-            task1 = p.add_task(f"calling api to get data from {self.scraper_settings['url']}", total=len(self.itemlist))
-            async with aiometer.amap(functools.partial(self.call_api), self.itemlist, max_at_once=self.scraper_settings['max_at_once'], max_per_second=self.scraper_settings['max_per_second']) as responses:
-                async for response in responses:
-                    p.update(task1, advance=1)
-                    if response:
-                        self.collection.update_one({'id':response['id']}, {'$set':response}, upsert=True)
-                        self.results['total'] = self.results['total'] + 1
-                        self.results['items_added'].append(response['id'])
+        async with aiometer.amap(functools.partial(self.call_api), self.itemlist, max_at_once=self.scraper_settings['max_at_once'], max_per_second=self.scraper_settings['max_per_second']) as responses:
+            async for response in responses:
+                if response:
+                    self.collection.update_one({'id':response['id']}, {'$set':response}, upsert=True)
+                    self.results['total'] = self.results['total'] + 1
+                    self.results['items_added'].append(response['id'])
     async def call_api(self, journal) -> dict:
         soup = {}
         query = (self.scraper_settings['url']

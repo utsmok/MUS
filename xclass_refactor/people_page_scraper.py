@@ -7,7 +7,7 @@ import pandas as pd
 from polyfuzz.models import TFIDF
 from polyfuzz import PolyFuzz
 from rich import print, table
-
+from nameparser import HumanName
 class PeoplePageScraper(GenericScraper):
     def __init__(self):
         super().__init__('employees_peoplepage')
@@ -40,41 +40,51 @@ class PeoplePageScraper(GenericScraper):
 
     async def call_api(self, item) -> dict:
         async def get_data(id, searchname) -> list[dict]:
+            url = f'https://people.utwente.nl/peoplepagesopenapi/contacts?query={searchname}'
             try:
-                r = await self.scraperclient.get(self.scraper_settings['url'], params={"query": searchname}, headers=self.scraper_settings['headers'])
-            except Exception as e:
-                print(f'error getting data for {searchname}: {e}')
-                return None
-            if r.status_code == 200:
+                r = await self.scraperclient.get(url)
                 data = r.json()
-                output=[]
-                for entry in data['data']:
-                    name = entry["name"] if entry["name"] is not None else ""
-                    jobtitle = entry["jobtitle"] if entry["jobtitle"] is not None else ""
-                    avatar = entry["avatar"] if entry["avatar"] is not None else ""
-                    profile_url = entry["profile"] if entry["profile"] is not None else ""
-                    email = entry["email"] if entry["email"] is not None else ""
-                    deptlist = []
-                    for dept in entry["organizations"]:
-                        dept_faculty = (
-                            dept["department"] if dept["department"] is not None else ""
-                        )
-                        dept_name = dept["section"] if dept["section"] is not None else ""
-                        deptlist.append({"group": dept_name, "faculty": dept_faculty})
-                    tmp = {
-                            "searchname": searchname,
-                            "foundname": name,
-                            "position": jobtitle,
-                            "avatar_url": avatar,
-                            "profile_url": profile_url,
-                            "email": email,
-                            "grouplist": deptlist,
-                            "id":id
-                        }
-                    output.append(tmp)
-                return output
-            else:
+            except Exception as e:
+                print(f'error getting data for {url}: {e}')
                 return None
+            output = []
+
+            for entry in data['data']:
+                name = entry["displayName"] if entry["displayName"] is not None else ""
+                full_name = entry["name"] if entry["name"] is not None else ""
+                first_name = entry["givenName"] if entry["givenName"] is not None else ""
+                email = entry["mail"] if entry["mail"] is not None else ""
+                avatar = entry["pictureUrl"] if entry["pictureUrl"] is not None else ""
+                research = entry["researchUrl"] if entry["researchUrl"] is not None else ""
+                profile = entry["profileUrl"] if entry["profileUrl"] is not None else ""
+                jobtitle = entry["jobtitle"] if entry["jobtitle"] is not None else ""
+                affiliation = entry["affiliation"] if entry["affiliation"] is not None else ""
+                deptlist = entry['organizations'] if entry['organizations'] is not None else []
+
+                deptlist = [x for x in deptlist if x['section'] is not None]
+
+                checkname = HumanName(full_name)
+                if first_name:
+                    checkname.first = first_name
+
+                tmp = {
+                        "searchname": searchname,
+                        "foundname": name,
+                        "fullname": full_name,
+                        'first_name': first_name,
+                        "position": jobtitle,
+                        "avatar_url": avatar,
+                        "research_url": research,
+                        "profile_url": profile,
+                        "email": email,
+                        'affiliation': affiliation,
+                        "grouplist": deptlist,
+                        "id":id,
+                        'checkname': str(checkname)
+                    }
+                output.append(tmp)
+            return output
+
 
         names = []
         result_list = []
@@ -102,7 +112,7 @@ class PeoplePageScraper(GenericScraper):
         #now find the best namematch in list of results
         if not result_list:
             return None
-        to_list = [a['foundname'] for a in result_list]
+        to_list = [a['checkname'] for a in result_list]
         if not to_list:
             return None
         tfidf = TFIDF(n_gram_range=(3, 3), clean_string=True, min_similarity=0.8)
@@ -114,11 +124,10 @@ class PeoplePageScraper(GenericScraper):
         top_results=results[results['Similarity']>0.9]
         if top_results.empty:
             return None
-        top_results.sort_values(by='Similarity', inplace=True, ascending=False)
-        final_match = top_results.iloc[0]
+        final_match = top_results.sort_values(by='Similarity', ascending=False).iloc[0]
         return_value['similarity'] = final_match['Similarity']
         for match in result_list:
-            if match['foundname'] == final_match['To']:
+            if match['checkname'] == final_match['To']:
                 for k,v in match.items():
                     if k not in return_value:
                         return_value[k] = v

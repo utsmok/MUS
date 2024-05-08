@@ -11,7 +11,7 @@ import httpx
 from collections import defaultdict
 import motor.motor_asyncio
 from xclass_refactor.constants import ROR, INSTITUTE_ALT_NAME, INSTITUTE_NAME, OPENALEX_INSTITUTE_ID
-
+import asyncio
 class OpenAlexAPI():
     '''
     class to get data from the OpenAlex API and store it in MongoDB
@@ -47,7 +47,7 @@ class OpenAlexAPI():
         self.requested_institutions = self.openalex_requests.get('institutions_openalex')
         self.requested_topics = self.openalex_requests.get('topics_openalex')
         if not years:
-            self.years = [2020, 2021, 2022, 2023, 2024 , 2025]
+            self.years = [2018, 2019, 2020, 2021, 2022, 2023, 2024 , 2025]
         else:
             self.years = years
         self.mongoclient = MusMongoClient()
@@ -65,47 +65,38 @@ class OpenAlexAPI():
         # make parallel/async/mp? -> No, api limit!
         from datetime import datetime
         results = []
+        tasks = []
         for request in self.openalex_requests:
             if request == 'works_openalex':
                 start = datetime.now()
                 print('running OpenAlexQuery for works')
                 res = await OpenAlexQuery(mongoclient=self.mongoclient, mongocollection=self.mongoclient.works_openalex, pyalextype='works', item_ids=self.requested_works, years=self.years).run()
                 print(f'took {datetime.now()-start}')
-                results.append({'results':res,'type':'works'})
+                results.append(res)
             if request == 'authors_openalex':
-                start = datetime.now()
                 print('running OpenAlexQuery for authors')
-                res = await OpenAlexQuery(self.mongoclient, self.mongoclient.authors_openalex, 'authors', self.requested_authors).run()
-                print(f'took {datetime.now()-start}')
-                results.append({'results':res,'type':'authors'})
+                tasks.append(OpenAlexQuery(self.mongoclient, self.mongoclient.authors_openalex, 'authors', self.requested_authors).run())
 
             if request == 'sources_openalex':
-                start = datetime.now()
                 print('running OpenAlexQuery for sources')
-                res = await OpenAlexQuery(self.mongoclient, self.mongoclient.sources_openalex, 'sources', self.requested_sources).run()
-                print(f'took {datetime.now()-start}')
-                results.append({'results':res,'type':'sources'})
+                tasks.append(OpenAlexQuery(self.mongoclient, self.mongoclient.sources_openalex, 'sources', self.requested_sources).run())
 
             if request == 'funders_openalex':
-                start = datetime.now()
                 print('running OpenAlexQuery for funders')
-                res = await OpenAlexQuery(self.mongoclient, self.mongoclient.funders_openalex, 'funders', self.requested_funders).run()
-                print(f'took {datetime.now()-start}')
-                results.append({'results':res,'type':'funders'})
+                tasks.append(OpenAlexQuery(self.mongoclient, self.mongoclient.funders_openalex, 'funders', self.requested_funders).run())
 
             if request == 'institutions_openalex':
-                start = datetime.now()
                 print('running OpenAlexQuery for institutions')
-                res = await OpenAlexQuery(self.mongoclient, self.mongoclient.institutions_openalex, 'institutions', self.requested_institutions).run()
-                print(f'took {datetime.now()-start}')
-                results.append({'results':res,'type':'institutions'})
+                tasks.append(OpenAlexQuery(self.mongoclient, self.mongoclient.institutions_openalex, 'institutions', self.requested_institutions).run())
 
             if request == 'topics_openalex':
-                start = datetime.now()
+
                 print('running OpenAlexQuery for topics')
-                res = await OpenAlexQuery(self.mongoclient, self.mongoclient.topics_openalex, 'topics', self.requested_topics).run()
-                print(f'took {datetime.now()-start}')
-                results.append({'results':res,'type':'topics'})
+                tasks.append(OpenAlexQuery(self.mongoclient, self.mongoclient.topics_openalex, 'topics', self.requested_topics).run())
+
+        result_group = asyncio.gather(*tasks)
+        for result in result_group:
+            results.append(result)
 
         return results
 class OpenAlexQuery():
@@ -265,7 +256,9 @@ class OpenAlexQuery():
     async def run(self) -> list:
         print(f'running {self.pyalextype}')
         if self.pyalextype == 'works' and not self.querylist:
+            print(f'Getting works for {self.years}')
             for year in self.years:
+                print(f'Getting works for year {year}')
                 stop = False
                 cursor = '*'
                 amountperpage = 25
@@ -302,17 +295,18 @@ class OpenAlexQuery():
                             print(f'error {e} while getting json')
                             break
                     if json_r.get('results'):
+                        print(f'got {len(json_r["results"])} openalex work results for year {year}')
                         for item in json_r['results']:
                             await self.collection.find_one_and_update({"id":item['id']}, {'$set':item}, upsert=True)
                             self.results.append(item['id'])
         else:
             if not self.querylist:
-                print('adding default queries')
+                print(f'adding default queries for {self.pyalextype}')
                 await self.add_to_querylist()
             if not self.querylist:
                 print(f'no queries to run for {self.pyalextype}.')
                 return self.results
-            print('running queries')
+            print(f'running queries for {self.pyalextype}')
             for i, query in enumerate(self.querylist):
                 querynum=i+1
                 print(f'running query {querynum} of {len(self.querylist)} of {self.pyalextype}')
@@ -326,4 +320,5 @@ class OpenAlexQuery():
                     print(f'error {e} while retrieving {self.pyalextype}')
                     continue
         print(f'finished {self.pyalextype}, added/updated {len(self.results)} {self.pyalextype}')
-        return self.results
+
+        return {'results':self.results,'type':self.pyalextype}

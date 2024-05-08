@@ -49,3 +49,5 @@ aiometer
 motor
 openpyxl-dictreader
 termcharts
+aiocsv
+aiofiles
