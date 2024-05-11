@@ -28,10 +28,12 @@ from xclass_refactor.journal_browser_scraper import JournalBrowserScraper
 from xclass_refactor.other_apis_import import CrossrefAPI, DataCiteAPI, OpenAIREAPI, ORCIDAPI
 from xclass_refactor.people_page_scraper import PeoplePageScraper
 from xclass_refactor.matching import AuthorMatcher
-from xclass_refactor.constants import *
+from xclass_refactor.constants import MONGOURL
 import asyncio
 import time
 from datetime import datetime
+import motor.motor_asyncio
+
 class UpdateManager:
     def __init__(self, years: list[int] = None):
         '''
@@ -42,53 +44,157 @@ class UpdateManager:
             self.years = years
         else:
             self.years = None
+        self.motorclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unificiation_system
 
     async def run(self):
         '''
         runs the queries based on the include dict
         note: add some sort of multiprocessing/threading/asyncio/scheduling here
         '''
-        from rich import print
+        from rich import print, box
         from rich.console import Console, SVG_EXPORT_THEME
         from rich.table import Table
-        cons = Console()
-        cons.print("Starting update manager...")
-        cons.print("Notes:")
-        cons.print("- this is a temporary update manager that will be replaced with a more robust one in the future")
-        cons.print("- the current update manager is not completely tested")
-        cons.print("- the result outputs are not yet usable or structured")
-        cons.print("- some of the APIs are not yet implemented")
-        cons.print("- some of the APIs are not yet tested")
-        cons.print("- errors are not all handled properly")
-        cons.print("- matching / combining data not properly implemented")
-        cons.print("- no work done yet for moving data to SQL")
-        cons.print("- for some data cleanup is needed; e.g. datacite: only 3 columns, one of which holds almost all relevant data as a dict -> move this to top level")
-
-
-        cons.rule('1. Running base APIs')
-        cons.print("Gathering data from OpenAlex and Pure (OAI-PMH and any report exports found)")
-        await asyncio.gather(
+        from rich.panel import Panel
+        from rich.progress import Progress
+        full_results = {}
+        cons = Console(markup=True)
+        notes = Table(title="Notes", show_lines=False, box=box.SIMPLE_HEAD, title_style='bold magenta', show_header=False)
+        notes.add_column('', style='cyan')
+        notes.add_row("this is a temporary update manager that will be replaced with a more robust one in the future")
+        notes.add_row("the current update manager is not completely tested")
+        notes.add_row("the result outputs are not yet usable or structured")
+        notes.add_row("some of the APIs are not yet implemented")
+        notes.add_row("some of the APIs are not yet tested")
+        notes.add_row("errors are not all handled properly")
+        notes.add_row("matching / combining data not properly implemented")
+        notes.add_row("no work done yet for moving data to SQL")
+        notes.add_row("for some data cleanup is needed; e.g. datacite: only 3 columns, one of which holds almost all relevant data as a dict -> move this to top level")
+        cons.print(Panel(notes, title="MUS Update Manager", style='magenta'))
+    
+        overview = Table(show_lines=False, box=box.SIMPLE_HEAD, show_header=False)
+        overview.add_column('')
+        overview.add_column('')
+        overview.add_row(":arrow_right:", "1. Get data from OpenAlex & Pure", style='cyan')
+        overview.add_row(":blue_square:","2. Run other APIs and scrapers, e.g. ORCID, OpenAIRE, JournalBrowser, etc")
+        overview.add_row(":blue_square:", "3. Cleaning, matching & deduplication of items")
+        overview.add_row(":blue_square:", "4. Gather and process data to import into SQL database")
+        overview.add_row(":blue_square:", "5. Import data into SQL database & report results")
+        cons.print(Panel(overview, title="Progress", style='magenta'))
+        first_results = await asyncio.gather(
             OpenAlexAPI().run(),
             PureAPI().run(),
             PureAuthorCSV().run(),
         )
-        cons.rule('2. Running other API and scrapers')
-        cons.print("currently including: DataCite, OpenAIRE, ORCID, Journal Browser, UT People Page")
-        cons.print('Crossref is skipped at the moment, needs updates.')
-        await asyncio.gather(
-            #CrossrefAPI().run(), #! needs better implementation before running
-            DataCiteAPI().run(),
-            ORCIDAPI().run(),
-            OpenAIREAPI().run(),
+        for result in first_results[0]:
+            full_results[result['type']] = len(result['results'])
+        full_results['pure_oai_pmh'] = first_results[1]['total']
+        full_results['pure_csv_authors'] = first_results[2]['total']
+
+        stats = Table(title='Retrieved items', title_style='dark_violet', show_header=True)
+        stats.add_column('Source', style='cyan')
+        stats.add_column('# added/updated', style='orange1')
+        for key in full_results:
+            stats.add_row(str(key), str(full_results[key]))
+        cons.print(stats)
+
+        overview = Table(show_lines=False, box=box.SIMPLE_HEAD, show_header=False)
+        overview.add_column('')
+        overview.add_column('')
+        overview.add_row(":white_check_mark:", "1. Get data from OpenAlex & Pure", style='dim')
+        overview.add_row(":arrow_right:","2. Run other APIs and scrapers, e.g. ORCID, OpenAIRE, JournalBrowser, etc", style='cyan')
+        overview.add_row(":blue_square:", "3. Cleaning, matching & deduplication of items")
+        overview.add_row(":blue_square:", "4. Gather and process data to import into SQL database")
+        overview.add_row(":blue_square:", "5. Import data into SQL database & report results")
+        cons.print(Panel(overview, title="Progress", style='magenta'))
+        
+        
+        cons.print("APIs included: Crossref, DataCite, OpenAIRE, ORCID, Journal Browser, UT People Page")
+
+        with Progress() as p:
+            numpapers = await self.motorclient['works_openalex'].count_documents({})
+            task = p.add_task("Getting list of dois for Datacite/Crossref/OpenAIRE", total=numpapers)
+            
+            datacitelist = []
+            openairelist = []
+            crossreflist = []
+            orcidlist = []
+            async for paper in self.motorclient['works_openalex'].find({}, projection={'id':1, 'doi':1}, sort=[('id', 1)]):
+                if paper.get('doi'):
+                    if not await self.motorclient['items_datacite'].find_one({'id':paper['id']}, projection={'id': 1}):
+                        datacitelist.append({'doi':paper['doi'].replace('https://doi.org/',''), 'id':paper['id']})
+                    if not await self.motorclient['items_openaire'].find_one({'id':paper['id']}, projection={'id': 1}):
+                        openairelist.append({'doi':paper['doi'].replace('https://doi.org/',''), 'id':paper['id']})
+                    if not await self.motorclient['items_crossref'].find_one({'id':paper['id']}, projection={'id': 1}):
+                        crossreflist.append({'doi':paper['doi'].replace('https://doi.org/',''), 'id':paper['id']})
+                p.update(task, advance=1)
+        
+        with Progress() as p:
+            numauths = await self.motorclient['authors_openalex'].count_documents({'ids.orcid':{'$exists':True}})
+            task = p.add_task("Getting list of orcids ", total=numauths)
+            async for auth in self.motorclient['authors_openalex'].find({'ids.orcid':{'$exists':True}}, projection={'id':1, 'ids':1}):
+                p.update(task, advance=1)
+                if auth.get('ids').get('orcid'):
+                    check = await self.motorclient['items_orcid'].find_one({'id':auth['id']}, projection={'id': 1, 'orcid-identifier': 1})
+                    if check:
+                        if check.get('orcid-identifier'):
+                            continue
+                    orcidlist.append({'orcid':auth['ids']['orcid'].replace('https://orcid.org/',''), 'id':auth['id']})
+
+        apilists = Table(title='Number of items per API', show_lines=True,title_style='bold cyan')
+        apilists.add_column('API')
+        apilists.add_column('item source')
+        apilists.add_column('id type')
+        apilists.add_column('number of items')
+        apilists.add_row('DataCite','works openalex','doi', str(len(datacitelist)))
+        apilists.add_row('OpenAIRE','works openalex','doi', str(len(openairelist)))
+        apilists.add_row('Crossref','works openalex','doi', str(len(crossreflist)))
+        apilists.add_row('ORCID','authors openalex','orcid', str(len(orcidlist)))
+        
+        cons.print(apilists)
+
+        second_results = await asyncio.gather(
+            CrossrefAPI(itemlist=crossreflist).run(),
+            DataCiteAPI(itemlist=datacitelist).run(),
+            ORCIDAPI(itemlist=orcidlist).run(),
+            OpenAIREAPI(itemlist=openairelist).run(),
             JournalBrowserScraper().run(),
             PeoplePageScraper().run(),
         )
-        cons.rule('3. Running author matching')
-        cons.print('matching authors from OpenAlex and Pure')
+        for result in second_results:
+            full_results[result['type']] = result['total']
 
-        await AuthorMatcher().run()
+        stats = Table(title='Retrieved items', title_style='dark_violet', show_header=True)
+        stats.add_column('Source', style='cyan')
+        stats.add_column('# added/updated', style='orange1')
+        for key in full_results:
+            stats.add_row(str(key), str(full_results[key]))
+        cons.print(stats)
 
-        cons.rule('Done!')
+        overview = Table(title='Tasks', show_lines=False, box=box.SIMPLE_HEAD, title_style='bold yellow', show_header=False)
+        overview.add_column('')
+        overview.add_column('')
+        overview.add_row(":white_check_mark:", "1. Get data from OpenAlex & Pure", style='dim')
+        overview.add_row(":white_check_mark:","2. Run other APIs and scrapers, e.g. ORCID, OpenAIRE, JournalBrowser, etc", style='dim')
+        overview.add_row(":arrow_right:", "3. Cleaning, matching & deduplication of items", style='cyan')
+        overview.add_row(":blue_square:", "4. Gather and process data to import into SQL database")
+        overview.add_row(":blue_square:", "5. Import data into SQL database & report results")
+        cons.print(Panel(overview, title="Progress", style='magenta'))
+        cons.print('Implemented functions: matching Pure authors (from CSV import) with OpenAlex authors')
+        
+        third_results = await asyncio.gather(AuthorMatcher().run(),
+        )
+        overview = Table(title='Tasks', show_lines=False, box=box.SIMPLE_HEAD, title_style='bold yellow', show_header=False)
+        overview.add_column('')
+        overview.add_column('')
+        overview.add_row(":white_check_mark:", "1. Get data from OpenAlex & Pure", style='dim')
+        overview.add_row(":white_check_mark:","2. Run other APIs and scrapers, e.g. ORCID, OpenAIRE, JournalBrowser, etc", style='dim')
+        overview.add_row(":white_question_mark:", "3. Cleaning, matching & deduplication of items", style='dim')
+        overview.add_row(":x:", "4. Gather and process data to import into SQL database", style='red')
+        overview.add_row(":x:", "5. Import data into SQL database & report results", style='red')
+        cons.print(Panel(overview, title="Progress", style='magenta'))
+
+        cons.print('Update Manager finished.')
+        
 
 
 def main():

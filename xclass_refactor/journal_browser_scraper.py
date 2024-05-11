@@ -1,10 +1,11 @@
 from xclass_refactor.generics import GenericScraper
 import urllib.parse
 from bs4 import BeautifulSoup as bs
-from rich import print, progress, console
+from rich.console import Console
 import aiometer
 import functools
 from xclass_refactor.constants import JOURNAL_BROWSER_URL
+cons = Console(markup=True)
 class JournalBrowserScraper(GenericScraper):
     def __init__(self):
         super().__init__('deals_journalbrowser')
@@ -24,7 +25,7 @@ class JournalBrowserScraper(GenericScraper):
                 if journal.get('issn') not in self.itemlist:
                     tmp['issn']=journal['issn']
             self.itemlist.append(tmp)
-        print(f'number of journals added: {len(self.itemlist)}')
+        cons.print(f'number of journals added: {len(self.itemlist)}')
 
     async def get_item_results(self) -> None:
         async with aiometer.amap(functools.partial(self.call_api), self.itemlist, max_at_once=self.scraper_settings['max_at_once'], max_per_second=self.scraper_settings['max_per_second']) as responses:
@@ -33,6 +34,7 @@ class JournalBrowserScraper(GenericScraper):
                     self.collection.update_one({'id':response['id']}, {'$set':response}, upsert=True)
                     self.results['total'] = self.results['total'] + 1
                     self.results['items_added'].append(response['id'])
+
     async def call_api(self, journal) -> dict:
         soup = {}
         query = (self.scraper_settings['url']

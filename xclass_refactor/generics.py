@@ -24,7 +24,7 @@ class GenericScraper():
 
     def __init__(self, collection: str) -> None:
         self.collection: motor.motor_asyncio.AsyncIOMotorCollection = self.motorclient[collection] # the collection to store results in
-        self.results : dict = {'items_added':[], 'total':0}
+        self.results : dict = {'items_added':[], 'total':0, 'type':collection}
         self.itemlist : list = []
         self.scraper_settings : dict = {
         'url':'',
@@ -87,16 +87,22 @@ class GenericAPI():
 
 
     httpxclient : httpx.AsyncClient = httpx.AsyncClient()
-    def __init__(self, collection: str, item_id_type: str) -> None:
+    def __init__(self, collection: str, item_id_type: str, itemlist: list) -> None:
         '''
         collection: the name of the mongodb collection to store results in
         item_id_type: the type of unique id this item uses (e.g. 'orcid' 'doi' 'pmid')
+        itemlist: optional list of items to process, each item should have the form:
+        {'id': str (openalex id), item_id_type: str (e.g. orcid, doi, pmid)}
         '''
+        if itemlist:
+            self.itemlist: list = itemlist
+        else:
+            self.itemlist : list = []
         self.NAMESPACES : dict = {}
         self.motorclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unificiation_system
-        self.itemlist : list = []
         self.collection : motor.motor_asyncio.AsyncIOMotorCollection = self.motorclient[collection] # the collection to store results in
-        self.results : dict = {'ids':[], item_id_type+'s':[], 'total':0}
+        self.collectionname : str = collection
+        self.results : dict = {'ids':[], item_id_type+'s':[], 'total':0, 'type':collection}
         self.item_id_type : str = item_id_type
         self.api_settings : dict = {
             'url':'',
@@ -122,7 +128,8 @@ class GenericAPI():
         convience method that runs the standard query and puts the results in the mongodb collection
         returns the 'self.results' dict
         '''
-        await self.make_itemlist()
+        if not self.itemlist:
+            await self.make_itemlist()
         await self.get_item_results()
         return self.results
     async def make_itemlist(self) -> None:
@@ -141,14 +148,23 @@ class GenericAPI():
             async for response in responses:
                 apiresponses.append(response)
                 i=i+1
-                if i >= 500 or len(apiresponses) == len(self.itemlist):
+                if i >= 100 or len(apiresponses) == len(self.itemlist):
                     newlist = [x for x in apiresponses if x not in insertlist]
                     insertlist.extend(newlist)
                     for item in newlist:
-                        await self.collection.find_one_and_update({"id":item['id']}, {'$set':item}, upsert=True)
-                        self.results['ids'].append(item['id'])
-                        self.results['total'] = self.results['total'] + 1
-                    print(f'[bold green]{len(insertlist)}[/bold green] {self.item_id_type}s added to mongodb ([bold cyan]+{len(newlist)}[/bold cyan])')
+                        if isinstance(item, list):
+                            for subitem in item:
+                                await self.collection.find_one_and_update({"id":subitem['id']}, {'$set':subitem}, upsert=True)
+                                self.results['ids'].append(subitem['id'])
+                                self.results['total'] = self.results['total'] + 1
+                        elif isinstance(item, dict):
+                            await self.collection.find_one_and_update({"id":item['id']}, {'$set':item}, upsert=True)
+                            self.results['ids'].append(item['id'])
+                            self.results['total'] = self.results['total'] + 1
+                        else:
+                            print(f'received unexpected type {type(item)}')
+                    print(f'[red]{len(insertlist)}[/red] {self.item_id_type}s added to {self.collectionname} ([cyan]+{len(newlist)}[/cyan])')
+                    
                     i=0
 
     async def call_api(self, item) -> dict:

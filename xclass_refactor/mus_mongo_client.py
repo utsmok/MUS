@@ -1,4 +1,4 @@
-from django.conf import settings
+from xclass_refactor.constants import MONGOURL
 import motor.motor_asyncio
 
 class MusMongoClient:
@@ -8,7 +8,6 @@ class MusMongoClient:
     wraps search and update functions
     '''
     def __init__(self):
-        MONGOURL = getattr(settings, "MONGOURL")
         self.mongoclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unificiation_system
 
         self.works_openalex = self.mongoclient['works_openalex']

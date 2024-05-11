@@ -50,41 +50,37 @@ class BASEAPI(GenericAPI):
 '''
 class CrossrefAPI(GenericAPI):
     '''
-    TODO: subclass from GenericAPI
     TODO: import xml data instead of json, see https://www.crossref.org/documentation/retrieve-metadata/xml-api/doi-to-metadata-query/
     '''
-    def __init__(self, years: list = [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025], mongoclient: MusMongoClient = None, dois: list[str] = None):
-        self.mongoclient = mongoclient
-        self.collection = mongoclient.items_crossref_xml
-        self.results = []
+    def __init__(self, itemlist = None):
+        super().__init__('items_crossref', 'doi', itemlist)
+        self.set_api_settings(headers = {"accept": "application/vnd.api+json"},
+                            max_per_second=5,
+                            max_at_once=5,
+                            )
         self.crossref = Crossref(mailto=APIEMAIL)
         self.pagesize=100
-        self.dois = dois
-        self.years = years
-    def get_crossref_results_from_dois(self):
-        if not self.dois:
-            self.dois = [str(x['doi']).replace('https://doi.org/','') for x in self.mongoclient.works_openalex.find()]
-            print(f'found {len(self.dois)} dois')
-            i=0
-            for doi in self.dois:
-                try:
-                    article = self.crossref.works(ids=doi)['message']
-                except Exception as e:
-                    print(f'error querying crossref for doi {doi}: {e}')
-                    continue
-                try:
-                    self.collection.find_one_and_update({"DOI":article['DOI']}, {'$set':article}, upsert=True)
-                    i=i+1
-                except Exception as e:
-                    print(f'error storing crossref result for doi {doi}: {e}')
-                    continue
-                if i % 100 == 0:
-                    print(f'{i} of {len(self.dois)} added (+100)')
-        else:
-            self.results.append(self.crossref.works(ids=self.dois, cursor = "*", limit = self.pagesize, cursor_max=100000))
-            pass
 
-    async def call_api(self, item, client):
+    async def make_itemlist(self) -> None:
+        ptable = table.Table(title=f"{self.item_id_type}s from OpenAlex works")
+        ptable.add_column("# checked", style="green")
+        ptable.add_column("# added",style="magenta")
+        i=0
+
+        numpapers = await self.motorclient['works_openalex'].count_documents({})
+        console.print(f'getting dois from {numpapers} openalexworks to find in crossref')
+
+        async for paper in self.motorclient['works_openalex'].find(projection={'id':1, 'doi':1}):
+            i+=1
+            if paper.get('doi'):
+                if await self.collection.find_one({'id':paper['id']}, projection={'id': 1}):
+                    continue
+                self.itemlist.append({self.item_id_type:paper['doi'].replace('https://doi.org/',''), 'id':paper['id']})
+        ptable.add_row(str(i), str(len(self.itemlist)))
+        console.print(ptable)
+
+
+    async def call_api(self, item):
         async def addrecord(record, openalexid, doi):
             item = None
             if record:
@@ -107,55 +103,44 @@ class CrossrefAPI(GenericAPI):
                 elif record['crossref'].get('report-paper'):
                     item = record['crossref']['report-paper']['report-paper_metadata']
                 if not item:
-                    print(f'no journal, book, or conference for doi {doi}')
+                    console.print(f'no journal, book, or conference for doi {doi}')
+                    return None
                 else:
                     item['id'] = openalexid
-                    self.collection.insert_one(item)
+                    return item
 
         url = f'https://doi.crossref.org/servlet/query?pid={APIEMAIL}&format=unixref&id={item['doi']}'
+        results = []
         try:
-            r = await client.get(url)
+            r = await self.httpxclient.get(url)
             data = xmltodict.parse(r.text, attr_prefix='',dict_constructor=dict)
         except Exception as e:
-            print(f'error querying crossref for doi {item['doi']}: {e}')
+            console.print(f'error querying crossref for doi {item['doi']}: {e}')
         try:
             if data.get('doi_records'):
                 if isinstance(data.get('doi_records'), list):
                     for record in data.get('doi_records'):
-                        await addrecord(record, item['id'], item['doi'])
+                        result = await addrecord(record, item['id'], item['doi'])
+                        if not result:
+                            result = {'id': item['id'], 'doi': item['doi']}
+                        results.append(result)
                 else:
-                    await addrecord(data.get('doi_records').get('doi_record'), item['id'], item['doi'])
-        except Exception as e:
-            print(f'error storing crossref result for doi {item['doi']}: {e}')
-    async def get_xml_crossref_results_from_dois(self):
-        shortlist = []
-        for x in self.mongoclient.works_openalex.find():
-            if not self.collection.find_one({'id':x['id']}):
-                item = {'doi':str(x['doi']).replace('https://doi.org/',''), 'id':x['id']}
-        print(f'found {len(shortlist)} works in openalex without crossref results')
-        tasks = []
-        results = []
-        async with httpx.AsyncClient() as client:
-            for i, item in enumerate(shortlist):
-                if not item['doi']:
-                    continue
-                task = asyncio.ensure_future(self.call_api(item, client))
-                tasks.append(task)
-                if len(tasks) == 50 or i == len(shortlist)-1:
-                    result = await asyncio.gather(*tasks, return_exceptions=True)
-                    results.extend(result)
-                    print(f'{i} of {len(shortlist)} processed (+50)')
-                    tasks = []
+                    result =await addrecord(data.get('doi_records').get('doi_record'), item['id'], item['doi'])
+                    if not result:
+                        result = {'id': item['id'], 'doi': item['doi']}
 
-    def run(self):
-        print('getting crossref results')
-        asyncio.get_event_loop().run_until_complete(self.get_xml_crossref_results_from_dois())
+                    results.append(result)
+        except Exception as e:
+            console.print(f'error storing crossref result for doi {item['doi']}: {e}')
+
+        return results
+
 '''
 ---------------------------- Done ------------------------------
 '''
 class DataCiteAPI(GenericAPI):
-    def __init__(self):
-        super().__init__('items_datacite', 'doi')
+    def __init__(self, itemlist = None):
+        super().__init__('items_datacite', 'doi', itemlist)
         self.set_api_settings(headers = {"accept": "application/vnd.api+json"},
                             max_per_second=5,
                             max_at_once=5,
@@ -170,7 +155,7 @@ class DataCiteAPI(GenericAPI):
                 raise Exception(f"DataCite API response code {response.status_code}")
             response_json = response.json()
         except Exception as e:
-            print(f'Error while retrieving all UT datacite items: {e}')
+            console.print(f'Error while retrieving all UT datacite items: {e}')
         for item in response_json["data"]:
             tmp={}
             attrs=item['attributes']
@@ -198,7 +183,7 @@ class DataCiteAPI(GenericAPI):
         i=0
 
         numpapers = await self.motorclient['works_openalex'].count_documents({})
-        print(f'getting dois from {numpapers} openalexworks to find in datacite')
+        console.print(f'getting dois from {numpapers} openalexworks to find in datacite')
 
         async for paper in self.motorclient['works_openalex'].find(projection={'id':1, 'doi':1}):
             i+=1
@@ -216,7 +201,7 @@ class DataCiteAPI(GenericAPI):
                 r = await self.httpxclient.get(url)
                 return r.json()
             except Exception as e:
-                print(f'error querying datacite for doi {doi}: {e}')
+                console.print(f'error querying datacite for doi {doi}: {e}')
                 return None
         doi = item.get('doi')
         id = item.get('id')
@@ -224,16 +209,19 @@ class DataCiteAPI(GenericAPI):
         if not result:
             return {'id': id, 'doi': doi}
         else:
+            if result.get('meta').get('total') == 0:
+                return {'id': id, 'doi': doi}
             result['id']=id
             return result
 class OpenAIREAPI(GenericAPI):
-    def __init__(self):
+    def __init__(self, itemlist = None):
         '''
         Creates a new OpenAIREAPI instance
         call OpenAIREAPI().run() to execute standard queries & update mongodb -- no parameters needed.
         see docs for advanced usage.
         '''
-        super().__init__('items_openaire', 'doi')
+        super().__init__('items_openaire', 'doi', itemlist)
+
         self.motorclient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unificiation_system
         self.collection = self.motorclient['items_openaire']
         self.refreshtime = datetime.now() - timedelta(hours=3)
@@ -248,8 +236,8 @@ class OpenAIREAPI(GenericAPI):
                             max_per_second=2
                         )
 
-    def update_access_token(self) -> str:
-        if not self.refreshtime or datetime.now() - self.refreshtime > timedelta(minutes=55) or not self.api_settings['tokens'].get('access_token'):
+    def update_access_token(self, refresh: bool = False) -> str:
+        if refresh or datetime.now() - self.refreshtime > timedelta(minutes=45) or not self.api_settings['tokens'].get('access_token'):
             try:
                 self.refreshtime = datetime.now()
                 tokendata = httpx.get(f'https://services.openaire.eu/uoa-user-management/api/users/getAccessToken?refreshToken={self.api_settings['tokens']['refresh_token']}').json()
@@ -267,7 +255,7 @@ class OpenAIREAPI(GenericAPI):
         ptable.add_column("# added",style="magenta")
         i=0
         numpapers = await self.motorclient['works_openalex'].count_documents({})
-        print(f'getting dois from {numpapers} openalexworks to find in openaire')
+        console.print(f'getting dois from {numpapers} openalexworks to find in openaire')
 
         async for paper in self.motorclient['works_openalex'].find({}, projection={'id':1, 'doi':1}, sort=[('id', 1)]):
             i+=1
@@ -290,20 +278,19 @@ class OpenAIREAPI(GenericAPI):
             except Exception as e:
                 console.print(f'error querying openaire for doi {item.get("doi")}: {e}')
                 if ('token' in str(e)):
-                    self.update_access_token()
+                    self.update_access_token(refresh=True)
                     return await httpget(item)
                 else:
                     return False
             if not parsedxml.get('response').get('results'):
-                print(f'no results for {doi}')
+                console.print(f'no results for {doi}')
                 return False
             elif isinstance(parsedxml.get('response').get('results').get('result'),list):
                 if len(parsedxml.get('response').get('results').get('result')) > 1:
-                    print('multiple results (?) only returning the first')
+                    console.print('multiple results (?) only returning the first')
                 return parsedxml.get('response').get('results').get('result')[0].get('metadata').get('http://namespace.openaire.eu/oaf:entity').get('http://namespace.openaire.eu/oaf:result')
             else:
                 return parsedxml.get('response').get('results').get('result').get('metadata').get('http://namespace.openaire.eu/oaf:entity').get('http://namespace.openaire.eu/oaf:result')
-        self.update_access_token()
         id = item.get('id')
         doi = item.get('doi')
         result = await httpget(item)
@@ -318,7 +305,12 @@ class OpenAIREAPI(GenericAPI):
 
 
 class ORCIDAPI(GenericAPI):
-    NAMESPACES = {
+    
+    def __init__(self, itemlist = None) -> None:
+        super().__init__('items_orcid', 'orcid', itemlist)
+        self.refresh_access_token()
+        self.set_api_settings(headers={'Accept': 'application/orcid+xml', 'Authorization': f'Bearer {self.api_settings['tokens']['access_token']}'}, max_at_once=10, max_per_second=10)
+        self.NAMESPACES = {
             'http://www.orcid.org/ns/internal':'internal',
             'http://www.orcid.org/ns/education':'education',
             'http://www.orcid.org/ns/distinction':'distinction',
@@ -348,11 +340,6 @@ class ORCIDAPI(GenericAPI):
             'http://www.orcid.org/ns/bulk':'bulk',
             'http://www.orcid.org/ns/research-resource':'research-resource'
         }
-    def __init__(self) -> None:
-        super().__init__('items_orcid', 'orcid')
-        self.refresh_access_token()
-        self.set_api_settings(headers={'Accept': 'application/orcid+xml', 'Authorization': f'Bearer {self.api_settings['tokens']['access_token']}'}, max_at_once=10, max_per_second=10)
-
     def refresh_access_token(self) -> None:
         url = 'https://orcid.org/oauth/token'
         header = {'Accept': 'application/json'}
@@ -416,10 +403,6 @@ class ORCIDAPI(GenericAPI):
                 return remove_colon_from_keys(record)
             except Exception as e:
                 console.print(f'error querying for ORCID {item_id}: {e}')
-                try:
-                    console.print(f'{r.text}, {r.status_code}')
-                except:
-                    console.print(f'no response')
                 return None
 
         result = await httpget(item[self.item_id_type])

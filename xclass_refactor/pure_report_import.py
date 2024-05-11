@@ -1,6 +1,5 @@
 
 import motor.motor_asyncio
-from django.conf import settings
 from collections import defaultdict
 import pandas as pd
 import csv
@@ -10,10 +9,10 @@ import openpyxl_dictreader
 from zipfile import BadZipFile
 from datetime import datetime, timedelta
 import termcharts
+from xclass_refactor.constants import MONGOURL
 
 class PureReport():
     def __init__(self, filenames: list[str] = None):
-        MONGOURL = getattr(settings, "MONGOURL")
         self.mongoclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unificiation_system
         self.filenames : list[str] = filenames
         self.library_employees = ['M7731800',
