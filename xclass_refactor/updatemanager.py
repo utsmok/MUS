@@ -29,6 +29,7 @@ from xclass_refactor.other_apis_import import CrossrefAPI, DataCiteAPI, OpenAIRE
 from xclass_refactor.people_page_scraper import PeoplePageScraper
 from xclass_refactor.matching import AuthorMatcher
 from xclass_refactor.constants import MONGOURL
+
 import asyncio
 import time
 from datetime import datetime
@@ -51,6 +52,8 @@ class UpdateManager:
         runs the queries based on the include dict
         note: add some sort of multiprocessing/threading/asyncio/scheduling here
         '''
+
+
         from rich import print, box
         from rich.console import Console, SVG_EXPORT_THEME
         from rich.table import Table
@@ -70,7 +73,7 @@ class UpdateManager:
         notes.add_row("no work done yet for moving data to SQL")
         notes.add_row("for some data cleanup is needed; e.g. datacite: only 3 columns, one of which holds almost all relevant data as a dict -> move this to top level")
         cons.print(Panel(notes, title="MUS Update Manager", style='magenta'))
-    
+
         overview = Table(show_lines=False, box=box.SIMPLE_HEAD, show_header=False)
         overview.add_column('')
         overview.add_column('')

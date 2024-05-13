@@ -1,23 +1,22 @@
 from django.db import models
 from django_extensions.db.models import TimeStampedModel
-
-
+from .models import Organization
+from django.core.serializers.json import DjangoJSONEncoder
 class AuthorOpenAlexData(TimeStampedModel, models.Model):
-    affiliations = models.ManyToManyField('Organization', related_name="openalex_authors", through="Affiliation")
     
     cited_by_count = models.IntegerField(null=True)
     counts_by_year = models.JSONField(null=True)
 
-    openalex_created_date = models.DateField()
-    openalex_updated_date = models.DateField()
+    openalex_created_date = models.DateTimeField()
+    openalex_updated_date = models.DateTimeField()
 
     name = models.CharField()
-    name_alternatives = models.JSONField()
+    name_alternatives = models.JSONField(null=True)
     openalex_id = models.CharField()
-    orcid = models.CharField()
-    scopus = models.CharField()
-    twitter = models.CharField()
-    wikipedia = models.CharField()
+    orcid = models.CharField(null=True)
+    scopus = models.CharField(null=True)
+    twitter = models.CharField(null=True)
+    wikipedia = models.CharField(null=True)
 
     impact_factor = models.FloatField(null=True)
     h_index = models.IntegerField(null=True)
@@ -35,12 +34,12 @@ class AuthorPureData(TimeStampedModel, models.Model):
     links=models.JSONField(null=True)
     default_publishing_name=models.CharField(null=True)
     known_as_name= models.CharField(null=True)
-    affl_start_date= models.DateField(null=True)
-    affl_end_date= models.DateField(null=True)
+    affl_start_date= models.JSONField(null=True, encoder=DjangoJSONEncoder)
+    affl_end_date= models.JSONField(null=True, encoder=DjangoJSONEncoder)
     uuid= models.UUIDField()
     pureid=models.CharField()
-    last_modified= models.DateField()
-    affl_periods=models.JSONField(null=True)
+    last_modified= models.DateTimeField()
+    affl_periods=models.JSONField(null=True, encoder=DjangoJSONEncoder)
     org_names= models.JSONField(null=True)
     org_uuids= models.JSONField(null=True)
     org_pureids= models.JSONField(null=True)
@@ -90,7 +89,7 @@ class Author(TimeStampedModel, models.Model):
     first_name = models.CharField()
     last_name = models.CharField()
     initials = models.CharField()
-    alternative_names = models.JSONField()
+    alternative_names = models.JSONField(null=True)
 
     openalex_id = models.CharField(null=True)
     orcid = models.CharField(null=True)
@@ -99,9 +98,10 @@ class Author(TimeStampedModel, models.Model):
     scopus_id = models.CharField(null=True)
 
     employee = models.BooleanField()        #  make generated field maybe?
+    affiliations = models.ManyToManyField(Organization, related_name="authors", through="Affiliation")
 
 
 class Affiliation(TimeStampedModel, models.Model):
-    author = models.ForeignKey('Author', on_delete=models.CASCADE, related_name="affiliations")
-    organization = models.ForeignKey('Organization', on_delete=models.CASCADE, related_name="affiliations")
+    author = models.ForeignKey(Author, on_delete=models.CASCADE, related_name="affils")
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="affiliated_authors")
     years = models.JSONField(null=True)

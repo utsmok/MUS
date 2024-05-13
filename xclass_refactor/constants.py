@@ -10,10 +10,16 @@ ORCID_ACCESS_TOKEN = os.getenv('ORCID_ACCESS_TOKEN')
 APIEMAIL = str(os.getenv('APIEMAIL'))
 OPENAIRETOKEN = str(os.getenv('OPENAIRETOKEN'))
 
-# IDs, names, and URLS for current university
+# IDs, names, and URLS for current main institute/uni/...
 
 INSTITUTE_NAME = str(os.getenv('INSTITUTE_NAME'))
 INSTITUTE_ALT_NAME = str(os.getenv('INSTITUTE_ALT_NAME'))
+
+groups = str(os.getenv('INSTITUTE_GROUPS'))
+if groups:
+    INSTITUTE_GROUPS = groups.split(',')
+else:
+    INSTITUTE_GROUPS = []
 
 ROR = str(os.getenv('ROR'))
 OPENALEX_INSTITUTE_ID = str(os.getenv('OPENALEX_INSTITUTE_ID'))

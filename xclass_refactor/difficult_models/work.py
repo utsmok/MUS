@@ -1,7 +1,9 @@
 from django.db import models
 from django_extensions.db.models import TimeStampedModel
-from xclass_refactor.models.models import Grant
-
+from xclass_refactor.difficult_models.models import Grant
+from xclass_refactor.difficult_models.source import Source
+from xclass_refactor.difficult_models.author import Author
+from xclass_refactor.difficult_models.models import Funder, Topic
 class MUSTypes(models.TextChoices):
     ...
 
@@ -74,8 +76,8 @@ class Abstract(models.Model):
 class WorkPureData(TimeStampedModel, models.Model):
     # data for a work grabbed from pure
     abstract = models.OneToOneField(Abstract, on_delete=models.CASCADE, null=True, default=None)
-    grants = models.ManyToManyField(Grant, related_name="openalex_works")
-    authors = models.ManyToManyField('Author', through='Authorship', related_name="openalex_works")
+    grants = models.ManyToManyField(Grant, related_name="pure_works")
+    authors = models.ManyToManyField(Author, through='Authorship', related_name="pure_works")
 
     # ---- more fields needed here
 
@@ -83,9 +85,9 @@ class WorkOpenAlexData(TimeStampedModel, models.Model):
     # data for a work grabbed from openalex
 
     abstract = models.OneToOneField(Abstract, on_delete=models.CASCADE, null=True, default=None)
-    authors = models.ManyToManyField('Author', through='Authorship', related_name="openalex_works")
-    topics = models.ManyToManyField('Topic', related_name="openalex_works")
-    journal = models.ForeignKey('Source', on_delete=models.CASCADE, related_name="openalex_works", null=True, default=None)
+    authors = models.ManyToManyField(Author, through='Authorship', related_name="openalex_works")
+    topics = models.ManyToManyField(Topic, related_name="openalex_works")
+    journal = models.ForeignKey(Source, on_delete=models.CASCADE, related_name="openalex_works", null=True, default=None)
     # the following relations are defined from the other models:
     # locations - foreign key to Work
     # grants - many to many to Work
@@ -99,7 +101,7 @@ class WorkOpenAlexData(TimeStampedModel, models.Model):
     publication_year = models.IntegerField()
 
     itemtype = models.CharField(choices=OpenAlexTypes)
-    itemtype_crossref = models.CharField(choice=CrossrefTypes)
+    itemtype_crossref = models.CharField(choices=CrossrefTypes)
     language = models.CharField()
     
     is_paratext = models.BooleanField()
@@ -168,8 +170,9 @@ class Authorship(TimeStampedModel, models.Model):
         FIRST_AUTHOR = 'first'
         MIDDLE_AUTHOR = 'middle'
         LAST_AUTHOR = 'last'
-    work = models.ForeignKey('Work', on_delete=models.CASCADE, related_name="authorships")
-    author = models.ForeignKey('Author', on_delete=models.CASCADE, related_name="authorships")
+    pure_work = models.ForeignKey('WorkPureData', on_delete=models.CASCADE, related_name="pure_authorship", null=True)
+    openalex_work = models.ForeignKey('WorkOpenAlexData', on_delete=models.CASCADE, related_name="openalex_authorship", null=True)
+    author = models.ForeignKey('Author', on_delete=models.CASCADE, related_name="authorship")
     author_position = models.CharField(choices=AuthorPosition)
     is_corresponding = models.BooleanField(null=True)
     author_institutions = models.JSONField(null=True)
