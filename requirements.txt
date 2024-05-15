@@ -51,3 +51,4 @@ openpyxl-dictreader
 termcharts
 aiocsv
 aiofiles
+django-readers

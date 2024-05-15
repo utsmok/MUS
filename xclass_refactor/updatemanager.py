@@ -35,7 +35,7 @@ import time
 from datetime import datetime
 import motor.motor_asyncio
 from xclass_refactor.utils import get_mongo_collection_mapping
-import orjson
+import json
 
 class UpdateManager:
     def __init__(self, years: list[int] = None):
@@ -55,8 +55,9 @@ class UpdateManager:
         note: add some sort of multiprocessing/threading/asyncio/scheduling here
         '''
         mapping = await get_mongo_collection_mapping()
-        with 'mapping_export.json' as f:
-            orjson.dump(mapping, f)
+        filename = 'mapping_export.json'
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump(mapping,f)
         return None
         from rich import print, box
         from rich.console import Console, SVG_EXPORT_THEME
