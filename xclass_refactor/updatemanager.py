@@ -34,6 +34,8 @@ import asyncio
 import time
 from datetime import datetime
 import motor.motor_asyncio
+from xclass_refactor.utils import get_mongo_collection_mapping
+import orjson
 
 class UpdateManager:
     def __init__(self, years: list[int] = None):
@@ -52,8 +54,10 @@ class UpdateManager:
         runs the queries based on the include dict
         note: add some sort of multiprocessing/threading/asyncio/scheduling here
         '''
-
-
+        mapping = await get_mongo_collection_mapping()
+        with 'mapping_export.json' as f:
+            orjson.dump(mapping, f)
+        return None
         from rich import print, box
         from rich.console import Console, SVG_EXPORT_THEME
         from rich.table import Table
@@ -109,14 +113,14 @@ class UpdateManager:
         overview.add_row(":blue_square:", "4. Gather and process data to import into SQL database")
         overview.add_row(":blue_square:", "5. Import data into SQL database & report results")
         cons.print(Panel(overview, title="Progress", style='magenta'))
-        
-        
+
+
         cons.print("APIs included: Crossref, DataCite, OpenAIRE, ORCID, Journal Browser, UT People Page")
 
         with Progress() as p:
             numpapers = await self.motorclient['works_openalex'].count_documents({})
             task = p.add_task("Getting list of dois for Datacite/Crossref/OpenAIRE", total=numpapers)
-            
+
             datacitelist = []
             openairelist = []
             crossreflist = []
@@ -130,7 +134,7 @@ class UpdateManager:
                     if not await self.motorclient['items_crossref'].find_one({'id':paper['id']}, projection={'id': 1}):
                         crossreflist.append({'doi':paper['doi'].replace('https://doi.org/',''), 'id':paper['id']})
                 p.update(task, advance=1)
-        
+
         with Progress() as p:
             numauths = await self.motorclient['authors_openalex'].count_documents({'ids.orcid':{'$exists':True}})
             task = p.add_task("Getting list of orcids ", total=numauths)
@@ -152,7 +156,7 @@ class UpdateManager:
         apilists.add_row('OpenAIRE','works openalex','doi', str(len(openairelist)))
         apilists.add_row('Crossref','works openalex','doi', str(len(crossreflist)))
         apilists.add_row('ORCID','authors openalex','orcid', str(len(orcidlist)))
-        
+
         cons.print(apilists)
 
         second_results = await asyncio.gather(
@@ -183,7 +187,7 @@ class UpdateManager:
         overview.add_row(":blue_square:", "5. Import data into SQL database & report results")
         cons.print(Panel(overview, title="Progress", style='magenta'))
         cons.print('Implemented functions: matching Pure authors (from CSV import) with OpenAlex authors')
-        
+
         third_results = await asyncio.gather(AuthorMatcher().run(),
         )
         overview = Table(title='Tasks', show_lines=False, box=box.SIMPLE_HEAD, title_style='bold yellow', show_header=False)
@@ -197,7 +201,7 @@ class UpdateManager:
         cons.print(Panel(overview, title="Progress", style='magenta'))
 
         cons.print('Update Manager finished.')
-        
+
 
 
 def main():
