@@ -29,7 +29,7 @@ from xclass_refactor.other_apis_import import CrossrefAPI, DataCiteAPI, OpenAIRE
 from xclass_refactor.people_page_scraper import PeoplePageScraper
 from xclass_refactor.matching import AuthorMatcher
 from xclass_refactor.constants import MONGOURL
-
+from xclass_refactor.create_sql import CreateSQL
 import asyncio
 import time
 from datetime import datetime
@@ -54,10 +54,13 @@ class UpdateManager:
         runs the queries based on the include dict
         note: add some sort of multiprocessing/threading/asyncio/scheduling here
         '''
-        mapping = await get_mongo_collection_mapping()
+
+        '''mapping = await get_mongo_collection_mapping()
         filename = 'mapping_export.json'
         with open(filename, 'w', encoding='utf-8') as f:
-            json.dump(mapping,f)
+            json.dump(mapping,f)'''
+        await CreateSQL().add_all()
+
         return None
         from rich import print, box
         from rich.console import Console, SVG_EXPORT_THEME
@@ -90,13 +93,13 @@ class UpdateManager:
         cons.print(Panel(overview, title="Progress", style='magenta'))
         first_results = await asyncio.gather(
             OpenAlexAPI().run(),
-            PureAPI().run(),
-            PureAuthorCSV().run(),
+            #PureAPI().run(),
+            #PureAuthorCSV().run(),
         )
         for result in first_results[0]:
             full_results[result['type']] = len(result['results'])
-        full_results['pure_oai_pmh'] = first_results[1]['total']
-        full_results['pure_csv_authors'] = first_results[2]['total']
+        #full_results['pure_oai_pmh'] = first_results[1]['total']
+        #full_results['pure_csv_authors'] = first_results[2]['total']
 
         stats = Table(title='Retrieved items', title_style='dark_violet', show_header=True)
         stats.add_column('Source', style='cyan')
@@ -114,7 +117,7 @@ class UpdateManager:
         overview.add_row(":blue_square:", "4. Gather and process data to import into SQL database")
         overview.add_row(":blue_square:", "5. Import data into SQL database & report results")
         cons.print(Panel(overview, title="Progress", style='magenta'))
-
+        return None
 
         cons.print("APIs included: Crossref, DataCite, OpenAIRE, ORCID, Journal Browser, UT People Page")
 

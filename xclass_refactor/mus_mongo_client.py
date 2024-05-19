@@ -16,7 +16,8 @@ class MusMongoClient:
         self.funders_openalex = self.mongoclient['funders_openalex']
         self.topics_openalex = self.mongoclient['topics_openalex']
         self.institutions_openalex = self.mongoclient['institutions_openalex']
-
+        self.publishers_openalex = self.mongoclient['publishers_openalex']
+        
         self.authors_pure = self.mongoclient['authors_pure']
 
         self.items_pure_oaipmh = self.mongoclient['items_pure_oaipmh']

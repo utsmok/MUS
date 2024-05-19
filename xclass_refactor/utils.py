@@ -160,3 +160,25 @@ async def get_mongo_collection_mapping():
 
     return mapping
 
+async def parse_reversed_abstract(abstract_raw:dict) -> str:
+    """
+    Inverts the given abstract by converting it from a string representation to a dictionary.
+    Then, it creates a list of word-index pairs by iterating over the inverted abstract dictionary.
+    Finally, it sorts the list based on the index and returns the concatenation of all word-index pairs.
+
+    Parameters:
+    - inverted_abstract (str): The string representation of the inverted abstract.
+
+    Returns:
+    - str: The concatenated word-index pairs.
+    """
+    try:
+        word_index = []
+        for k, v in abstract_raw.items():
+            for index in v:
+                word_index.append([k, index])
+        word_index = sorted(word_index, key=lambda x: x[1])
+        text = " ".join(word[0] for word in word_index)
+    except Exception:
+        text = ""
+    return text
