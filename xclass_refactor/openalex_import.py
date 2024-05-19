@@ -50,7 +50,7 @@ class OpenAlexAPI():
         self.requested_topics = self.openalex_requests.get('topics_openalex')
         self.requested_publishers = self.openalex_requests.get('publishers_openalex')
         if not years:
-            self.years = [2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024 , 2025]
+            self.years = [2022, 2023, 2024 , 2025]
         else:
             self.years = years
         self.mongoclient = MusMongoClient()
@@ -63,48 +63,50 @@ class OpenAlexAPI():
         pyalex.config.retry_http_codes = [429, 500, 503]
 
     async def run(self):
-        # make parallel/async/mp? -> No, api limit!
         from datetime import datetime
         results = []
         tasks = []
+        tasks2 = []
         for request in self.openalex_requests:
-            if request == 'works_openalex' and False:
+            if request == 'works_openalex':
                 start = datetime.now()
                 cons.print('running OpenAlexQuery for works')
                 res = await OpenAlexQuery(mongoclient=self.mongoclient, mongocollection=self.mongoclient.works_openalex, pyalextype='works', item_ids=self.requested_works, years=self.years).run()
                 cons.print(f'took {datetime.now()-start}')
                 results.append(res)
-            if request == 'authors_openalex' and False:
+            if request == 'authors_openalex':
                 cons.print('running OpenAlexQuery for authors')
                 tasks.append(OpenAlexQuery(self.mongoclient, self.mongoclient.authors_openalex, 'authors', self.requested_authors).run())
 
-            if request == 'sources_openalex' and False:
+            if request == 'sources_openalex':
                 cons.print('running OpenAlexQuery for sources')
                 tasks.append(OpenAlexQuery(self.mongoclient, self.mongoclient.sources_openalex, 'sources', self.requested_sources).run())
 
-            if request == 'funders_openalex' and False:
+            if request == 'funders_openalex':
                 cons.print('running OpenAlexQuery for funders')
                 tasks.append(OpenAlexQuery(self.mongoclient, self.mongoclient.funders_openalex, 'funders', self.requested_funders).run())
 
-            if request == 'institutions_openalex' and False:
+            if request == 'institutions_openalex':
                 cons.print('running OpenAlexQuery for institutions')
                 tasks.append(OpenAlexQuery(self.mongoclient, self.mongoclient.institutions_openalex, 'institutions', self.requested_institutions).run())
 
-            if request == 'topics_openalex' and False:
+            if request == 'topics_openalex':
                 cons.print('running OpenAlexQuery for topics')
                 tasks.append(OpenAlexQuery(self.mongoclient, self.mongoclient.topics_openalex, 'topics', self.requested_topics).run())
             
             if request == 'publishers_openalex':
                 cons.print('running OpenAlexQuery for publishers')
-                tasks.append(OpenAlexQuery(self.mongoclient, self.mongoclient.publishers_openalex, 'publishers', self.requested_publishers).run())
+                tasks2.append(OpenAlexQuery(self.mongoclient, self.mongoclient.publishers_openalex, 'publishers', self.requested_publishers).run())
 
         results2 = await asyncio.gather(*tasks)
+        results3 = await asyncio.gather(*tasks2)
         if not isinstance(results, list):
             results2 = [results]
         if isinstance(results, list):
             results.extend(results2)
         if not results:
             results = results2
+        results.extend(results3)
         
         return results
 class OpenAlexQuery():
@@ -184,7 +186,7 @@ class OpenAlexQuery():
                                             if any([institution['ror'] == ROR,
                                             institution['id'] == OPENALEX_INSTITUTE_ID,
                                             INSTITUTE_NAME.lower() in institution['display_name'].lower(),
-                                            INSTITUTE_ALT_NAME.lower() in institution['display_name'].lower()]):
+                                            institution['display_name'].lower() in [name.lower() for name in INSTITUTE_ALT_NAME]]):
                                                 authorlist.add(authorship['author']['id'])
                                                 break
                     if self.pyalextype == 'sources':
@@ -327,19 +329,14 @@ class OpenAlexQuery():
                 cons.print(f'no queries to run for {self.pyalextype}.')
                 return {'results':self.results,'type':self.pyalextype}
             cons.print(f'running queries for {self.pyalextype}')
-            resnum = 0
             for i, query in enumerate(self.querylist):
                 querynum=i+1
-                
                 cons.print(f'running query {querynum} of {len(self.querylist)} of {self.pyalextype}')
-                cons.print(f'{resnum} results so far')
                 try:
                     for item in chain(*query.paginate(per_page=100, n_max=None)):
-                            resnum+=1
                             updt = await self.collection.find_one_and_update({"id":item['id']}, {'$set':item}, upsert=True)
                             if updt:
-                                if updt['updated_date']!=item['updated_date']:
-                                    self.results.append(item['id'])
+                                self.results.append(item['id'])
                 except Exception as e:
                     cons.print(f'error {e} while retrieving {self.pyalextype}')
                     continue

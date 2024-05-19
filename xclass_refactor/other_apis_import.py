@@ -226,26 +226,35 @@ class OpenAIREAPI(GenericAPI):
         self.collection = self.motorclient['items_openaire']
         self.refreshtime = datetime.now() - timedelta(hours=3)
         self.api_settings['tokens'] = {'refresh_token':OPENAIRETOKEN}
+
+        accesstoken = ""
         self.set_api_settings(
                             url='https://api.openaire.eu/search/researchProducts',
-                            headers={'Authorization': f'Bearer {self.update_access_token()}'},
+                            headers={'Authorization': f'Bearer {accesstoken}'},
                             tokens={'refresh_token': OPENAIRETOKEN,
-                                    'access_token':''
                             },
                             max_at_once=5,
                             max_per_second=2
                         )
+        try:
+            self.update_access_token(refresh=True)
+        except Exception as e:
+            console.print(f'error refreshing OpenAIRE access token: {e}')
+            console.print(f'{self.api_settings=}')
 
     def update_access_token(self, refresh: bool = False) -> str:
         if refresh or datetime.now() - self.refreshtime > timedelta(minutes=45) or not self.api_settings['tokens'].get('access_token'):
             try:
                 self.refreshtime = datetime.now()
-                tokendata = httpx.get(f'https://services.openaire.eu/uoa-user-management/api/users/getAccessToken?refreshToken={self.api_settings['tokens']['refresh_token']}').json()
+                r = httpx.get(f'https://services.openaire.eu/uoa-user-management/api/users/getAccessToken?refreshToken={self.api_settings['tokens']['refresh_token']}')
+                tokendata = r.json()
                 self.api_settings['tokens']['access_token'] = tokendata.get("access_token")
                 console.print('OpenAIRE access token updated')
+                self.api_settings['headers']={'Authorization': f'Bearer {self.api_settings["tokens"]["access_token"]}'}
             except Exception as e:
                 console.print(f'error refreshing OpenAIRE access token: {e}')
-                console.print(f'{self.api_settings=}')
+                console.print(self.api_settings)
+                console.print(r.text)
                 raise LookupError('Cannot refresh OpenAIRE access token')
         return self.api_settings['tokens']['access_token']
 

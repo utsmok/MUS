@@ -19,7 +19,7 @@ class PureAPI(GenericAPI):
         if years:
             self.years : list[int] = years
         else:
-            self.years : list[int] = [2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024]
+            self.years : list[int] = [2022, 2023, 2024]
         self.years.sort(reverse=True)
         self.set_api_settings(max_at_once=5,
                             max_per_second=5)

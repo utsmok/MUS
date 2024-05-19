@@ -84,7 +84,7 @@ class CreateSQL:
         async with asyncio.TaskGroup() as tg:
             topics_siblings = tg.create_task(self.add_topic_siblings())
             funders = tg.create_task(self.add_all_itemtype(self.motorclient.funders_openalex, self.add_funder))
-            sources = tg.create_task(self.add_all_itemtype(self.motorclient.sources_openalex, self.add_source))
+            sources = tg.create_task(self.add_all_itemtype(self.motorclient.sources_openalex, self.add_source, topics=True))
             #publishers = tg.create_task(self.add_all_itemtype(self.motorclient.publishers_openalex, self.add_publisher))
             #organizations = tg.create_task(self.add_all_itemtype(self.motorclient.organizations_openalex, self.add_organization))
         
@@ -105,64 +105,68 @@ class CreateSQL:
             async with asyncio.TaskGroup() as tg:
                 works = tg.create_task(self.add_all_itemtype(self.motorclient.works_openalex, self.add_work))
 
-    async def add_all_itemtype(self, collection: motor.motor_asyncio.AsyncIOMotorCollection, add_function: callable) -> None:
+    async def add_all_itemtype(self, collection: motor.motor_asyncio.AsyncIOMotorCollection, add_function: callable, topics:bool=False) -> None:
         """
         Add all items from a mongodb collection to the database
         """
         results = []
+        if topics:
+            topic_dict = {topic.openalex_id:topic async for topic in Topic.objects.all()}
         async for item in collection.find():
-            results.append(await add_function(item))
+            if topics:
+                results.append(await add_function(item, topic_dict))
+            else:
+                results.append(await add_function(item))
         return results
 
 
     async def add_topic(self, topic_raw:dict) -> Topic:
-        if not await Topic.objects.filter(openalex_id=topic_raw.get('id')).aexists():
-            field_type = None
-            domain_type = None
-            for field in Topic.FieldTypes.values:
-                if field.lower() == topic_raw.get('field').get('display_name').lower():
-                    field_type = field
-                    break
-            for domain in Topic.DomainTypes.values:
-                if domain.lower() == topic_raw.get('domain').get('display_name').lower():
-                    domain_type = domain
-                    break
-            if not field_type:
-                print(f'field type not found for {topic_raw.get("field").get("display_name")}')
-            if not domain_type:
-                print(f'domain type not found for {topic_raw.get("domain").get("display_name")}')
-
-            topic_dict = {
-                'description':topic_raw.get('description'),
-                'name':topic_raw.get('display_name'),
-                'domain':domain_type,
-                'field':field_type,
-                'openalex_id':topic_raw.get('id'),
-                'works_count':topic_raw.get('works_count'),
-                'keywords':topic_raw.get('keywords'),
-                'wikipedia':topic_raw.get('ids').get('wikipedia'),
-                'subfield':topic_raw.get('subfield').get('display_name'),
-                'subfield_id':topic_raw.get('subfield').get('id').strip('https://openalex.org/subfields/'),
-            }
-            
-            topic = Topic(**topic_dict)
-            await topic.asave()
-            #await topic.raw_data.acreate(data=topic_raw, source_collection='topics_openalex')
-            return topic
-        else:
+        if await Topic.objects.filter(openalex_id=topic_raw.get('id')).aexists():
             return await Topic.objects.aget(openalex_id=topic_raw.get('id'))
+        field_type = None
+        domain_type = None
+        for field in Topic.FieldTypes.values:
+            if field.lower() == topic_raw.get('field').get('display_name').lower():
+                field_type = field
+                break
+        for domain in Topic.DomainTypes.values:
+            if domain.lower() == topic_raw.get('domain').get('display_name').lower():
+                domain_type = domain
+                break
+        if not field_type:
+            print(f'field type not found for {topic_raw.get("field").get("display_name")}')
+        if not domain_type:
+            print(f'domain type not found for {topic_raw.get("domain").get("display_name")}')
 
+        topic_dict = {
+            'description':topic_raw.get('description'),
+            'name':topic_raw.get('display_name'),
+            'domain':domain_type,
+            'field':field_type,
+            'openalex_id':topic_raw.get('id'),
+            'works_count':topic_raw.get('works_count'),
+            'keywords':topic_raw.get('keywords'),
+            'wikipedia':topic_raw.get('ids').get('wikipedia'),
+            'subfield':topic_raw.get('subfield').get('display_name'),
+            'subfield_id':topic_raw.get('subfield').get('id').strip('https://openalex.org/subfields/'),
+        }
+        
+        topic = Topic(**topic_dict)
+        await topic.asave()
+        #await topic.raw_data.acreate(data=topic_raw, source_collection='topics_openalex')
+        return topic
+        
     async def add_topic_siblings(self) -> list[str]:
         full_siblist = []
-        async for topic in Topic.objects.all():
+        alltopics = [topic async for topic in Topic.objects.all()]
+        topics_dict = {topic.openalex_id:topic for topic in alltopics}
+        for topic in alltopics:
             siblings = await self.motorclient.topics_openalex.find_one({'id':topic.openalex_id}, projection={'_id':0, 'id':1, 'siblings':1})
             siblist = []
             full_siblist.extend([sibling.get('id') for sibling in siblings.get('siblings')])
             for sibling in siblings.get('siblings'):
-                sib_topic = await Topic.objects.filter(openalex_id=sibling.get('id')).afirst()
-                if not sib_topic:
-                    continue
-                siblist.append(sib_topic)
+                if sibling.get('id') in topics_dict:
+                    siblist.append(topics_dict[sibling.get('id')])
             if siblist:
                 await topic.siblings.aset(siblist)
         return full_siblist
@@ -200,6 +204,9 @@ class CreateSQL:
     async def add_dealdata(self, source:Source) -> DealData:
         dealdata_raw = await self.motorclient.deals_journalbrowser.find_one({'id':source.openalex_id})
         if dealdata_raw:
+            if await DealData.objects.filter(openalex_id=dealdata_raw.get('id')).aexists():
+                return await DealData.objects.aget(openalex_id=dealdata_raw.get('id'))
+            
             related_source = source
             dealtype_raw = dealdata_raw.get('oa_type')
             match dealtype_raw:
@@ -245,13 +252,17 @@ class CreateSQL:
                     if key in dealdata.__dict__:
                         setattr(dealdata, key, value)
                 await dealdata.asave()
+            
             if related_source not in [source async for source in dealdata.related_sources.all()]:
                 await dealdata.related_sources.aadd(related_source)
-            
+        
             #await dealdata.raw_data.acreate(data=dealdata_raw, source_collection='deals_journalbrowser')
             return dealdata
         
-    async def add_source(self, source_raw:dict) -> Source:
+    async def add_source(self, source_raw:dict, topic_dict:dict) -> Source:
+        if await Source.objects.filter(openalex_id=source_raw.get('id')).aexists():
+            return await Source.objects.aget(openalex_id=source_raw.get('id'))
+        
         raw_type = source_raw.get('type')
         match raw_type:
             case 'journal':
@@ -302,7 +313,7 @@ class CreateSQL:
 
         if source_raw.get('topics'):
             for topic_raw in source_raw.get('topics'):
-                topic = await Topic.objects.filter(openalex_id=topic_raw.get('id')).afirst()
+                topic = topic_dict.get(topic_raw.get('id'))
                 if not topic:
                     continue
                 source_topic = SourceTopic(source=source, topic=topic, count=topic_raw.get('count'))
