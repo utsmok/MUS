@@ -89,13 +89,7 @@ class UpdateManager:
         overview.add_row(":blue_square:", "4. Gather and process data to import into SQL database")
         overview.add_row(":blue_square:", "5. Import data into SQL database & report results")
         cons.print(Panel(overview, title="Progress", style='magenta'))
-        tasks = []
-        if 'openalex' in include:
-            tasks.append(OpenAlexAPI().run())
-        if 'pure' in include:
-            tasks.append(PureAPI().run())
-        if 'pure_csv_authors' in include:
-            tasks.append(PureAuthorCSV().run())
+
         async with asyncio.TaskGroup() as tg:
             if 'openalex' in include:
                 openalex =tg.create_task(OpenAlexAPI().run())
@@ -218,13 +212,13 @@ class UpdateManager:
         tasks.append(orcid)
         tasks.append(journalbrowser)
         tasks.append(peoplepage)
-        
+        '''
         for task in tasks:
             if isinstance(task, asyncio.Task):
                 for result in task.result():
                     full_results[result['type']] = result['total']
             else:
-                full_results[task] = 0
+                full_results[task] = 0'''
         
         stats = Table(title='Retrieved items', title_style='dark_violet', show_header=True)
         stats.add_column('Source', style='cyan')
@@ -266,7 +260,7 @@ class UpdateManager:
 def main():
     mngr = UpdateManager()
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    include = {}
+    include = {'openalex':True, 'journalbrowser':True,}
     asyncio.run(mngr.run(include=include))
     ...
 

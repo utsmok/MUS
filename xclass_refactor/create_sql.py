@@ -7,6 +7,7 @@ from xclass_refactor.models import (
     MongoData,
     Tag,
     Organization,
+    OrganizationTopic,
     Source,
     SourceTopic,
     DealData,
@@ -62,39 +63,31 @@ class CreateSQL:
         then we add authors and affiliations
         we finish with works, grants, authorships, locations, and abstracts
         '''
-        print('deleting all items...')
-        async with asyncio.TaskGroup() as tg:
-            tg.create_task(Topic.objects.all().adelete())
-            tg.create_task(SourceTopic.objects.all().adelete())
-            tg.create_task(Funder.objects.all().adelete())
-            tg.create_task(Organization.objects.all().adelete())
-            tg.create_task(DealData.objects.all().adelete())
-        print('done deleting items!')
         print('adding topics')
         time = datetime.now()
         async with asyncio.TaskGroup() as tg:
-            
             topics = tg.create_task(self.add_all_itemtype(self.motorclient.topics_openalex, self.add_topic))
         
         time_taken = round((datetime.now() - time).total_seconds(),2)
         print(f'added {len(topics.result())} topics in {time_taken} seconds ({len(topics.result())/time_taken} items/sec | {time_taken/len(topics.result())} sec/item)')
 
-        print('adding topic siblings, funders, sources, and dealdata')
+        print('adding funders, sources, dealdata, publishers, organizations')
         time = datetime.now()
         async with asyncio.TaskGroup() as tg:
             topics_siblings = tg.create_task(self.add_topic_siblings())
             funders = tg.create_task(self.add_all_itemtype(self.motorclient.funders_openalex, self.add_funder))
             sources = tg.create_task(self.add_all_itemtype(self.motorclient.sources_openalex, self.add_source, topics=True))
-            #publishers = tg.create_task(self.add_all_itemtype(self.motorclient.publishers_openalex, self.add_publisher))
-            #organizations = tg.create_task(self.add_all_itemtype(self.motorclient.organizations_openalex, self.add_organization))
+            publishers = tg.create_task(self.add_all_itemtype(self.motorclient.publishers_openalex, self.add_publisher))
+            organizations = tg.create_task(self.add_all_itemtype(self.motorclient.institutions_openalex, self.add_organization, topics=True))
         
         print(f'added {len(funders.result())} funders')
         print(f'added {len(sources.result())} sources')
-        print(f'added {len(topics_siblings.result())} topic siblings')
-        print(f'total items: {len(funders.result()) + len(sources.result()) + len(topics_siblings.result())}')
+        print(f'added {len(publishers.result())} publishers')
+        print(f'added {len(organizations.result())} organizations')
+        print(f'total items: {len(funders.result()) + len(sources.result()) + len(publishers.result()) + len(organizations.result())}')
         print(f'total time: {round((datetime.now() - time).total_seconds(),2)} seconds')
-        print(f'avg time per item: {round((datetime.now() - time).total_seconds()/len(funders.result() + sources.result() + topics_siblings.result()),2)} seconds')
-        print(f'avg items per second: {round(len(funders.result() + sources.result() + topics_siblings.result())/(datetime.now() - time).total_seconds(),2)}')
+        print(f'avg time per item: {round((datetime.now() - time).total_seconds()/len(funders.result() + sources.result() +  publishers.result() + organizations.result()),2)} seconds')
+        print(f'avg items per second: {round(len(funders.result() + sources.result() + publishers.result() + organizations.result())/(datetime.now() - time).total_seconds(),2)}')
         
         print('done for now...')
         if False:
@@ -325,17 +318,68 @@ class CreateSQL:
         return source
 
     async def add_publisher(self, publisher_raw:dict) -> Publisher:
-        publisher_dict = {}
+
+        publisher_dict = {
+            'openalex_id':publisher_raw.get('id'),
+            'openalex_created_date':datetime.strptime(publisher_raw.get('created_date'),'%Y-%m-%d'),
+            'openalex_updated_date':self.timezone.localize(datetime.strptime(publisher_raw.get('updated_date'),'%Y-%m-%dT%H:%M:%S.%f')),
+            'name':publisher_raw.get('display_name'),
+            'alternate_names':publisher_raw.get('alternate_titles'),
+            'country_code':publisher_raw.get('country_code'),
+            'counts_by_year':publisher_raw.get('counts_by_year'),
+            'hierarchy_level':publisher_raw.get('hierarchy_level'),
+            'ror':publisher_raw.get('ids').get('ror'),
+            'wikidata':publisher_raw.get('ids').get('wikidata'),
+            'image_url':publisher_raw.get('image_url'),
+            'image_thumbnail_url':publisher_raw.get('image_thumbnail_url'),
+            'sources_api_url':publisher_raw.get('sources_api_url'),
+            'impact_factor':publisher_raw.get('2yr_mean_citedness'),
+            'h_index':publisher_raw.get('h_index'),
+            'i10_index':publisher_raw.get('i10_index'),
+            'works_count':publisher_raw.get('works_count'),
+        }
+        
         publisher = Publisher(**publisher_dict)
         await publisher.asave()
         #await publisher.raw_data.acreate(data=publisher_raw, source_collection='publishers_openalex')
-        
         return publisher
 
-    async def add_organization(self, organization_raw:dict) -> Organization:
-        organization_dict = {}
+    async def add_organization(self, organization_raw:dict, topic_dict:dict) -> Organization:
+        organization_dict = {
+            'name':organization_raw.get('display_name'),
+            'name_acronyms':organization_raw.get('display_name_acronyms'),
+            'name_alternatives':organization_raw.get('display_name_alternatives'),
+            'ror':organization_raw.get('ids').get('ror'),
+            'openalex_id':organization_raw.get('id'),
+            'wikipedia':organization_raw.get('ids').get('wikipedia'),
+            'wikidata':organization_raw.get('ids').get('wikidata'),
+            'openalex_created_date':datetime.strptime(organization_raw.get('created_date'),'%Y-%m-%d'),
+            'openalex_updated_date':self.timezone.localize(datetime.strptime(organization_raw.get('updated_date'),'%Y-%m-%dT%H:%M:%S.%f')),
+            'country_code':organization_raw.get('country_code'),
+            'works_count':organization_raw.get('works_count'),
+            'cited_by_count':organization_raw.get('cited_by_count'),
+            'impact_factor':organization_raw.get('2yr_mean_citedness'),
+            'h_index':organization_raw.get('h_index'),
+            'i10_index':organization_raw.get('i10_index'),
+            'image_thumbnail_url':organization_raw.get('image_thumbnail_url'),
+            'image_url':organization_raw.get('image_url'),
+        }
         organization = Organization(**organization_dict)
         await organization.asave()
+
+        if organization_raw.get('topics'):
+            for topic_raw in organization_raw.get('topics'):
+                topic = topic_dict.get(topic_raw.get('id'))
+                if not topic:
+                    continue
+                organization_topic = OrganizationTopic(organization=organization, topic=topic, count=topic_raw.get('count'))
+                await organization_topic.asave()
+
+        if organization_raw.get('roles'):
+            for role in organization_raw.get('roles'):
+                if role.get('role'):
+                    tag = await Tag.objects.acreate(tag_type=Tag.TagTypes.ORG_TYPE, notes=role.get('role'), content_object=organization)
+
         #await organization.raw_data.acreate(data=organization_raw, source_collection='institutions_openalex')
         
         return organization

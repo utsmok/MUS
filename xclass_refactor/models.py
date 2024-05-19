@@ -152,10 +152,10 @@ class Topic(MusModel):
     name = models.CharField()
     domain = models.CharField(choices=DomainTypes.choices)
     field = models.CharField(choices=FieldTypes.choices)
-    openalex_id = models.URLField(unique=True)
+    openalex_id = models.URLField(max_length=20000,unique=True)
     works_count = models.IntegerField()
     keywords = models.JSONField(encoder=DjangoJSONEncoder)
-    wikipedia = models.URLField()
+    wikipedia = models.URLField(max_length=20000)
     subfield = models.CharField()
     subfield_id = models.IntegerField()
 
@@ -174,11 +174,20 @@ class SourceTopic(MusModel):
         indexes = [
             models.Index(fields=["source", "topic"]),
         ]
+class OrganizationTopic(MusModel):
+    organization = models.ForeignKey('Organization', on_delete=models.CASCADE, related_name="organization_topics", db_index=True)
+    topic = models.ForeignKey('Topic', on_delete=models.CASCADE, related_name="organization_topics", db_index=True)
+    count = models.IntegerField()
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["organization", "topic"]),
+        ]
 class Funder(MusModel):
     as_orgs = models.ManyToManyField('Organization', related_name="as_funders")
     as_other_funders = models.ManyToManyField('Funder', related_name="other_funders_entries")
 
-    openalex_id = models.URLField()
+    openalex_id = models.URLField(max_length=20000)
     name = models.CharField()
     alternate_names = models.JSONField(encoder=DjangoJSONEncoder, null=True)
     country_code = models.CharField(null=True)
@@ -187,13 +196,13 @@ class Funder(MusModel):
     openalex_updated_date = models.DateTimeField()
     grants_count = models.IntegerField()
     description = models.CharField(null=True)
-    homepage_url = models.URLField(null=True)
-    ror = models.URLField(null=True)
-    wikidata = models.URLField(null=True)
+    homepage_url = models.URLField(max_length=20000,null=True)
+    ror = models.URLField(max_length=20000,null=True)
+    wikidata = models.URLField(max_length=20000,null=True)
     crossref = models.CharField(null=True)
-    doi = models.URLField(null=True)
-    image_thumbnail_url = models.URLField(null=True)
-    image_url = models.URLField(null=True)
+    doi = models.URLField(max_length=20000,null=True)
+    image_thumbnail_url = models.URLField(max_length=20000,null=True)
+    image_url = models.URLField(max_length=20000,null=True)
 
     impact_factor = models.FloatField()
     h_index = models.IntegerField()
@@ -215,7 +224,7 @@ class Funder(MusModel):
 
 class Organization(MusModel):
     # these are mainly openalex institutions 
-    topics = models.ManyToManyField('Topic', related_name="organizations")
+    topics = models.ManyToManyField('Topic', through='OrganizationTopic', related_name="organizations")
     repositories = models.ManyToManyField('Source', related_name="repositories")
     lineage = models.ManyToManyField('Organization', related_name="org_children")
     types = models.ManyToManyField(Tag, related_name="organization_types")
@@ -230,9 +239,9 @@ class Organization(MusModel):
     name_alternatives = models.JSONField(encoder=DjangoJSONEncoder, null=True)
 
     ror = models.CharField(null=True)
-    openalex_id = models.URLField()
-    wikipedia = models.URLField(null=True)
-    wikidata = models.URLField(null=True)
+    openalex_id = models.URLField(max_length=20000)
+    wikipedia = models.URLField(max_length=20000,null=True)
+    wikidata = models.URLField(max_length=20000,null=True)
     openalex_created_date = models.DateField()
     openalex_updated_date = models.DateTimeField()
     country_code = models.CharField(null=True)
@@ -243,8 +252,8 @@ class Organization(MusModel):
     h_index = models.IntegerField(null=True)
     i10_index = models.IntegerField(null=True)
     
-    image_thumbnail_url = models.URLField(null=True)
-    image_url = models.URLField(null=True)
+    image_thumbnail_url = models.URLField(max_length=20000,null=True)
+    image_url = models.URLField(max_length=20000,null=True)
 
     class Meta:
         indexes = [
@@ -262,7 +271,7 @@ class Publisher(MusModel):
     as_funder = models.ManyToManyField('Funder', related_name="as_publisher")
     as_institution = models.ManyToManyField('Organization', related_name="as_publisher")
     
-    openalex_id = models.URLField(null=True)
+    openalex_id = models.URLField(max_length=20000,null=True)
     openalex_created_date = models.DateField(null=True)
     openalex_updated_date = models.DateTimeField(null=True)
     name = models.CharField()
@@ -271,13 +280,13 @@ class Publisher(MusModel):
     counts_by_year = models.JSONField(encoder=DjangoJSONEncoder)
     hierarchy_level = models.IntegerField()
     ror = models.CharField(null=True)
-    wikidata = models.URLField(null=True)
-    image_url = models.URLField(null=True)
-    image_thumbnail_url = models.URLField(null=True)
-    sources_api_url = models.URLField(null=True)
-    impact_factor = models.FloatField()
-    h_index = models.IntegerField()
-    i10_index = models.IntegerField()
+    wikidata = models.URLField(max_length=20000,null=True)
+    image_url = models.URLField(max_length=20000,null=True)
+    image_thumbnail_url = models.URLField(max_length=20000,null=True)
+    sources_api_url = models.URLField(max_length=20000,null=True)
+    impact_factor = models.FloatField(null=True)
+    h_index = models.IntegerField(null=True)
+    i10_index = models.IntegerField(null=True)
     works_count = models.IntegerField()
 
 class Source(MusModel):
@@ -292,7 +301,7 @@ class Source(MusModel):
     lineage = models.ManyToManyField('Publisher', related_name="children")
     topics = models.ManyToManyField('Topic', through='SourceTopic', related_name="sources")
 
-    openalex_id = models.URLField()
+    openalex_id = models.URLField(max_length=20000)
     openalex_created_date = models.DateField()
     openalex_updated_date = models.DateTimeField()
 
@@ -305,18 +314,18 @@ class Source(MusModel):
     alternate_titles = models.JSONField(encoder=DjangoJSONEncoder, null=True)
     abbreviated_title = models.CharField(null=True)
     
-    homepage_url = models.URLField(null=True)
+    homepage_url = models.URLField(max_length=20000,null=True)
     host_org_name = models.CharField(null=True)
 
     issn_l = models.CharField(null=True)
     issn = models.JSONField(encoder=DjangoJSONEncoder, null=True)
-    wikidata = models.URLField(null=True)
-    fatcat = models.URLField(null=True)
+    wikidata = models.URLField(max_length=20000,null=True)
+    fatcat = models.URLField(max_length=20000,null=True)
     mag = models.CharField(null=True)
 
     cited_by_count = models.IntegerField()
     counts_by_year = models.JSONField(encoder=DjangoJSONEncoder, null=True)
-    works_api_url = models.URLField()
+    works_api_url = models.URLField(max_length=20000)
     works_count = models.IntegerField()
     impact_factor = models.FloatField()
     h_index = models.IntegerField()
@@ -340,15 +349,15 @@ class Author(MusModel):
     prefixes = models.CharField(null=True)
     suffixes = models.CharField(null=True)
 
-    orcid = models.URLField(null=True)
+    orcid = models.URLField(max_length=20000,null=True)
     scopus = models.CharField(null=True)
     isni = models.CharField(null=True)
     
     # from openalex
-    openalex_id = models.URLField(null=True)
+    openalex_id = models.URLField(max_length=20000,null=True)
     openalex_created_date = models.DateField(null=True)
     openalex_updated_date = models.DateTimeField(null=True)
-    works_api_url = models.URLField(null=True)
+    works_api_url = models.URLField(max_length=20000,null=True)
     works_count = models.IntegerField(null=True)
     cited_by_count = models.IntegerField(null=True)
     counts_by_year = models.JSONField(encoder=DjangoJSONEncoder, null=True)
@@ -361,9 +370,9 @@ class Author(MusModel):
     pure_id = models.IntegerField(null=True)
     pure_last_modified = models.DateTimeField(null=True)
     author_links = models.JSONField(encoder=DjangoJSONEncoder, null=True)
-    avatar_url = models.URLField(null=True)
-    profile_url = models.URLField(null=True)
-    research_url = models.URLField(null=True)
+    avatar_url = models.URLField(max_length=20000,null=True)
+    profile_url = models.URLField(max_length=20000,null=True)
+    research_url = models.URLField(max_length=20000,null=True)
     email = models.CharField(null=True)
 
     # name-match info openalex <-> pure/institute data
@@ -411,12 +420,12 @@ class DealData(MusModel):
     
     dealtype = models.CharField(choices=DealType, default=DealType.UNKNOWN)
     issns = models.JSONField(encoder=DjangoJSONEncoder, null=True)
-    jb_url = models.URLField()
+    jb_url = models.URLField(max_length=20000)
     keywords = models.JSONField(encoder=DjangoJSONEncoder, null=True)
     journal_title = models.CharField()
     publisher_name = models.CharField(default='', blank=True)
     # details for the openalex source item that was used to find this dealdata
-    openalex_id = models.URLField(unique=True)
+    openalex_id = models.URLField(max_length=20000,unique=True)
     openalex_display_name = models.CharField(blank=True, default='')
     openalex_issn = models.JSONField(encoder=DjangoJSONEncoder, null=True, unique=True)
     openalex_issn_l = models.JSONField(encoder=DjangoJSONEncoder, null=True)
@@ -428,8 +437,8 @@ class Location(MusModel):
 
     source_type = models.CharField(choices=Source.SourceType, default=None, null=True)
     is_oa = models.BooleanField(default=False)
-    landing_page_url = models.URLField(null=True)
-    pdf_url = models.URLField(null=True)
+    landing_page_url = models.URLField(max_length=20000,null=True)
+    pdf_url = models.URLField(max_length=20000,null=True)
     license = models.CharField(null=True)
     license_id = models.CharField(null=True)
     version = models.CharField(null=True)
@@ -469,11 +478,11 @@ class Work(MusModel):
     # for journal: go through locations, get sources, if sourcetype == journal, add here
     journal = models.ForeignKey(Source, on_delete=models.CASCADE, related_name="journals", db_index=True)
 
-    openalex_id = models.URLField(null=True)
+    openalex_id = models.URLField(max_length=20000,null=True)
     openalex_created_date = models.DateField(null=True)
     openalex_updated_date = models.DateTimeField(null=True)
-    ngrams_url = models.URLField(null=True)
-    cited_by_api_url = models.URLField(null=True)
+    ngrams_url = models.URLField(max_length=20000,null=True)
+    cited_by_api_url = models.URLField(max_length=20000,null=True)
     cited_by_count = models.IntegerField(null=True)
     cited_by_percentile_year = models.JSONField(encoder=DjangoJSONEncoder, null=True)
     referenced_works_count = models.IntegerField(null=True)
@@ -500,7 +509,7 @@ class Work(MusModel):
     locations_count = models.IntegerField(null=True)
     is_oa = models.BooleanField(default=False)
     oa_status = models.CharField(choices=OAStatus, default=OAStatus.NOT_SET)
-    oa_url = models.URLField(null=True)
+    oa_url = models.URLField(max_length=20000,null=True)
     is_also_green = models.BooleanField(default=False) #'any repository has fulltext' field
     itemtype = models.CharField(choices=MUSTypes, default=MUSTypes.NOT_SET)
     apc_listed = models.JSONField(encoder=DjangoJSONEncoder, null=True)
@@ -573,7 +582,7 @@ class Grant(MusModel):
     award_id = models.CharField(null=True)
     funder_name = models.CharField()
     works = models.ManyToManyField('Work', related_name="grants")
-    openalex_id = models.URLField()
+    openalex_id = models.URLField(max_length=20000)
 
     class Meta:
         indexes = [
