@@ -43,7 +43,7 @@ django-pandas
 django-sql-explorer[xls]
 celery
 django-celery-results
-polyfuzz[all]
+polyfuzz
 django-sonar
 aiometer
 motor
@@ -51,3 +51,5 @@ openpyxl-dictreader
 termcharts
 aiocsv
 aiofiles
+loguru
+rich
