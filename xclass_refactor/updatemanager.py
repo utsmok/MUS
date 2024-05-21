@@ -260,7 +260,7 @@ class UpdateManager:
 def main():
     mngr = UpdateManager()
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    include = {'openalex':True, 'journalbrowser':True,}
+    include = {'openalex':True, 'crossref':True, 'pure':True,'pure_csv_authors':True, 'journalbrowser':True,'peoplepage':True}
     asyncio.run(mngr.run(include=include))
     ...
 

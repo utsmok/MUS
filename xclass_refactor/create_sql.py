@@ -80,6 +80,8 @@ class CreateSQL:
             publishers = tg.create_task(self.add_all_itemtype(self.motorclient.publishers_openalex, self.add_publisher))
             organizations = tg.create_task(self.add_all_itemtype(self.motorclient.institutions_openalex, self.add_organization, topics=True))
         
+        time_taken = round((datetime.now() - time).total_seconds(),2)
+        print(f'added {len(topics_siblings.result())} topic siblings in {time_taken} seconds ({len(topics_siblings.result())/time_taken} items/sec | {time_taken/len(topics_siblings.result())} sec/item)')
         print(f'added {len(funders.result())} funders')
         print(f'added {len(sources.result())} sources')
         print(f'added {len(publishers.result())} publishers')
@@ -89,12 +91,15 @@ class CreateSQL:
         print(f'avg time per item: {round((datetime.now() - time).total_seconds()/len(funders.result() + sources.result() +  publishers.result() + organizations.result()),2)} seconds')
         print(f'avg items per second: {round(len(funders.result() + sources.result() + publishers.result() + organizations.result())/(datetime.now() - time).total_seconds(),2)}')
         
-        print('done for now...')
+        
+        async with asyncio.TaskGroup() as tg:
+            #linked = tg.create_task(self.add_org_links())
+            authors = tg.create_task(self.add_all_itemtype(self.motorclient.authors_openalex, self.add_author))
+
+        #print(f'added m2m relations to {len(linked.result())} items (organizations, funders, sources, publishers)')
+        print(f'added {len(authors.result())} authors')
+
         if False:
-            async with asyncio.TaskGroup() as tg:
-                linked = tg.create_task(self.add_org_links())
-            async with asyncio.TaskGroup() as tg:
-                authors = tg.create_task(self.add_all_itemtype(self.motorclient.authors_openalex, self.add_author))
             async with asyncio.TaskGroup() as tg:
                 works = tg.create_task(self.add_all_itemtype(self.motorclient.works_openalex, self.add_work))
 
@@ -387,14 +392,25 @@ class CreateSQL:
     async def add_org_links(self) -> list[MusModel]:
         # for Publisher, Organization, Funder, Source: add links between them (most many-to-many fields)
         changed_itemlist = []
+        print('m2m relations for orgs not implemented at the moment')
         for publisher in Publisher.objects.all():
             ...
+            #lineage = models.ManyToManyField('Publisher', related_name="publ_children")
+            #as_funder = models.ManyToManyField('Funder', related_name="as_publisher")
+            #as_institution = models.ManyToManyField('Organization', related_name="as_publisher")
+
         for organization in Organization.objects.all():
             ...
+            #repositories = models.ManyToManyField('Source', related_name="repositories")
+            #lineage = models.ManyToManyField('Organization', related_name="org_children")
+
         for funder in Funder.objects.all():
+            #as_other_funders = models.ManyToManyField('Funder', related_name="other_funders_entries")
             ...
         for source in Source.objects.all():
             ...
+            #lineage = models.ManyToManyField('Publisher', related_name="children")
+
         return changed_itemlist
     
     async def add_author(self, author_raw:dict) -> Author:

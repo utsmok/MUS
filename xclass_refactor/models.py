@@ -184,7 +184,6 @@ class OrganizationTopic(MusModel):
             models.Index(fields=["organization", "topic"]),
         ]
 class Funder(MusModel):
-    as_orgs = models.ManyToManyField('Organization', related_name="as_funders")
     as_other_funders = models.ManyToManyField('Funder', related_name="other_funders_entries")
 
     openalex_id = models.URLField(max_length=20000)
@@ -227,7 +226,6 @@ class Organization(MusModel):
     topics = models.ManyToManyField('Topic', through='OrganizationTopic', related_name="organizations")
     repositories = models.ManyToManyField('Source', related_name="repositories")
     lineage = models.ManyToManyField('Organization', related_name="org_children")
-    types = models.ManyToManyField(Tag, related_name="organization_types")
     # use tags of tagtype 'ORG_TYPE' ('OT') to store the type of this institution instance + all related institutions (see 'roles' field in api data)
     # note: double check for accidental duplicates when going through the list of related items!!
     # the actual type should be in the 'notes' field of the tag
