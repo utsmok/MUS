@@ -1,8 +1,8 @@
 
-from xclass_refactor.difficult_models.models import Funder, Grant, Topic, Organization
-from xclass_refactor.difficult_models.work import WorkOpenAlexData, WorkPureData, WorkOtherData, Work, Abstract, OAStatus, MUSTypes, CrossrefTypes, OpenAlexTypes, Authorship
-from xclass_refactor.difficult_models.source import Source, Publisher, Location, DealData
-from xclass_refactor.difficult_models.author import AuthorOpenAlexData, AuthorPureData, AuthorOtherData, AuthorEmployeeData, Author, Affiliation
+from xclass_refactor.models_old_attempt.models import Funder, Grant, Topic, Organization
+from xclass_refactor.models_old_attempt.work import WorkOpenAlexData, WorkPureData, WorkOtherData, Work, Abstract, OAStatus, MUSTypes, CrossrefTypes, OpenAlexTypes, Authorship
+from xclass_refactor.models_old_attempt.source import Source, Publisher, Location, DealData
+from xclass_refactor.models_old_attempt.author import AuthorOpenAlexData, AuthorPureData, AuthorOtherData, AuthorEmployeeData, Author, Affiliation
 from xclass_refactor.constants import MONGOURL, ROR, INSTITUTE_ALT_NAME, INSTITUTE_NAME
 import motor.motor_asyncio
 from rich.console import Console

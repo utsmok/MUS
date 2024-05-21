@@ -1,9 +1,9 @@
 from django.db import models
 from django_extensions.db.models import TimeStampedModel
-from xclass_refactor.difficult_models.models import Grant
-from xclass_refactor.difficult_models.source import Source
-from xclass_refactor.difficult_models.author import Author
-from xclass_refactor.difficult_models.models import Funder, Topic
+from xclass_refactor.models_old_attempt.models import Grant
+from xclass_refactor.models_old_attempt.source import Source
+from xclass_refactor.models_old_attempt.author import Author
+from xclass_refactor.models_old_attempt.models import Funder, Topic
 class MUSTypes(models.TextChoices):
     ...
 

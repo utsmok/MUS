@@ -53,3 +53,4 @@ aiocsv
 aiofiles
 loguru
 rich
+django-readers

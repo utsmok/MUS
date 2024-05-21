@@ -82,3 +82,8 @@ class AuthorMatcher():
         await self.match_orcids()
         await self.match_names()
         return self.results
+
+class WorkMatcher():
+    # match works from the different data sources
+    # start with Pure and OpenAlex works; the rest should already have matches through dois
+    ...
