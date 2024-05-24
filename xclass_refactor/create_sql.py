@@ -535,14 +535,12 @@ class CreateSQL:
         #await author.raw_data.acreate(data=author_raw, source_collection='authors_openalex')
 
         # step 4: add many-to-many relations: affiliations and topics
-        print('affiliations currently not implemented')
 
         for affiliation in author_raw.get('affiliations'):
-            ...
-            #await self.add_affiliation(affiliation, author)
+            await self.add_affiliation(affiliation, author, author_raw)
         if author_raw.get('topics'):
             topiclist = []
-            for j, topic_raw in enumerate(author_raw.get('topics')):
+            for topic_raw in author_raw.get('topics'):
                 topic = self.topics_dict.get(topic_raw.get('id'))
                 if not topic:
                     continue
@@ -552,15 +550,49 @@ class CreateSQL:
         return author
 
 
-    # TODO: implement this
-    async def add_affiliation(self, affiliation_raw:dict, author:Author) -> Affiliation:
-        async def add_group(group) -> Group:
-            pass
-        affiliation_dict = {}
+
+    async def add_affiliation(self, affiliation_raw:dict, author:Author, author_raw:dict) -> Affiliation:
+        # openalex data
+        organization = await Organization.objects.filter(openalex_id=affiliation_raw.get('institution').get('id')).afirst()
+        if not organization:
+            print(f'organization not found for {affiliation_raw.get("institution")}, skipping')
+            return None
+        affiliation_dict = {
+            'years':affiliation_raw.get('years'),
+            'author': author,
+            'organization': organization,
+        }
+
+        # institutional data
+        if author_raw.get('affiliation'):
+            if len(author_raw['affiliation']) == 1:
+                affiliation_dict['position'] = author_raw.get('affiliation')[0]
+            elif 'professor' in author_raw['affiliation']:
+                affiliation_dict['position'] = 'professor'
+            else:
+                affiliation_dict['position'] = author_raw.get('affiliation')[0]
+        groups = []
+        if author_raw.get('grouplist') and len(author_raw.get('grouplist')) > 0 and organization.openalex_id == OPENALEX_INSTITUTE_ID:
+            for item in author_raw.get('grouplist'):
+                try:
+                    if not item.get('section'):
+                        continue
+                    if item.get('department') in FACULTYNAMES:
+                        faculty = item.get('department')
+                    else:
+                        faculty = Group.Faculties.OTHER
+                    group, created = await Group.objects.aget_or_create(name=item.get('section'), faculty=faculty)
+                    groups.append(group)
+                except Exception as e:
+                    print(f'error while adding groups to affiliation: {e}')
+                    continue
         affiliation = Affiliation(**affiliation_dict)
+
         await affiliation.asave()
+        await affiliation.groups.aset(groups)
+
         #await affiliation.raw_data.acreate(data=affiliation_raw, source_collection='authors_openalex')\
-        # no real need to return anything at the moment; included for consistency
+
         return affiliation
 
 

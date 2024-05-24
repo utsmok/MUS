@@ -50,7 +50,7 @@ class OpenAlexAPI():
         self.requested_topics = self.openalex_requests.get('topics_openalex')
         self.requested_publishers = self.openalex_requests.get('publishers_openalex')
         if not years:
-            self.years = [2022, 2023, 2024 , 2025]
+            self.years = [2019, 2020, 2021, 2022, 2023, 2024 , 2025]
         else:
             self.years = years
         self.mongoclient = MusMongoClient()
@@ -93,7 +93,7 @@ class OpenAlexAPI():
             if request == 'topics_openalex':
                 cons.print('running OpenAlexQuery for topics')
                 tasks.append(OpenAlexQuery(self.mongoclient, self.mongoclient.topics_openalex, 'topics', self.requested_topics).run())
-            
+
             if request == 'publishers_openalex':
                 cons.print('running OpenAlexQuery for publishers')
                 tasks2.append(OpenAlexQuery(self.mongoclient, self.mongoclient.publishers_openalex, 'publishers', self.requested_publishers).run())
@@ -107,7 +107,7 @@ class OpenAlexAPI():
         if not results:
             results = results2
         results.extend(results3)
-        
+
         return results
 class OpenAlexQuery():
     '''
@@ -149,7 +149,7 @@ class OpenAlexQuery():
         }
         self.pyalextype = pyalextype
         self.results = []
-    async def add_to_querylist(self,query: BaseOpenAlex=None) -> None:
+    async def add_to_querylist(self,query: BaseOpenAlex=None, only_institute=True) -> None:
         '''
         adds the pyalex query to the list of queries to run for this itemtype
         if no query is provided, it will add a default query for the itemtype
@@ -178,19 +178,22 @@ class OpenAlexQuery():
                     # all other types: generate a list of ids extracted from available works
                     # then call add_query_by_ids to construct the batched queries
                     if self.pyalextype == 'authors':
-                        async for work in self.mongoclient.works_openalex.find({}, projection={'authorships':1}, sort=[('authorships.0.author.id', 1)]):
+                        async for work in self.mongoclient.works_openalex.find({}, projection={'authorships':1}, sort=[('authorships', 1)]):
                             if 'authorships' in work:
                                 for authorship in work['authorships']:
                                     if 'institutions' in authorship:
                                         for institution in authorship['institutions']:
-                                            if any([institution['ror'] == ROR,
-                                            institution['id'] == OPENALEX_INSTITUTE_ID,
-                                            INSTITUTE_NAME.lower() in institution['display_name'].lower(),
-                                            institution['display_name'].lower() in [name.lower() for name in INSTITUTE_ALT_NAME]]):
+                                            if only_institute:
+                                                if any([institution['ror'] == ROR,
+                                                institution['id'] == OPENALEX_INSTITUTE_ID,
+                                                INSTITUTE_NAME.lower() in institution['display_name'].lower(),
+                                                institution['display_name'].lower() in [name.lower() for name in INSTITUTE_ALT_NAME]]):
+                                                    authorlist.add(authorship['author']['id'])
+                                                    break
+                                            else:
                                                 authorlist.add(authorship['author']['id'])
-                                                break
                     if self.pyalextype == 'sources':
-                        async for work in self.mongoclient.works_openalex.find({}, projection={'locations':1}, sort=[('locations.0.source.id', 1)]):
+                        async for work in self.mongoclient.works_openalex.find({}, projection={'locations':1}, sort=[('locations', 1)]):
                             if 'locations' in work:
                                 for location in work['locations']:
                                     try:
@@ -200,27 +203,27 @@ class OpenAlexQuery():
                                     except AttributeError:
                                         pass
                     if self.pyalextype == 'funders':
-                        async for work in self.mongoclient.works_openalex.find({}, projection={'grants':1}, sort=[('grants.0.funder.id', 1)]):
+                        async for work in self.mongoclient.works_openalex.find({}, projection={'grants':1}, sort=[('grants', 1)]):
                             if 'grants' in work:
                                 for grant in work['grants']:
                                     funderlist.add(grant['funder'])
                     if self.pyalextype == 'institutions':
-                        async for work in self.mongoclient.works_openalex.find({}, projection={'authorships':1}, sort=[('authorships.0.institutions.0.id', 1)]):
+                        async for work in self.mongoclient.works_openalex.find({}, projection={'authorships':1}, sort=[('authorships', 1)]):
                             for authorship in work['authorships']:
                                 if 'institutions' in authorship:
                                     for institution in authorship['institutions']:
                                         institutionlist.add(institution['id'])
                     if self.pyalextype == 'topics':
-                        async for work in self.mongoclient.works_openalex.find({}, projection={'topics':1}, sort=[('topics.0.id', 1)]):
+                        async for work in self.mongoclient.works_openalex.find({}, projection={'topics':1}, sort=[('topics', 1)]):
                             if 'topics' in work:
                                 for topic in work['topics']:
                                     topiclist.add(topic['id'])
                     if self.pyalextype == 'publishers':
-                        async for work in self.mongoclient.sources_openalex.find({}, projection={'host_organization_lineage':1}, sort=[('host_organization_lineage.0', 1)]):
+                        async for work in self.mongoclient.sources_openalex.find({}, projection={'host_organization_lineage':1}, sort=[('host_organization_lineage', 1)]):
                             for item in work['host_organization_lineage']:
                                 if str(item).startswith('https://openalex.org/P'):
                                     publisherlist.add(item)
-                            
+
                     for l in [authorlist, sourcelist, funderlist, institutionlist, topiclist, publisherlist]:
                         l=list(l)
                         if l:
