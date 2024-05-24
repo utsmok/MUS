@@ -206,7 +206,8 @@ class UpdateManager:
             else:
                 journalbrowser = 'journalbrowser'
             if 'peoplepage' or 'all' in include:
-                peoplepage = tg.create_task(PeoplePageScraper().run())
+                #peoplepage = tg.create_task(PeoplePageScraper().run())
+                print('peoplepage not implemented yet')
             else:
                 peoplepage = 'peoplepage'
         tasks.append(crossref)
