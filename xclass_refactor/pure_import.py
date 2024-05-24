@@ -19,7 +19,7 @@ class PureAPI(GenericAPI):
         if years:
             self.years : list[int] = years
         else:
-            self.years : list[int] = [2022, 2023, 2024]
+            self.years : list[int] = [2019, 2020, 2021, 2022, 2023, 2024]
         self.years.sort(reverse=True)
         self.set_api_settings(max_at_once=5,
                             max_per_second=5)
@@ -154,7 +154,7 @@ class PureAuthorCSV():
                             row[key] = [datetime.strptime(i.strip().split(' ')[0], '%Y-%m-%d') for i in value.split('|')]
                     elif '|' in value:
                         row[key] = [i.strip() for i in value.split('|')]
-                
+
                 if row['author_pureid'] not in pureids:
                     await self.collection.insert_one(row)
                     self.results['total'] = self.results['total'] + 1

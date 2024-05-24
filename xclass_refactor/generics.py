@@ -128,9 +128,12 @@ class GenericAPI():
         convience method that runs the standard query and puts the results in the mongodb collection
         returns the 'self.results' dict
         '''
-        if not self.itemlist:
-            await self.make_itemlist()
-        await self.get_item_results()
+        try:
+            if not self.itemlist:
+                await self.make_itemlist()
+            await self.get_item_results()
+        except Exception as e:
+            print(f'Error while getting items for {self.collectionname}: {e}')
         return self.results
     async def make_itemlist(self) -> None:
         print('make_itemlist is an abstract function -- overload in subclass')
@@ -164,7 +167,7 @@ class GenericAPI():
                         else:
                             print(f'received unexpected type {type(item)}')
                     print(f'[red]{len(insertlist)}[/red] {self.item_id_type}s added to {self.collectionname} ([cyan]+{len(newlist)}[/cyan])')
-                    
+
                     i=0
 
     async def call_api(self, item) -> dict:
