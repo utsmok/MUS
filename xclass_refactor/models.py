@@ -3,7 +3,6 @@ from django.db.models import Q
 from django_extensions.db.models import TimeStampedModel
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
-from xclass_refactor.constants import UTRESEARCHGROUPS_FLAT
 from django.utils.translation import gettext_lazy as _
 from django.core.serializers.json import DjangoJSONEncoder
 '''
@@ -471,10 +470,10 @@ class Work(MusModel):
     topics = models.ManyToManyField(Topic, related_name="works")
     abstract = models.OneToOneField(Abstract, on_delete=models.CASCADE, null=True, default=None)
     locations = models.ManyToManyField(Location, related_name="works")
-    primary_topic = models.ForeignKey(Topic, on_delete=models.CASCADE, related_name="primary_works", db_index=True)
+    primary_topic = models.ForeignKey(Topic, on_delete=models.CASCADE, related_name="primary_works", db_index=True, null=True)
 
     # for journal: go through locations, get sources, if sourcetype == journal, add here
-    journal = models.ForeignKey(Source, on_delete=models.CASCADE, related_name="journals", db_index=True)
+    journal = models.ForeignKey(Source, on_delete=models.CASCADE, related_name="journals", db_index=True, null=True)
 
     openalex_id = models.URLField(max_length=20000,null=True)
     openalex_created_date = models.DateField(null=True)

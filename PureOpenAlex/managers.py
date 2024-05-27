@@ -843,7 +843,7 @@ class PaperQuerySet(models.QuerySet):
             queryset=PureEntry.objects.filter(paper__in=self.all()).select_related('pilot_pure_data'),
             to_attr="pref_pure_entries",
         )
-        return self.select_related('journal').prefetch_related(location_prefetch, authors_prefetch, pureentry_prefetch)
+        return self.select_related().prefetch_related(location_prefetch, authors_prefetch, pureentry_prefetch)
     def get_detailed_prefetches(self):
         Location = apps.get_model('PureOpenAlex', 'Location')
         Author = apps.get_model('PureOpenAlex', 'Author')

@@ -3,6 +3,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 import os
 from loguru import logger
+from django_query_profiler.settings import *
+
 #from pyzotero import zotero
 #ZOTERO = zotero.Zotero(ZOTERO_PUBLIC, 'user', ZOTERO_PRIVATE)
 
@@ -59,27 +61,23 @@ INSTALLED_APPS = [
     "PureOpenAlex.apps.PureopenalexConfig",
     "allauth",
     "allauth.account",
-    "allauth.socialaccount",
-    "allauth.socialaccount.providers.github",
     "accounts",
     'mus_backend.apps.MusBackendConfig',
+    'django_query_profiler',
     'corsheaders',
     "data_browser",
     "django_extensions",
     "ajax_datatable",
     "slippers",
     'explorer',
-    'django_celery_results',
     'xclass_refactor.apps.XClassRefactorConfig',
-    'django_sonar',
-    'debug_toolbar',
 
 ]
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     "django.middleware.security.SecurityMiddleware",
-    "debug_toolbar.middleware.DebugToolbarMiddleware",
+    'django_query_profiler.client.middleware.QueryProfilerMiddleware',
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -87,7 +85,6 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "allauth.account.middleware.AccountMiddleware",
-    'django_sonar.middlewares.requests.RequestsMiddleware',
 
 ]
 
@@ -122,7 +119,7 @@ WSGI_APPLICATION = "mus.wsgi.application"
 
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.postgresql",
+        "ENGINE": "django_query_profiler.django.db.backends.postgresql",
         "NAME": str(os.getenv('POSTGRESDB')),
         "USER": str(os.getenv('POSTGRESUSER')),
         "HOST": str(os.getenv('POSTGRESHOST')),
@@ -130,7 +127,7 @@ DATABASES = {
         "PASSWORD": str(os.getenv('POSTGRESPWD')),
     },
     'readonly': {
-        "ENGINE": "django.db.backends.postgresql",
+        "ENGINE": "django_query_profiler.django.db.backends.postgresql",
         "NAME": str(os.getenv('POSTGRESDB')),
         "USER": 'readonly',
         "HOST": str(os.getenv('POSTGRESHOST')),
@@ -138,7 +135,7 @@ DATABASES = {
         "PASSWORD": 'readonly',
     }
 }
-CACHES = {
+CACHES = {  
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
         "LOCATION": str(os.getenv('REDISHOST')),
@@ -152,13 +149,13 @@ RQ_QUEUES = {
         "USE_REDIS_CACHE": "default",
     },
 }
-
+'''
 # Celery settings
 CELERY_BROKER_URL = str(os.getenv('REDISHOST'))
 CELERY_TIMEZONE = "Europe/Amsterdam"
 CELERY_TASK_TRACK_STARTED = True
 CELERY_RESULT_BACKEND = 'django-db'
-
+'''
 # Password validation
 # https://docs.djangoproject.com/en/5.0/ref/settings/#auth-password-validators
 
@@ -219,11 +216,3 @@ CACHE_TTL = 60 * 5
 EXPLORER_CONNECTIONS = { 'Default': 'readonly' }
 EXPLORER_DEFAULT_CONNECTION = 'readonly'
 
-DJANGO_SONAR = {
-    'excludes': [
-        STATIC_URL,
-        '/sonar/',
-        '/admin/',
-        '/__reload__/',
-    ],
-}

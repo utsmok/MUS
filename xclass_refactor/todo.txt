@@ -1,0 +1,59 @@
+broad strokes:
+ implement all data import at least to get all models in place and linked, check details later
+ make basic fronted + wizard
+ implement filtering and sorting
+
+
+
+Todo in order of importance(?):
+
+1. Add methods in create_sql.py for missing models -- works & related models, and some missing fields in others
+2. Check the imported data for consistency and correctness
+    - fix data imported from e.g. datacite, openaire, crossref, orcid
+    - fix peoplepage importing and matching -- use sentencetransformer in polyfuzz for example
+
+3. See if model fields are good like this or need updates/different approach
+    - think about current org/inst/pub/funder model half-copied from openalex -- make more robust
+
+4. Think about which lists to prepare for frontend, use django-filter or django-readers or django-ninja?
+
+5. think about how to make the frontend 
+    libraries?
+            django-readers / slippers / django-partials / htpy / daisyui / preline / htmx / tailwind 
+    how to make views?
+        classes? function based? iommi/neapolitan/django-ninja+library?
+
+6. make some views for the frontend to show imported sql data
+
+7. make a webui wizard that lets the user pick settings and options (most of which are currently in secrets.env)
+
+8. turn xclass_refactor into proper django app
+
+
+
+later:
+- implement more apis
+- get pdfs and use grobid to extract data
+- clean up code thoroughly -- make more robust and modular for example
+- instead of just CLI output during import, also output to webpage and let user pause/resume tasks
+- add tests
+- add asgi
+
+
+links:
+https://www.django-readers.org/
+https://mitchel.me/slippers/docs/getting-started/
+https://daisyui.com/resources/videos/django-htmx-and-daisyui-components-building-a-to-do-list-app-akd7u69k27k/
+https://medium.com/@alexroz/matplotlib-makeover-6-python-styling-libraries-for-amazing-plots-5152f16992f5
+https://github.com/sunscrapers/django-htmx-tailwindcss
+https://preline.co/index.html
+https://htpy.dev/
+https://circumeo.io/blog/entry/faster-prototyping-in-django-with-neapolitan/
+https://github.com/carltongibson/django-template-partials
+https://django-filter.readthedocs.io/en/main/guide/usage.html
+https://ccbv.co.uk/
+https://django-ninja.dev/guides/response/#nested-objects
+https://grobid.readthedocs.io/en/latest/Introduction/
+https://pypi.org/project/django-chartjs/
+https://www.chartjs.org/docs/latest/samples/information.html
+https://altair-viz.github.io/gallery/index.html

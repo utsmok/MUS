@@ -27,15 +27,12 @@ from xclass_refactor.mus_mongo_client import MusMongoClient
 from xclass_refactor.journal_browser_scraper import JournalBrowserScraper
 from xclass_refactor.other_apis_import import CrossrefAPI, DataCiteAPI, OpenAIREAPI, ORCIDAPI
 from xclass_refactor.people_page_scraper import PeoplePageScraper
-from xclass_refactor.matching import AuthorMatcher
+from xclass_refactor.matching import AuthorMatcher, WorkMatcher
 from xclass_refactor.constants import MONGOURL
 from xclass_refactor.create_sql import CreateSQL
 import asyncio
-import time
-from datetime import datetime
 import motor.motor_asyncio
-from xclass_refactor.utils import get_mongo_collection_mapping
-import json
+
 
 class UpdateManager:
     def __init__(self, years: list[int] = None):
@@ -65,6 +62,10 @@ class UpdateManager:
         from rich.table import Table
         from rich.panel import Panel
         from rich.progress import Progress
+        # add indexes to all collections before we start
+        musmongoclient = MusMongoClient()
+        await musmongoclient.add_indexes()
+
         full_results = {}
         cons = Console(markup=True)
         notes = Table(title="Notes", show_lines=False, box=box.SIMPLE_HEAD, title_style='bold magenta', show_header=False)
@@ -89,17 +90,17 @@ class UpdateManager:
         overview.add_row(":blue_square:", "4. Gather and process data to import into SQL database")
         overview.add_row(":blue_square:", "5. Import data into SQL database & report results")
         cons.print(Panel(overview, title="Progress", style='magenta'))
-        if not 'skip_one' in include:
+        if 'skip_one' not in include:
             async with asyncio.TaskGroup() as tg:
                 if 'openalex' in include or 'all' in include:
                     openalex =tg.create_task(OpenAlexAPI().run())
                 else:
                     openalex = None
-                if 'pure' or 'all' in include:
+                if 'pure' in include or 'all' in include:
                     pure = tg.create_task(PureAPI().run())
                 else:
                     pure = None
-                if 'pure_csv_authors' or 'all' in include:
+                if 'pure_csv_authors' in include or 'all' in include:
                     pure_csv_authors = tg.create_task(PureAuthorCSV().run())
                 else:
                     pure_csv_authors = None
@@ -140,96 +141,96 @@ class UpdateManager:
         apilists.add_column('id type')
         apilists.add_column('number of items')
 
+        if 'skip_two' not in include:
+            cons.print("APIs included: Crossref, DataCite, OpenAIRE, ORCID, Journal Browser, UT People Page")
+            datacitelist = []
+            openairelist = []
+            crossreflist = []
+            orcidlist = []
+            if any(['openaire' in include, 'datacite' in include, 'crossref' in include]):
+                with Progress() as p:
+                    numpapers = await self.motorclient['works_openalex'].count_documents({})
+                    task = p.add_task("Getting list of dois for Datacite/Crossref/OpenAIRE", total=numpapers)
 
-        cons.print("APIs included: Crossref, DataCite, OpenAIRE, ORCID, Journal Browser, UT People Page")
-        datacitelist = []
-        openairelist = []
-        crossreflist = []
-        orcidlist = []
-        if any(['openaire' in include, 'datacite' in include, 'crossref' in include]):
-            with Progress() as p:
-                numpapers = await self.motorclient['works_openalex'].count_documents({})
-                task = p.add_task("Getting list of dois for Datacite/Crossref/OpenAIRE", total=numpapers)
-
-                async for paper in self.motorclient['works_openalex'].find({}, projection={'id':1, 'doi':1}, sort=[('id', 1)]):
-                    if paper.get('doi'):
-                        if not await self.motorclient['items_datacite'].find_one({'id':paper['id']}, projection={'id': 1}):
-                            datacitelist.append({'doi':paper['doi'].replace('https://doi.org/',''), 'id':paper['id']})
-                        if not await self.motorclient['items_openaire'].find_one({'id':paper['id']}, projection={'id': 1}):
-                            openairelist.append({'doi':paper['doi'].replace('https://doi.org/',''), 'id':paper['id']})
-                        if not await self.motorclient['items_crossref'].find_one({'id':paper['id']}, projection={'id': 1}):
-                            crossreflist.append({'doi':paper['doi'].replace('https://doi.org/',''), 'id':paper['id']})
-                    p.update(task, advance=1)
-            apilists.add_row('DataCite','works openalex','doi', str(len(datacitelist)))
-            apilists.add_row('OpenAIRE','works openalex','doi', str(len(openairelist)))
-            apilists.add_row('Crossref','works openalex','doi', str(len(crossreflist)))
-        if 'orcid' or 'all' in include:
-            with Progress() as p:
-
-
-                numauths = await self.motorclient['authors_openalex'].count_documents({'ids.orcid':{'$exists':True}})
-                task = p.add_task("Getting list of orcids ", total=numauths)
-                async for auth in self.motorclient['authors_openalex'].find({'ids.orcid':{'$exists':True}}, projection={'id':1, 'ids':1}):
-                    p.update(task, advance=1)
-                    if auth.get('ids').get('orcid'):
-                        check = await self.motorclient['items_orcid'].find_one({'id':auth['id']}, projection={'id': 1, 'orcid-identifier': 1})
-                        if check:
-                            if check.get('orcid-identifier'):
-                                continue
-                        orcidlist.append({'orcid':auth['ids']['orcid'].replace('https://orcid.org/',''), 'id':auth['id']})
-            apilists.add_row('ORCID','authors openalex','orcid', str(len(orcidlist)))
-
-
-
-        cons.print(apilists)
-
-        tasks : list[asyncio.Task|None] = []
-        async with asyncio.TaskGroup() as tg:
-            if 'crossref' or 'all' in include:
-                crossref = tg.create_task(CrossrefAPI(itemlist=crossreflist).run())
-            else:
-                crossref = 'crossref'
-            if 'datacite' or 'all' in include:
-                datacite = tg.create_task(DataCiteAPI(itemlist=datacitelist).run())
-            else:
-                datacite = 'datacite'
-            if 'openaire' or 'all' in include:
-                openaire = tg.create_task(OpenAIREAPI(itemlist=openairelist).run())
-            else:
-                openaire = 'openaire'
+                    async for paper in self.motorclient['works_openalex'].find({}, projection={'id':1, 'doi':1}, sort=[('id', 1)]):
+                        if paper.get('doi'):
+                            if not await self.motorclient['items_datacite'].find_one({'id':paper['id']}, projection={'id': 1}):
+                                datacitelist.append({'doi':paper['doi'].replace('https://doi.org/',''), 'id':paper['id']})
+                            if not await self.motorclient['items_openaire'].find_one({'id':paper['id']}, projection={'id': 1}):
+                                openairelist.append({'doi':paper['doi'].replace('https://doi.org/',''), 'id':paper['id']})
+                            if not await self.motorclient['items_crossref'].find_one({'id':paper['id']}, projection={'id': 1}):
+                                crossreflist.append({'doi':paper['doi'].replace('https://doi.org/',''), 'id':paper['id']})
+                        p.update(task, advance=1)
+                apilists.add_row('DataCite','works openalex','doi', str(len(datacitelist)))
+                apilists.add_row('OpenAIRE','works openalex','doi', str(len(openairelist)))
+                apilists.add_row('Crossref','works openalex','doi', str(len(crossreflist)))
             if 'orcid' or 'all' in include:
-                orcid = tg.create_task(ORCIDAPI(itemlist=orcidlist).run())
-            else:
-                orcid = 'orcid'
-            if 'journalbrowser' or 'all' in include:
-                journalbrowser = tg.create_task(JournalBrowserScraper().run())
-            else:
-                journalbrowser = 'journalbrowser'
-            if 'peoplepage' or 'all' in include:
-                #peoplepage = tg.create_task(PeoplePageScraper().run())
-                print('peoplepage not implemented yet')
-            else:
-                peoplepage = 'peoplepage'
-        tasks.append(crossref)
-        tasks.append(datacite)
-        tasks.append(openaire)
-        tasks.append(orcid)
-        tasks.append(journalbrowser)
-        tasks.append(peoplepage)
-        '''
-        for task in tasks:
-            if isinstance(task, asyncio.Task):
-                for result in task.result():
-                    full_results[result['type']] = result['total']
-            else:
-                full_results[task] = 0'''
+                with Progress() as p:
 
-        stats = Table(title='Retrieved items', title_style='dark_violet', show_header=True)
-        stats.add_column('Source', style='cyan')
-        stats.add_column('# added/updated', style='orange1')
-        for key in full_results:
-            stats.add_row(str(key), str(full_results[key]))
-        cons.print(stats)
+
+                    numauths = await self.motorclient['authors_openalex'].count_documents({'ids.orcid':{'$exists':True}})
+                    task = p.add_task("Getting list of orcids ", total=numauths)
+                    async for auth in self.motorclient['authors_openalex'].find({'ids.orcid':{'$exists':True}}, projection={'id':1, 'ids':1}):
+                        p.update(task, advance=1)
+                        if auth.get('ids').get('orcid'):
+                            check = await self.motorclient['items_orcid'].find_one({'id':auth['id']}, projection={'id': 1, 'orcid-identifier': 1})
+                            if check:
+                                if check.get('orcid-identifier'):
+                                    continue
+                            orcidlist.append({'orcid':auth['ids']['orcid'].replace('https://orcid.org/',''), 'id':auth['id']})
+                apilists.add_row('ORCID','authors openalex','orcid', str(len(orcidlist)))
+
+
+
+            cons.print(apilists)
+
+            tasks : list[asyncio.Task|None] = []
+            async with asyncio.TaskGroup() as tg:
+                if 'crossref' in include or 'all' in include:
+                    crossref = tg.create_task(CrossrefAPI(itemlist=crossreflist).run())
+                else:
+                    crossref = 'crossref'
+                if 'datacite' in include or 'all' in include:
+                    datacite = tg.create_task(DataCiteAPI(itemlist=datacitelist).run())
+                else:
+                    datacite = 'datacite'
+                if 'openaire' in include or 'all' in include:
+                    openaire = tg.create_task(OpenAIREAPI(itemlist=openairelist).run())
+                else:
+                    openaire = 'openaire'
+                if 'orcid' in include or 'all' in include:
+                    orcid = tg.create_task(ORCIDAPI(itemlist=orcidlist).run())
+                else:
+                    orcid = 'orcid'
+                if 'journalbrowser' in include or 'all' in include:
+                    journalbrowser = tg.create_task(JournalBrowserScraper().run())
+                else:
+                    journalbrowser = 'journalbrowser'
+                if 'peoplepage' in include or 'all' in include:
+                    #peoplepage = tg.create_task(PeoplePageScraper().run())
+                    print('peoplepage not implemented yet')
+                else:
+                    peoplepage = 'peoplepage'
+            tasks.append(crossref)
+            tasks.append(datacite)
+            tasks.append(openaire)
+            tasks.append(orcid)
+            tasks.append(journalbrowser)
+            #tasks.append(peoplepage)
+            '''
+            for task in tasks:
+                if isinstance(task, asyncio.Task):
+                    for result in task.result():
+                        full_results[result['type']] = result['total']
+                else:
+                    full_results[task] = 0'''
+
+            stats = Table(title='Retrieved items', title_style='dark_violet', show_header=True)
+            stats.add_column('Source', style='cyan')
+            stats.add_column('# added/updated', style='orange1')
+            for key in full_results:
+                stats.add_row(str(key), str(full_results[key]))
+            cons.print(stats)
 
         overview = Table(title='Tasks', show_lines=False, box=box.SIMPLE_HEAD, title_style='bold yellow', show_header=False)
         overview.add_column('')
@@ -239,26 +240,33 @@ class UpdateManager:
         overview.add_row(":arrow_right:", "3. Cleaning, matching & deduplication of items", style='cyan')
         overview.add_row(":blue_square:", "4. Gather and process data to import into SQL database")
         overview.add_row(":blue_square:", "5. Import data into SQL database & report results")
-        cons.print(Panel(overview, title="Progress", style='magenta'))
-        cons.print('Implemented functions: matching Pure authors (from CSV import) with OpenAlex authors')
-
-        third_results = await asyncio.gather(AuthorMatcher().run(),
-        )
+        if 'skip_three' not in include:
+            cons.print(Panel(overview, title="Progress", style='magenta'))
+            cons.print('Implemented functions: matching Pure authors (from CSV import) with OpenAlex authors, matching OpenAlex works to Pure works')
+            tasks : list[asyncio.Task|None] = []
+            async with asyncio.TaskGroup() as tg:
+                authormatcher = tg.create_task(AuthorMatcher().run())
+                workmatcher = tg.create_task(WorkMatcher().run())
+            tasks.append(authormatcher)
+            tasks.append(workmatcher)
+            
         overview = Table(title='Tasks', show_lines=False, box=box.SIMPLE_HEAD, title_style='bold yellow', show_header=False)
         overview.add_column('')
         overview.add_column('')
         overview.add_row(":white_check_mark:", "1. Get data from OpenAlex & Pure", style='dim')
         overview.add_row(":white_check_mark:","2. Run other APIs and scrapers, e.g. ORCID, OpenAIRE, JournalBrowser, etc", style='dim')
-        overview.add_row(":white_question_mark:", "3. Cleaning, matching & deduplication of items", style='dim')
+        overview.add_row(":white_check_mark:", "3. Cleaning, matching & deduplication of items", style='dim')
         overview.add_row(":arrow_right:", "4. Gather and process data to import into SQL database", style='red')
         overview.add_row(":x:", "5. Import data into SQL database & report results", style='red')
         cons.print(Panel(overview, title="Progress", style='magenta'))
         cons.print('Now running the CreateSQL class to add data to the database')
-        cons.print('Update Manager finished.')
 
+        # rerun add_indexes to ensure all collections have indexes before sql import
+        await musmongoclient.add_indexes()
         sql_creator = CreateSQL()
         add_sql_result = await sql_creator.add_all()
 
+        cons.print('Update Manager finished.')
 
 
 
@@ -266,9 +274,8 @@ class UpdateManager:
 def main():
     mngr = UpdateManager()
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    include = {'all':True, 'skip_one':True}
+    include = {'skip_one':True, 'skip_two':True, 'skip_three':True}
     asyncio.run(mngr.run(include=include))
-    ...
 
 
 #! MongoDB find calls:

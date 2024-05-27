@@ -54,3 +54,4 @@ aiofiles
 loguru
 rich
 django-readers
+django-query-profiler

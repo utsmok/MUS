@@ -57,6 +57,7 @@ class CreateSQL:
         self.timezone = pytz.utc
         self.topics_dict: dict[str:Topic] = None
         self.all_topics: list[Topic] = []
+        self.missing_orgs: list[str] = []
 
     async def load_topics(self):
         self.all_topics : list[Topic] = [topic async for topic in Topic.objects.all()]
@@ -71,54 +72,66 @@ class CreateSQL:
         then we add authors and affiliations
         we finish with works, grants, authorships, locations, and abstracts
         '''
-        if False:
-            print('adding topics')
-            time = datetime.now()
-            async with asyncio.TaskGroup() as tg:
-                topics = tg.create_task(self.add_all_itemtype(self.motorclient.topics_openalex, self.add_topic))
+        print('adding topics')
+        time = datetime.now()
+        async with asyncio.TaskGroup() as tg:
+            topics = tg.create_task(self.add_all_itemtype(self.motorclient.topics_openalex, self.add_topic, Topic))
 
-            time_taken = round((datetime.now() - time).total_seconds(),2)
-            print(f'added {len(topics.result())} topics in {time_taken} seconds ({len(topics.result())/time_taken} items/sec | {time_taken/len(topics.result())} sec/item)')
+        time_taken = round((datetime.now() - time).total_seconds(),2)
+        print(f'added {len(topics.result())} topics in {time_taken} seconds ({len(topics.result())/time_taken} items/sec) ')
+        await self.load_topics()
+        print('adding funders, sources, dealdata, publishers, organizations')
+        time = datetime.now()
+        async with asyncio.TaskGroup() as tg:
+            topics_siblings = tg.create_task(self.add_topic_siblings())
+            funders = tg.create_task(self.add_all_itemtype(self.motorclient.funders_openalex, self.add_funder, Funder))
+            sources = tg.create_task(self.add_all_itemtype(self.motorclient.sources_openalex, self.add_source, Source))
+            publishers = tg.create_task(self.add_all_itemtype(self.motorclient.publishers_openalex, self.add_publisher, Publisher))
+            organizations = tg.create_task(self.add_all_itemtype(self.motorclient.institutions_openalex, self.add_organization, Organization))
 
-            print('adding funders, sources, dealdata, publishers, organizations')
-            time = datetime.now()
-            async with asyncio.TaskGroup() as tg:
-                topics_siblings = tg.create_task(self.add_topic_siblings())
-                funders = tg.create_task(self.add_all_itemtype(self.motorclient.funders_openalex, self.add_funder))
-                sources = tg.create_task(self.add_all_itemtype(self.motorclient.sources_openalex, self.add_source))
-                publishers = tg.create_task(self.add_all_itemtype(self.motorclient.publishers_openalex, self.add_publisher))
-                organizations = tg.create_task(self.add_all_itemtype(self.motorclient.institutions_openalex, self.add_organization))
-
-            time_taken = round((datetime.now() - time).total_seconds(),2)
-            print(f'added {len(topics_siblings.result())} topic siblings in {time_taken} seconds ({len(topics_siblings.result())/time_taken} items/sec | {time_taken/len(topics_siblings.result())} sec/item)')
-            print(f'added {len(funders.result())} funders')
-            print(f'added {len(sources.result())} sources')
-            print(f'added {len(publishers.result())} publishers')
-            print(f'added {len(organizations.result())} organizations')
-            print(f'total items: {len(funders.result()) + len(sources.result()) + len(publishers.result()) + len(organizations.result())}')
-            print(f'total time: {round((datetime.now() - time).total_seconds(),2)} seconds')
-            print(f'avg time per item: {round((datetime.now() - time).total_seconds()/len(funders.result() + sources.result() +  publishers.result() + organizations.result()),2)} seconds')
-            print(f'avg items per second: {round(len(funders.result() + sources.result() + publishers.result() + organizations.result())/(datetime.now() - time).total_seconds(),2)}')
+        time_taken = round((datetime.now() - time).total_seconds(),2)
+        print(f'added {len(topics_siblings.result())} topic siblings in {time_taken} seconds')
+        print(f'added {len(funders.result())} funders')
+        print(f'added {len(sources.result())} sources')
+        print(f'added {len(publishers.result())} publishers')
+        print(f'added {len(organizations.result())} organizations')
+        print(f'total items: {len(  funders.result()) + len(sources.result()) + len(publishers.result()) + len(organizations.result())}')
+        print(f'total time: {round((datetime.now() - time).total_seconds(),2)} seconds')
+        print(f'avg items per second: {round(len(funders.result() + sources.result() + publishers.result() + organizations.result())/(datetime.now() - time).total_seconds(),2)}')
 
         await self.load_topics()
+
+        print('adding authors')
         async with asyncio.TaskGroup() as tg:
             #linked = tg.create_task(self.add_org_links())
             authors = tg.create_task(self.add_all_authors())
 
         #print(f'added m2m relations to {len(linked.result())} items (organizations, funders, sources, publishers)')
         print(f'added {len(authors.result())} authors')
+        if len(self.missing_orgs) > 0:
+            print(f'retrieved {len(self.missing_orgs)} organizations that were not found')
+            from xclass_refactor.openalex_import import OpenAlexAPI
+            openalexresult = await OpenAlexAPI(openalex_requests={'institutions_openalex':self.missing_orgs}).run()
+            print('done adding missing organizations to mongodb, now adding to sql db')
+            more_orgs = await self.add_all_itemtype(self.motorclient.institutions_openalex, self.add_organization, Organization)
+            print(f'added {len(more_orgs)} orgs to sql db')
 
-        if False:
-            async with asyncio.TaskGroup() as tg:
-                works = tg.create_task(self.add_all_itemtype(self.motorclient.works_openalex, self.add_work))
+        print('adding works')
+        async with asyncio.TaskGroup() as tg:
+            works = tg.create_task(self.add_all_itemtype(self.motorclient.works_openalex, self.add_work, Work))
+        print(f' Done with CreateSQL.run(). Methods not implemented yet: add_org_links, add_grant, add_authorship, add_location')
+        print(f' currently also mainly processing data from openalex. Missing data from openaire, crossref, orcid, datacite, and repository')
 
-    async def add_all_itemtype(self, collection: motor.motor_asyncio.AsyncIOMotorCollection, add_function: callable)-> list:
+    async def add_all_itemtype(self, collection: motor.motor_asyncio.AsyncIOMotorCollection, add_function: callable, model: MusModel)-> list:
         """
         Add all items from a mongodb collection to the database
         """
         results = []
+        models_in_db = model.objects.all().values_list('openalex_id', flat=True)
+        models_in_db = {model async for model in models_in_db}
         async for item in collection.find():
-                results.append(await add_function(item))
+                if item.get('id') not in models_in_db:
+                    results.append(await add_function(item))
         return results
 
     async def add_all_authors(self) -> list:
@@ -200,6 +213,8 @@ class CreateSQL:
         return full_siblist
 
     async def add_funder(self, raw_funder:dict) -> Funder:
+        if await Funder.objects.filter(openalex_id=raw_funder.get('id')).aexists():
+            return await Funder.objects.aget(openalex_id=raw_funder.get('id'))
         funder_dict = {
             'openalex_id':raw_funder.get('id'),
             'name':raw_funder.get('display_name'),
@@ -353,7 +368,8 @@ class CreateSQL:
         return source
 
     async def add_publisher(self, publisher_raw:dict) -> Publisher:
-
+        if await Publisher.objects.filter(openalex_id=publisher_raw.get('id')).aexists():
+            return await Publisher.objects.aget(openalex_id=publisher_raw.get('id'))
         publisher_dict = {
             'openalex_id':publisher_raw.get('id'),
             'openalex_created_date':datetime.strptime(publisher_raw.get('created_date'),'%Y-%m-%d'),
@@ -380,6 +396,8 @@ class CreateSQL:
         return publisher
 
     async def add_organization(self, organization_raw:dict) -> Organization:
+        if await Organization.objects.filter(openalex_id=organization_raw.get('id')).aexists():
+            return await Organization.objects.aget(openalex_id=organization_raw.get('id'))
         organization_dict = {
             'name':organization_raw.get('display_name'),
             'name_acronyms':organization_raw.get('display_name_acronyms'),
@@ -456,7 +474,8 @@ class CreateSQL:
                 namelist.append(author_raw.get('author_known_as_name'))
 
             # from employee page
-            namelist.append(author_raw.get('foundname'))
+            if author_raw.get('foundname'):
+                namelist.append(author_raw.get('foundname'))
 
             # make HumanName from each included name
             # make sets for each name part
@@ -469,7 +488,7 @@ class CreateSQL:
                 namedict['last'].add(name.last)
                 namedict['suffixes'].add(name.suffix)
 
-            # think of heuristic for the standardized name; for now select the longest value for each part (bad approach)
+            # TODO: think of heuristic for the standardized name; for now select the longest value for each part (bad approach)
             final_name = " ".join([max(namedict[key], key=len) for key in namedict])
             standardized_name = HumanName(final_name)
             return standardized_name, namelist
@@ -524,9 +543,9 @@ class CreateSQL:
         }
         # 5th dict: name-match info
         match_info_dict ={
-        'searched_name':author_raw.get('searchname'),
-        'found_name':author_raw.get('foundname'),
-        'match_similarity':author_raw.get('similarity'),
+            'searched_name':author_raw.get('searchname'),
+            'found_name':author_raw.get('foundname'),
+            'match_similarity':author_raw.get('similarity'),
         }
 
         # step 3: combine the dicts and store as Author
@@ -552,10 +571,11 @@ class CreateSQL:
 
 
     async def add_affiliation(self, affiliation_raw:dict, author:Author, author_raw:dict) -> Affiliation:
+        
         # openalex data
         organization = await Organization.objects.filter(openalex_id=affiliation_raw.get('institution').get('id')).afirst()
         if not organization:
-            print(f'organization not found for {affiliation_raw.get("institution")}, skipping')
+            self.missing_orgs.append(affiliation_raw.get("institution").get('id'))
             return None
         affiliation_dict = {
             'years':affiliation_raw.get('years'),
@@ -599,74 +619,166 @@ class CreateSQL:
 
     async def add_work(self, work_raw:dict) -> Work:
         # calls add_location, add_abstract, add_authorship, add_grants during work creation
-
-
-        work_dict = {}
+        if await Work.objects.filter(openalex_id=work_raw.get('id')).aexists():
+            return await Work.objects.aget(openalex_id=work_raw.get('id'))
+        work_dict = {
+            
+            'openalex_id':work_raw.get('id'),
+            'openalex_created_date':datetime.strptime(work_raw.get('created_date'),'%Y-%m-%d'),
+            'openalex_updated_date':self.timezone.localize(datetime.strptime(work_raw.get('updated_date'),'%Y-%m-%dT%H:%M:%S.%f')),
+            'ngrams_url':work_raw.get('ngrams_url'),
+            'cited_by_api_url':work_raw.get('cited_by_api_url'),
+            'cited_by_count':work_raw.get('cited_by_count'),
+            'cited_by_percentile_year':work_raw.get('cited_by_percentile_year'),
+            'referenced_works_count':work_raw.get('referenced_works_count'),
+            'doi':work_raw.get('doi'),
+            'title':work_raw.get('title'),
+            'publication_year':work_raw.get('publication_year'),
+            'publication_date':work_raw.get('publication_date'),
+            'pmid':work_raw.get('ids').get('pmid') if work_raw.get('ids') else None,
+            'pmcid':work_raw.get('ids').get('pmcid') if work_raw.get('ids') else None,
+            'isbn':work_raw.get('ids').get('isbn') if work_raw.get('ids') else None,
+            'mag':work_raw.get('ids').get('mag') if work_raw.get('ids') else None,
+            'language':work_raw.get('language'),
+            'mesh_terms':work_raw.get('mesh'),
+            'type_crossref':work_raw.get('type_crossref'),
+            'volume':work_raw.get('biblio').get('volume') if work_raw.get('biblio') else None,
+            'issue':work_raw.get('biblio').get('issue') if work_raw.get('biblio') else None,
+            'first_page':work_raw.get('biblio').get('first_page') if work_raw.get('biblio') else None,
+            'last_page':work_raw.get('biblio').get('last_page') if work_raw.get('biblio') else None,
+            'pages': None,
+            'article_number':None,
+            'locations_count':work_raw.get('locations_count'),
+            'is_oa':work_raw.get('open_access').get('is_oa') if work_raw.get('open_access') else None,
+            'oa_status':work_raw.get('open_access').get('oa_status') if work_raw.get('open_access') else None,
+            'oa_url':work_raw.get('open_access').get('oa_url') if work_raw.get('open_access') else None,
+            'is_also_green':work_raw.get('open_access').get('any_repository_has_fulltext') if work_raw.get('open_access') else None,
+            'itemtype':work_raw.get('type'),
+            'apc_listed':work_raw.get('apc_list').get('value_usd') if work_raw.get('apc_list') else None,
+            'apc_paid':work_raw.get('apc_paid').get('value_usd') if work_raw.get('apc_paid') else None,
+            'has_fulltext':work_raw.get('has_fulltext'),
+            'is_paratext':work_raw.get('is_paratext'),
+            'is_retracted':work_raw.get('is_retracted'),
+            'indexed_in':work_raw.get('indexed_in'),
+            'keywords':work_raw.get('keywords'),
+            'sdgs':work_raw.get('sustainable_development_goals'),
+            'versions':work_raw.get('versions'),
+        }
 
         # add raw data from other data sources
-        datacite_raw = await self.motorclient.works_datacite.find_one({'id':work_raw.get('id')})
+        datacite_raw = await self.motorclient.items_datacite.find_one({'id':work_raw.get('id')}, projection={'_id':0})
         if datacite_raw:
-            datacite = DataCiteData(data=datacite_raw, source_collection='works_datacite')
+            datacite = DataCiteData(data=datacite_raw)
             await datacite.asave()
             work_dict['datacite_data'] = datacite
-        openaire_raw = await self.motorclient.works_openaire.find_one({'id':work_raw.get('id')})
+        openaire_raw = await self.motorclient.items_openaire.find_one({'id':work_raw.get('id')}, projection={'_id':0})
         if openaire_raw:
-            openaire = OpenAireData(data=openaire_raw, source_collection='works_openaire')
+            openaire = OpenAireData(data=openaire_raw)
             await openaire.asave()
             work_dict['openaire_data'] = openaire
-        crossref_raw = await self.motorclient.works_crossref.find_one({'id':work_raw.get('id')})
+        crossref_raw = await self.motorclient.items_crossref.find_one({'id':work_raw.get('id')}, projection={'_id':0})
         if crossref_raw:
-            crossref = CrossrefData(data=crossref_raw, source_collection='works_crossref')
+            crossref = CrossrefData(data=crossref_raw)
             await crossref.asave()
             work_dict['crossref_data'] = crossref
-        repository_raw = await self.motorclient.works_repository.find_one({'id':work_raw.get('id')})
+        repository_raw = await self.motorclient['items_pure_oaipmh'].find_one({'id':work_raw.get('id')}, projection={'_id':0})
         if repository_raw:
-            repository = RepositoryData(data=repository_raw, source_collection='works_repository')
+            repository = RepositoryData(data=repository_raw)
             await repository.asave()
             work_dict['repo_data'] = repository
+            work_dict['found_in_institute_repo'] = True
+
 
         work = Work(**work_dict)
-        await work.asave()
+        try:
+            await work.asave()
+        except Exception as e:
+            print(f'error while saving work {work.openalex_id}: {e}')
+            return None
+
+        # authorships are directly made as Authorship objects, including the work as fk, no need to add them to work later
+        
+        
 
         if work_raw.get('abstract'):
-            work = await self.add_abstract(work_raw.get('abstract'), work)
-        for authorship in work_raw.get('authorships'):
-            author = await Author.objects.aget(openalex_id=authorship.get('author').get('id'))
-            work = await self.add_authorship(authorship, work, author)
-        best_oa_location = work_raw.get('best_oa_location')
-        primary_location = work_raw.get('primary_location')
-        for location in work_raw.get('locations'):
-            source = await Source.objects.aget(openalex_id=location.get('source').get('id'))
-            work = await self.add_location(location, work, source, best_oa_location, primary_location)
-        for grant in work_raw.get('grants'):
-            work = await self.add_grant(grant, work)
+            abstract = await self.add_abstract(work_raw.get('abstract'))
+            work.abstract = abstract
+            await work.asave()
+
+        if work_raw.get('topics'):
+            topiclist = []
+            for topic_raw in work_raw.get('topics'):
+                topic = self.topics_dict.get(topic_raw.get('id'))
+                if not topic:
+                    continue
+                topiclist.append(topic)
+            await work.topics.aset(topiclist)
+
+        #'not implemented yet: locations, grants, authorships')
+        if False:
+            authorships = await self.add_authorships(work_raw.get('authorships'), work)
+
+            best_oa_location = work_raw.get('best_oa_location')
+            primary_location = work_raw.get('primary_location')
+            if work_raw.get('locations'):
+                locations = await self.add_locations(work_raw.get('locations'), work, best_oa_location, primary_location)
+                await work.locations.aset(locations)
+
+            if work_raw.get('grants'):
+                work = await self.add_grants(work_raw.get('grants'), work)
+
         #await work.raw_data.acreate(data=work_raw, source_collection='works_openalex')
 
         return work
 
-    async def add_location(self, location_raw:dict, work:Work, source:Source, best_oa_location:dict, primary_location:dict) -> Work:
-        location_dict = {}
-        location = Location(**location_dict)
-        await location.asave()
-        await work.locations.aadd(location)
+    async def add_locations(self, locations_raw:dict, work:Work, best_oa_location:dict|None, primary_location:dict|None) -> Work:
+        async def make_location(location_raw:dict):
+            try:
+                source = await Source.objects.aget(openalex_id=location_raw.get('source').get('id'))
+            except Exception as e:
+                print(f'{e} while retrieving source {location_raw.get('source')} for location {location_raw.get('id')}')
+                source = None
+            
+
+            location_dict = {}
+            location = Location(**location_dict)
+            await location.asave()
+            return location
+        
+        locations = []        
+        for location in locations_raw:
+            locations.append(await make_location(location))
+        await work.locations.aset(locations)
         return work
 
 
-    async def add_abstract(self, abstract_raw:dict, work:Work) -> Work:
+    async def add_abstract(self, abstract_raw:dict) -> Abstract:
         abstract_text = await parse_reversed_abstract(abstract_raw)
         abstract = Abstract(text=abstract_text)
         await abstract.asave()
-        work.abstract = abstract
-        await work.asave()
-        return work
+        return abstract
 
-    async def add_authorship(self, authorship_raw:dict, work:Work, author:Author) -> Work:
+    async def add_authorships(self, authorships_raw:list[dict], work:Work) -> list[Authorship]:
+        authorships = []
+        for authorship_raw in authorships_raw:
+            try:
+                author = await Author.objects.aget(openalex_id=authorship_raw.get('author').get('id'))
+            except Exception as e:
+                print(f'{e} while retrieving author {authorship_raw.get("author")} for authorship {authorship_raw.get("id")}')
+                continue
+            
+            # don't forget to add rest of authorship data to the object!
+            authorship = Authorship(author=author, work=work).asave()
+            authorships.append(authorship)
+        return authorships
 
-        return work
 
-
-    async def add_grant(self, grant_raw:dict, work:Work) -> Work:
-        return work
+    async def add_grants(self, grants_raw:list[dict], work:Work) -> Work:
+        grants = []
+        # work is a fk to the work object, so we can add grants to it directly
+        for grant_raw in grants_raw:
+            ...
+        return grants
 
     # these are not used standalone but as part of all other models
     async def add_tag(self, tag_raw:dict, model:MusModel) -> Tag:

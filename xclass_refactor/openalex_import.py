@@ -68,12 +68,13 @@ class OpenAlexAPI():
         tasks = []
         tasks2 = []
         for request in self.openalex_requests:
-            if request == 'works_openalex':
-                start = datetime.now()
-                cons.print('running OpenAlexQuery for works')
-                res = await OpenAlexQuery(mongoclient=self.mongoclient, mongocollection=self.mongoclient.works_openalex, pyalextype='works', item_ids=self.requested_works, years=self.years).run()
-                cons.print(f'took {datetime.now()-start}')
-                results.append(res)
+            if False:
+                if request == 'works_openalex':
+                    start = datetime.now()
+                    cons.print('running OpenAlexQuery for works')
+                    res = await OpenAlexQuery(mongoclient=self.mongoclient, mongocollection=self.mongoclient.works_openalex, pyalextype='works', item_ids=self.requested_works, years=self.years).run()
+                    cons.print(f'took {datetime.now()-start}')
+                    results.append(res)
             if request == 'authors_openalex':
                 cons.print('running OpenAlexQuery for authors')
                 tasks.append(OpenAlexQuery(self.mongoclient, self.mongoclient.authors_openalex, 'authors', self.requested_authors).run())
@@ -127,13 +128,11 @@ class OpenAlexQuery():
 
     '''
 
-    # TODO: also retrieve publishers!
-    def __init__(self, mongoclient:MusMongoClient, mongocollection:motor.motor_asyncio.AsyncIOMotorCollection, pyalextype:str, item_ids:Iterable[str]=None, years:list[int]=[2023,2024,2025]):
+    def __init__(self, mongoclient:MusMongoClient, mongocollection:motor.motor_asyncio.AsyncIOMotorCollection, pyalextype:str, item_ids:Iterable[str]=None, years:list[int]=[2019, 2020, 2021, 2022, 2023, 2024 , 2025]):
         self.mongoclient:MusMongoClient = mongoclient
         self.collection:motor.motor_asyncio.AsyncIOMotorCollection = mongocollection
         self.item_ids:Iterable[str]  = item_ids
-        if self.item_ids:
-            self.set_query()
+        self.non_institution_authors: Iterable[str] = []
         self.querylist:list[BaseOpenAlex] = []
         self.years = years
         self.httpxclient : httpx.AsyncClient = httpx.AsyncClient()
@@ -149,7 +148,7 @@ class OpenAlexQuery():
         }
         self.pyalextype = pyalextype
         self.results = []
-    async def add_to_querylist(self,query: BaseOpenAlex=None, only_institute=True) -> None:
+    async def add_to_querylist(self,query: BaseOpenAlex=None, only_institute=False) -> None:
         '''
         adds the pyalex query to the list of queries to run for this itemtype
         if no query is provided, it will add a default query for the itemtype
@@ -157,7 +156,7 @@ class OpenAlexQuery():
         if not query:
             # first try making query using item_ids if provided
             if self.item_ids:
-                self.add_query_by_ids()
+                self.add_query_by_ids(self.item_ids)
             else:
                 # no item_ids, no query: make default query for itemtype
                 if self.pyalextype == 'works':
@@ -175,23 +174,25 @@ class OpenAlexQuery():
                     institutionlist = set()
                     topiclist = set()
                     publisherlist = set()
+                    noninstitutionauthorlist = set()
                     # all other types: generate a list of ids extracted from available works
                     # then call add_query_by_ids to construct the batched queries
                     if self.pyalextype == 'authors':
                         async for work in self.mongoclient.works_openalex.find({}, projection={'authorships':1}, sort=[('authorships', 1)]):
                             if 'authorships' in work:
+                                added=False
                                 for authorship in work['authorships']:
                                     if 'institutions' in authorship:
                                         for institution in authorship['institutions']:
-                                            if only_institute:
-                                                if any([institution['ror'] == ROR,
-                                                institution['id'] == OPENALEX_INSTITUTE_ID,
-                                                INSTITUTE_NAME.lower() in institution['display_name'].lower(),
-                                                institution['display_name'].lower() in [name.lower() for name in INSTITUTE_ALT_NAME]]):
-                                                    authorlist.add(authorship['author']['id'])
-                                                    break
-                                            else:
+                                            if any([institution['ror'] == ROR,
+                                            institution['id'] == OPENALEX_INSTITUTE_ID,
+                                            INSTITUTE_NAME.lower() in institution['display_name'].lower(),
+                                            institution['display_name'].lower() in [name.lower() for name in INSTITUTE_ALT_NAME]]):
                                                 authorlist.add(authorship['author']['id'])
+                                                added=True
+                                                break
+                                    if not only_institute and not added:
+                                        noninstitutionauthorlist.add(authorship['author']['id'])
                     if self.pyalextype == 'sources':
                         async for work in self.mongoclient.works_openalex.find({}, projection={'locations':1}, sort=[('locations', 1)]):
                             if 'locations' in work:
@@ -231,9 +232,18 @@ class OpenAlexQuery():
                         for t in l:
                             if not await self.collection.find_one({'id':t}):
                                 self.item_ids.append(t)
+
                     cons.print(f'{len(self.item_ids)} {self.pyalextype} ids remaining after filtering')
                     if self.item_ids:
-                        self.add_query_by_ids()
+                        self.add_query_by_ids(self.item_ids)
+
+                    if noninstitutionauthorlist:
+                        for t in noninstitutionauthorlist:
+                            if not await self.mongoclient.non_instution_authors_openalex.find_one({'id':t}):
+                                self.non_institution_authors.append(t)
+                        print(f'{len(self.non_institution_authors)} non-institution authors remaining after filtering')
+                        if self.non_institution_authors:
+                            self.add_query_by_ids(self.non_institution_authors)
         else:
             # query is provided: just add to the list
             if not isinstance(query, list):
@@ -241,26 +251,26 @@ class OpenAlexQuery():
             else:
                 self.querylist.extend(query)
 
-    def add_query_by_ids(self) -> bool:
+    def add_query_by_ids(self, item_ids:Iterable[str]=None) -> bool:
         '''
-        creates queries for all ids in self.item_ids for the itemtype of this instance of OpenAlexQuery
-        if self.item_ids is empty it will return False
+        creates queries for all ids in item_ids for the itemtype of this instance of OpenAlexQuery
         '''
-        if self.item_ids:
-            batch = []
-            for id in self.item_ids:
-                batch.append(id)
-                if len(batch) == 50:
-                    itemids="|".join(batch)
-                    if not self.pyalextype == 'publishers':
-                        self.querylist.append(self.pyalexmapping[self.pyalextype]().filter(openalex=itemids))
-                    else:
-                        self.querylist.append(self.pyalexmapping[self.pyalextype]().filter(ids={'openalex':itemids}))
-                    batch = []
-            itemids="|".join(batch)
-            self.querylist.append(self.pyalexmapping[self.pyalextype]().filter(openalex=itemids))
-        else:
-            raise Exception(f'no item_ids present in this instance of OpenAlexQuery for {self.pyalextype}')
+        
+        batch = []
+        for id in item_ids:
+            batch.append(id)
+            if len(batch) == 50:
+                itemids="|".join(batch)
+                if not self.pyalextype == 'publishers':
+                    self.querylist.append(self.pyalexmapping[self.pyalextype]().filter(openalex=itemids))
+                else:
+                    self.querylist.append(self.pyalexmapping[self.pyalextype]().filter(ids={'openalex':itemids}))
+                batch = []
+        itemids="|".join(batch)
+        self.querylist.append(self.pyalexmapping[self.pyalextype]().filter(openalex=itemids))
+    
+        
+
     def add_query_by_orcid(self, orcids:list[str]) -> None:
         '''
         from a list of orcids, create queries for this instance of OpenAlexQuery

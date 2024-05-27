@@ -6,6 +6,7 @@ from xclass_refactor.mus_mongo_client import MusMongoClient
 from xclass_refactor.openalex_import import OpenAlexQuery
 import motor.motor_asyncio
 from xclass_refactor.constants import APIEMAIL, OPENAIRETOKEN, MONGOURL, ORCID_CLIENT_ID, ORCID_CLIENT_SECRET, ORCID_ACCESS_TOKEN
+import json
 
 class AuthorMatcher():
     motorclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unificiation_system
@@ -84,6 +85,57 @@ class AuthorMatcher():
         return self.results
 
 class WorkMatcher():
-    # match works from the different data sources
-    # start with Pure and OpenAlex works; the rest should already have matches through dois
-    ...
+    # match OpenAlex works to Pure works
+    # OpenAlex works are already linked to the other sources (datacite, crossref, openaire)
+    # start with matching DOIs and ISBNs
+    # then maybe by using other data if much is missing
+    
+    motorclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unificiation_system
+
+    def __init__(self):
+        self.results = {'total':0, 'works':[]}
+
+    async def run(self):
+        await self.get_works()
+        print(f'got {len(self.works)} openalex works ready to match')
+        await self.match_dois()
+
+        return self.results
+    async def get_works(self):
+        works = {}
+        async for work in self.motorclient.works_openalex.find({}, projection={'id':1, 'doi':1, 'ids.isbn':1}):
+            works[work['doi']] = {'id':work.get('id'), 'isbn':work.get('ids').get('isbn') if work.get('ids') else None, 'doi':str(work.get('doi')).lower()}
+        self.works = works
+
+
+    async def match_dois(self):
+        
+        # use self.motorclient.items_pure_oaipmh.find() to loop over all items in pure_oaipmh collection
+        # projection: only _id, id, identifier fields, nothing else
+        # filter out all items that already have a value in the 'id' field
+
+        num_items = 0
+        num_matched = 0
+        num_total = await self.motorclient.items_pure_oaipmh.estimated_document_count()
+        num_without_match = await self.motorclient.items_pure_oaipmh.estimated_document_count({'id':{'$exists':False}})
+        print(f'matching {num_total} pure items -- {num_without_match} without a match')
+        # here is the functioncall to get all items, but it is missing the filter for items that already have a value in the 'id' field
+        async for pure_item in self.motorclient['items_pure_oaipmh'].find({'id':{'$exists':False}}, projection={'_id':1, 'id':1, 'identifier':1}):
+            num_items = num_items + 1
+            if num_items % 250 == 0:
+                print(f'{num_items} total checked (+250)')
+            if pure_item.get('id'): # already matched, shouldn't happen
+                continue
+            if pure_item.get('identifier'):
+                if isinstance(pure_item.get('identifier'), list):
+                    for identifier in pure_item.get('identifier'):
+                        if isinstance(identifier, dict):
+                            if identifier.get('type') == 'doi':
+                                    if str(identifier.get('value')).lower() in self.works:
+                                        await self.motorclient.items_pure_oaipmh.update_one({'_id': pure_item['_id']}, {'$set': {'id': self.works[identifier.get('identifier')]['id']}})
+                                        num_matched = num_matched + 1
+        
+        print(f'matched {num_matched} out of {num_items} items -- ~{num_total} total items in the collection')
+        
+
+        
