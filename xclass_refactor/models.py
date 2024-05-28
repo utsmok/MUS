@@ -9,7 +9,7 @@ from django.core.serializers.json import DjangoJSONEncoder
 
 The detailed data from the APIs as stored in MongoDB can be
 stored in the SQL DB as a single JSON in the form of a MongoData entry,
-which has a many-to-one relationship with each other model 
+which has a many-to-one relationship with each other model
 (each mongodata entry only has a single link, but each model instance can have multiple data sources)
 '''
 
@@ -36,7 +36,7 @@ class MongoData(TimeStampedModel, models.Model):
     content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
     object_id = models.PositiveIntegerField()
     content_object = GenericForeignKey("content_type", "object_id")
-    
+
     class Meta:
         indexes = [
             models.Index(fields=["content_type", "object_id", "source_collection"]),
@@ -60,7 +60,7 @@ class Tag(TimeStampedModel, models.Model):
         HAS_ERROR = 'HE' # item is tagged as having an error, needs repairs -- details in 'notes' field
         GENERIC = 'GN' # generic tag, not specific to any type -- used as default
         ORG_TYPE = 'OT' # organization type -- actual type in 'notes' field
-        
+
     tag_type = models.CharField(choices=TagTypes, default=TagTypes.GENERIC, max_length=2)
     notes = models.CharField(default='', blank=True)
     content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
@@ -82,20 +82,16 @@ class MusModel(TimeStampedModel, models.Model):
         abstract = True
 
 '''
-Below: all actual models, inheriting from MusModel 
+Below: all actual models, inheriting from MusModel
 The base design is mostly from OpenAlex, but with some modifications to fit the rest
 '''
 class Group(models.Model):
     '''
-    simple class to hold data for author's group (+ faculty) -- only use for main institution authors
-    this data will come from the institute repo or a separate personell page / report / ...
+    simple class to hold data for author's group (+ faculty)
+    will be used in Affiliation model if the Organization == the primary institution
     '''
-    #def get_groups():
-    #    GroupList = models.TextChoices('GroupList', UTRESEARCHGROUPS_FLAT)
-    #    return GroupList
-    
     class Faculties(models.TextChoices):
-        # this should move to env vars, like grouplist
+        # TODO: import from env instead of hardcoding
         EEMCS = 'EEMCS'
         BMS = 'BMS'
         ET = 'ET'
@@ -220,18 +216,25 @@ class Funder(MusModel):
             models.Index(fields=["wikidata"]),
         ]
 
+
+# TODO: Organization types
+# idea: use tags of tagtype 'ORG_TYPE' ('OT') to store the type of this institution instance + all related institutions (see 'roles' field in api data)
+# note: double check for accidental duplicates when going through the list of related items!!
+# the actual type should be in the 'notes' field of the tag
+# these are the types that can be used:
+# education, funder, healthcare, company, archive, nonprofit, government, facility, other
+
 class Organization(MusModel):
-    # these are mainly openalex institutions 
+    '''
+    Organizations are currently all OpenAlex Institutions -- but data from other sources will be added in the future.
+    lineage points to parent orgs, repos point to repositories that this org manages.
+    Other organization types like Funders and Publishers will link to this model to indicate their relationship,
+    keeping this model as the base.
+    '''
     topics = models.ManyToManyField('Topic', through='OrganizationTopic', related_name="organizations")
     repositories = models.ManyToManyField('Source', related_name="repositories")
     lineage = models.ManyToManyField('Organization', related_name="org_children")
-    
-    # idea: use tags of tagtype 'ORG_TYPE' ('OT') to store the type of this institution instance + all related institutions (see 'roles' field in api data)
-    # note: double check for accidental duplicates when going through the list of related items!!
-    # the actual type should be in the 'notes' field of the tag
-    # these are the types that can be used:
-    # education, funder, healthcare, company, archive, nonprofit, government, facility, other
-    
+
     name = models.CharField()
     name_acronyms = models.JSONField(encoder=DjangoJSONEncoder, null=True)
     name_alternatives = models.JSONField(encoder=DjangoJSONEncoder, null=True)
@@ -249,7 +252,7 @@ class Organization(MusModel):
     impact_factor = models.FloatField(null=True)
     h_index = models.IntegerField(null=True)
     i10_index = models.IntegerField(null=True)
-    
+
     image_thumbnail_url = models.URLField(max_length=20000,null=True)
     image_url = models.URLField(max_length=20000,null=True)
 
@@ -268,7 +271,7 @@ class Publisher(MusModel):
     lineage = models.ManyToManyField('Publisher', related_name="publ_children")
     as_funder = models.ManyToManyField('Funder', related_name="as_publisher")
     as_institution = models.ManyToManyField('Organization', related_name="as_publisher")
-    
+
     openalex_id = models.URLField(max_length=20000,null=True)
     openalex_created_date = models.DateField(null=True)
     openalex_updated_date = models.DateTimeField(null=True)
@@ -319,7 +322,7 @@ class Source(MusModel):
     title = models.CharField()
     alternate_titles = models.JSONField(encoder=DjangoJSONEncoder, null=True)
     abbreviated_title = models.CharField(null=True)
-    
+
     homepage_url = models.URLField(max_length=20000,null=True)
     host_org_name = models.CharField(null=True)
 
@@ -370,7 +373,7 @@ class Author(MusModel):
     orcid = models.URLField(max_length=20000,null=True)
     scopus = models.CharField(null=True)
     isni = models.CharField(null=True)
-    
+
     # from openalex
     openalex_id = models.URLField(max_length=20000,null=True)
     openalex_created_date = models.DateField(null=True)
@@ -412,10 +415,10 @@ class Author(MusModel):
 class Affiliation(MusModel):
     author = models.ForeignKey(Author, on_delete=models.CASCADE, related_name="affiliation_details", db_index=True)
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="affiliation_details", db_index=True)
-    
+
     # for openalex affils:
     years = models.JSONField(encoder=DjangoJSONEncoder, null=True)
-    
+
     # for pure/institute affils:
     position = models.CharField(blank=True, default='')
     groups = models.ManyToManyField(Group, related_name="affiliations")
@@ -441,7 +444,7 @@ class DealData(MusModel):
         UNKNOWN = 'UN', _("APC costs unknown")
 
     related_sources = models.ManyToManyField('Source', related_name="deals", db_index=True)
-    
+
     dealtype = models.CharField(choices=DealType, default=DealType.UNKNOWN)
     issns = models.JSONField(encoder=DjangoJSONEncoder, null=True)
     jb_url = models.URLField(max_length=20000)
@@ -571,7 +574,7 @@ class Work(MusModel):
     keywords = models.JSONField(encoder=DjangoJSONEncoder, null=True)
     sdgs = models.JSONField(encoder=DjangoJSONEncoder, null=True)
     versions = models.JSONField(encoder=DjangoJSONEncoder, null=True)
-    
+
     # is item found in .... ? Then add the data right here
     # decide later which fields from these jsons to properly store
     found_in_institute_repo = models.BooleanField(default=False)
@@ -580,7 +583,7 @@ class Work(MusModel):
 
     found_in_openaire = models.BooleanField(default=False)
     openaire_data = models.OneToOneField('OpenAireData', on_delete=models.CASCADE, null=True)
-    
+
     found_in_datacite = models.BooleanField(default=False)
     datacite_data = models.OneToOneField('DataCiteData', on_delete=models.CASCADE, null=True)
 
@@ -635,7 +638,7 @@ class Authorship(MusModel):
             models.Index(fields=["work", "author"]),
             models.Index(name='cor_index', fields=["is_corresponding"], condition=Q(is_corresponding=True)),
         ]
-        
+
 class Grant(MusModel):
     funder = models.ForeignKey('Funder', on_delete=models.CASCADE, related_name="grants", null=True)
     award_id = models.CharField(null=True)

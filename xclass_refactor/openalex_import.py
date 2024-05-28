@@ -50,7 +50,7 @@ class OpenAlexAPI():
         self.requested_topics = self.openalex_requests.get('topics_openalex')
         self.requested_publishers = self.openalex_requests.get('publishers_openalex')
         if not years:
-            self.years = [2023, 2024 , 2025]
+            self.years = [2022, 2023, 2024 , 2025]
         else:
             self.years = years
         self.mongoclient = MusMongoClient()
@@ -190,7 +190,7 @@ class OpenAlexQuery():
                                             institution['display_name'].lower() in [name.lower() for name in INSTITUTE_ALT_NAME]]):
                                                 authorlist.add(authorship['author']['id'])
                                                 break
-                                        
+
                     if self.pyalextype == 'sources':
                         async for work in self.mongoclient.works_openalex.find({}, projection={'locations':1}, sort=[('locations', 1)]):
                             if 'locations' in work:
@@ -245,7 +245,7 @@ class OpenAlexQuery():
         '''
         creates queries for all ids in item_ids for the itemtype of this instance of OpenAlexQuery
         '''
-        
+
         batch = []
         for id in item_ids:
             batch.append(id)
@@ -258,8 +258,8 @@ class OpenAlexQuery():
                 batch = []
         itemids="|".join(batch)
         self.querylist.append(self.pyalexmapping[self.pyalextype]().filter(openalex=itemids))
-    
-        
+
+
 
     def add_query_by_orcid(self, orcids:list[str]) -> None:
         '''

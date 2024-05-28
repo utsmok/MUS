@@ -202,10 +202,6 @@ class UpdateManager:
                     orcid = tg.create_task(ORCIDAPI(itemlist=orcidlist).run())
                 else:
                     orcid = 'orcid'
-                if 'journalbrowser' in include or 'all' in include:
-                    journalbrowser = tg.create_task(JournalBrowserScraper().run())
-                else:
-                    journalbrowser = 'journalbrowser'
                 if 'peoplepage' in include or 'all' in include:
                     #peoplepage = tg.create_task(PeoplePageScraper().run())
                     print('peoplepage not implemented yet')
@@ -245,11 +241,13 @@ class UpdateManager:
             cons.print('Implemented functions: matching Pure authors (from CSV import) with OpenAlex authors, matching OpenAlex works to Pure works')
             tasks : list[asyncio.Task|None] = []
             async with asyncio.TaskGroup() as tg:
+                journalbrowser = tg.create_task(JournalBrowserScraper().run())
                 authormatcher = tg.create_task(AuthorMatcher().run())
                 workmatcher = tg.create_task(WorkMatcher().run())
+            tasks.append(journalbrowser)
             tasks.append(authormatcher)
             tasks.append(workmatcher)
-            
+
         overview = Table(title='Tasks', show_lines=False, box=box.SIMPLE_HEAD, title_style='bold yellow', show_header=False)
         overview.add_column('')
         overview.add_column('')
@@ -274,7 +272,7 @@ class UpdateManager:
 def main():
     mngr = UpdateManager()
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    include = {'skip_one':True, 'skip_two':True}
+    include = {'all':True, 'skip_two':True}
     asyncio.run(mngr.run(include=include))
 
 

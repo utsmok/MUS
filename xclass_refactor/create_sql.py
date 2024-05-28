@@ -437,10 +437,10 @@ class CreateSQL:
                     organization_topic = OrganizationTopic(organization=organization, topic=topic, count=topic_raw.get('count'))
                     await organization_topic.asave()
 
-        if organization_raw.get('roles'):
-            for role in organization_raw.get('roles'):
-                if role.get('role'):
-                    tag = await Tag.objects.acreate(tag_type=Tag.TagTypes.ORG_TYPE, notes=role.get('role'), content_object=organization)
+            if organization_raw.get('roles'):
+                for role in organization_raw.get('roles'):
+                    if role.get('role'):
+                        tag = await Tag.objects.acreate(tag_type=Tag.TagTypes.ORG_TYPE, notes=role.get('role'), content_object=organization)
 
         #await organization.raw_data.acreate(data=organization_raw, source_collection='institutions_openalex')
 
@@ -505,7 +505,6 @@ class CreateSQL:
 
         # step 1: process all names for this author and return a name in standardized form + list of all found related names
         standardized_name, namelist = get_names()
-
         # step 2: build the dicts for all info to create the author sql model
         # 1st dict: PIDs + name
         author_dict = {
@@ -580,7 +579,7 @@ class CreateSQL:
 
 
     async def add_affiliation(self, affiliation_raw:dict, author:Author, author_raw:dict) -> Affiliation:
-        
+
         # openalex data
         organization = await Organization.objects.filter(openalex_id=affiliation_raw.get('institution').get('id')).afirst()
         if not organization:
@@ -605,7 +604,7 @@ class CreateSQL:
                     else:
                         faculty = Group.Faculties.OTHER
                     group, created = await Group.objects.aget_or_create(name=item.get('section'), faculty=faculty)
-                    groups.append(group)    
+                    groups.append(group)
                 except Exception as e:
                     print(f'error while adding groups to affiliation: {e}')
                     continue
@@ -616,7 +615,7 @@ class CreateSQL:
                     affiliation_dict['position'] = 'professor'
                 else:
                     affiliation_dict['position'] = author_raw.get('affiliation')[0]
-                
+
         affiliation = Affiliation(**affiliation_dict)
 
         await affiliation.asave()
@@ -633,7 +632,7 @@ class CreateSQL:
         if await Work.objects.filter(openalex_id=work_raw.get('id')).aexists():
             return await Work.objects.aget(openalex_id=work_raw.get('id'))
         work_dict = {
-            
+
             'openalex_id':work_raw.get('id'),
             'openalex_created_date':datetime.strptime(work_raw.get('created_date'),'%Y-%m-%d'),
             'openalex_updated_date':self.timezone.localize(datetime.strptime(work_raw.get('updated_date'),'%Y-%m-%dT%H:%M:%S.%f')),
@@ -708,8 +707,8 @@ class CreateSQL:
             return None
 
         # authorships are directly made as Authorship objects, including the work as fk, no need to add them to work later
-        
-        
+
+
 
         if work_raw.get('abstract'):
             abstract = await self.add_abstract(work_raw.get('abstract'))
@@ -729,7 +728,7 @@ class CreateSQL:
             if topic:
                 work.primary_topic = topic
                 await work.asave()
-    
+
         await self.add_authorships(work_raw.get('authorships'), work)
 
         if work_raw.get('grants'):
@@ -780,12 +779,12 @@ class CreateSQL:
             location = Location(**location_dict)
             await location.asave()
             return location
-        
+
         location_tasks : list[asyncio.Task] = []
         async with asyncio.TaskGroup() as tg:
             for location in locations_raw:
                 location_tasks.append(tg.create_task(make_location(location)))
-        
+
         locations : list[Location] = []
         for task in location_tasks:
             locations.append(task.result())
@@ -803,7 +802,7 @@ class CreateSQL:
     async def add_authorships(self, authorships_raw:list[dict], work:Work) -> list[Authorship]:
         authorships = []
         for authorship_raw in authorships_raw:
-            try:    
+            try:
                 author = await Author.objects.filter(openalex_id=authorship_raw.get('author').get('id')).afirst()
             except Exception as e:
                 print(f'{e} while retrieving author {authorship_raw.get("author")} for authorship {authorship_raw.get("id")}')
@@ -842,7 +841,7 @@ class CreateSQL:
     async def add_grants(self, grants_raw:list[dict], work:Work) -> Work:
         grants = []
         # work is a fk to the work object, so we can add grants to it directly
-        
+
         for grant_raw in grants_raw:
             funder = await Funder.objects.filter(openalex_id=grant_raw.get('funder')).afirst()
             if not funder:
