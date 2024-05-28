@@ -147,7 +147,7 @@ class UpdateManager:
             openairelist = []
             crossreflist = []
             orcidlist = []
-            if any(['openaire' in include, 'datacite' in include, 'crossref' in include]):
+            if any(['openaire' in include, 'datacite' in include, 'crossref' in include, 'all' in include]):
                 with Progress() as p:
                     numpapers = await self.motorclient['works_openalex'].count_documents({})
                     task = p.add_task("Getting list of dois for Datacite/Crossref/OpenAIRE", total=numpapers)
@@ -164,7 +164,7 @@ class UpdateManager:
                 apilists.add_row('DataCite','works openalex','doi', str(len(datacitelist)))
                 apilists.add_row('OpenAIRE','works openalex','doi', str(len(openairelist)))
                 apilists.add_row('Crossref','works openalex','doi', str(len(crossreflist)))
-            if 'orcid' or 'all' in include:
+            if 'orcid' in include or 'all' in include:
                 with Progress() as p:
 
 
@@ -274,7 +274,7 @@ class UpdateManager:
 def main():
     mngr = UpdateManager()
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    include = {'skip_one':True, 'skip_two':True, 'skip_three':True}
+    include = {'skip_one':True, 'skip_two':True}
     asyncio.run(mngr.run(include=include))
 
 

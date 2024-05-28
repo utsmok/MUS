@@ -7,11 +7,13 @@ broad strokes:
 
 Todo in order of importance(?):
 
-1. Add methods in create_sql.py for missing models -- works & related models, and some missing fields in others
+x 1. Add methods in create_sql.py for missing models -- works & related models, and some missing fields in others
+    done with the basics
+
 2. Check the imported data for consistency and correctness
     - fix data imported from e.g. datacite, openaire, crossref, orcid
     - fix peoplepage importing and matching -- use sentencetransformer in polyfuzz for example
-
+    - do something with missing items in create_sql
 3. See if model fields are good like this or need updates/different approach
     - think about current org/inst/pub/funder model half-copied from openalex -- make more robust
 

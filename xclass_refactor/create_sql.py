@@ -51,13 +51,17 @@ from nameparser import HumanName
 from collections import defaultdict
 
 class CreateSQL:
-    def __init__(self):
+    def __init__(self, detailed_topics=False):
         self.INSTITUTE_GROUPS: dict[str, str] = get_flat_groups()
         self.motorclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unificiation_system
         self.timezone = pytz.utc
         self.topics_dict: dict[str:Topic] = None
         self.all_topics: list[Topic] = []
         self.missing_orgs: list[str] = []
+        self.missing_funders: list[str] = []
+        self.missing_authors: list[str] = []
+        self.missing_sources: list[str] = []
+        self.detailed_topics = detailed_topics
 
     async def load_topics(self):
         self.all_topics : list[Topic] = [topic async for topic in Topic.objects.all()]
@@ -83,14 +87,17 @@ class CreateSQL:
         print('adding funders, sources, dealdata, publishers, organizations')
         time = datetime.now()
         async with asyncio.TaskGroup() as tg:
-            topics_siblings = tg.create_task(self.add_topic_siblings())
+            if self.detailed_topics:
+                topics_siblings = tg.create_task(self.add_topic_siblings())
             funders = tg.create_task(self.add_all_itemtype(self.motorclient.funders_openalex, self.add_funder, Funder))
             sources = tg.create_task(self.add_all_itemtype(self.motorclient.sources_openalex, self.add_source, Source))
             publishers = tg.create_task(self.add_all_itemtype(self.motorclient.publishers_openalex, self.add_publisher, Publisher))
             organizations = tg.create_task(self.add_all_itemtype(self.motorclient.institutions_openalex, self.add_organization, Organization))
 
         time_taken = round((datetime.now() - time).total_seconds(),2)
-        print(f'added {len(topics_siblings.result())} topic siblings in {time_taken} seconds')
+        if self.detailed_topics:
+            print(f'added {len(topics_siblings.result())} topic siblings in {time_taken} seconds')
+            await self.load_topics()
         print(f'added {len(funders.result())} funders')
         print(f'added {len(sources.result())} sources')
         print(f'added {len(publishers.result())} publishers')
@@ -99,7 +106,7 @@ class CreateSQL:
         print(f'total time: {round((datetime.now() - time).total_seconds(),2)} seconds')
         print(f'avg items per second: {round(len(funders.result() + sources.result() + publishers.result() + organizations.result())/(datetime.now() - time).total_seconds(),2)}')
 
-        await self.load_topics()
+
 
         print('adding authors')
         async with asyncio.TaskGroup() as tg:
@@ -119,7 +126,7 @@ class CreateSQL:
         print('adding works')
         async with asyncio.TaskGroup() as tg:
             works = tg.create_task(self.add_all_itemtype(self.motorclient.works_openalex, self.add_work, Work))
-        print(f' Done with CreateSQL.run(). Methods not implemented yet: add_org_links, add_grant, add_authorship, add_location')
+        print(f' Done with CreateSQL.run(). Methods not implemented yet: add_org_links')
         print(f' currently also mainly processing data from openalex. Missing data from openaire, crossref, orcid, datacite, and repository')
 
     async def add_all_itemtype(self, collection: motor.motor_asyncio.AsyncIOMotorCollection, add_function: callable, model: MusModel)-> list:
@@ -354,13 +361,14 @@ class CreateSQL:
         source = Source(**source_dict)
         await source.asave()
 
-        if source_raw.get('topics'):
-            for topic_raw in source_raw.get('topics'):
-                topic = self.topics_dict.get(topic_raw.get('id'))
-                if not topic:
-                    continue
-                source_topic = SourceTopic(source=source, topic=topic, count=topic_raw.get('count'))
-                await source_topic.asave()
+        if self.detailed_topics:
+            if source_raw.get('topics'):
+                for topic_raw in source_raw.get('topics'):
+                    topic = self.topics_dict.get(topic_raw.get('id'))
+                    if not topic:
+                        continue
+                    source_topic = SourceTopic(source=source, topic=topic, count=topic_raw.get('count'))
+                    await source_topic.asave()
 
         await self.add_dealdata(source)
         #await source.raw_data.acreate(data=source_raw, source_collection='sources_openalex')
@@ -420,13 +428,14 @@ class CreateSQL:
         organization = Organization(**organization_dict)
         await organization.asave()
 
-        if organization_raw.get('topics'):
-            for topic_raw in organization_raw.get('topics'):
-                topic = self.topics_dict.get(topic_raw.get('id'))
-                if not topic:
-                    continue
-                organization_topic = OrganizationTopic(organization=organization, topic=topic, count=topic_raw.get('count'))
-                await organization_topic.asave()
+        if self.detailed_topics:
+            if organization_raw.get('topics'):
+                for topic_raw in organization_raw.get('topics'):
+                    topic = self.topics_dict.get(topic_raw.get('id'))
+                    if not topic:
+                        continue
+                    organization_topic = OrganizationTopic(organization=organization, topic=topic, count=topic_raw.get('count'))
+                    await organization_topic.asave()
 
         if organization_raw.get('roles'):
             for role in organization_raw.get('roles'):
@@ -584,13 +593,7 @@ class CreateSQL:
         }
 
         # institutional data
-        if author_raw.get('affiliation'):
-            if len(author_raw['affiliation']) == 1:
-                affiliation_dict['position'] = author_raw.get('affiliation')[0]
-            elif 'professor' in author_raw['affiliation']:
-                affiliation_dict['position'] = 'professor'
-            else:
-                affiliation_dict['position'] = author_raw.get('affiliation')[0]
+
         groups = []
         if author_raw.get('grouplist') and len(author_raw.get('grouplist')) > 0 and organization.openalex_id == OPENALEX_INSTITUTE_ID:
             for item in author_raw.get('grouplist'):
@@ -602,10 +605,18 @@ class CreateSQL:
                     else:
                         faculty = Group.Faculties.OTHER
                     group, created = await Group.objects.aget_or_create(name=item.get('section'), faculty=faculty)
-                    groups.append(group)
+                    groups.append(group)    
                 except Exception as e:
                     print(f'error while adding groups to affiliation: {e}')
                     continue
+            if author_raw.get('affiliation'):
+                if len(author_raw['affiliation']) == 1:
+                    affiliation_dict['position'] = author_raw.get('affiliation')[0]
+                elif 'professor' in author_raw['affiliation']:
+                    affiliation_dict['position'] = 'professor'
+                else:
+                    affiliation_dict['position'] = author_raw.get('affiliation')[0]
+                
         affiliation = Affiliation(**affiliation_dict)
 
         await affiliation.asave()
@@ -713,19 +724,21 @@ class CreateSQL:
                     continue
                 topiclist.append(topic)
             await work.topics.aset(topiclist)
+        if work_raw.get('primary_topic'):
+            topic = self.topics_dict.get(work_raw.get('primary_topic').get('id'))
+            if topic:
+                work.primary_topic = topic
+                await work.asave()
+    
+        await self.add_authorships(work_raw.get('authorships'), work)
 
-        #'not implemented yet: locations, grants, authorships')
-        if False:
-            authorships = await self.add_authorships(work_raw.get('authorships'), work)
-
+        if work_raw.get('grants'):
+            await self.add_grants(work_raw.get('grants'), work)
+        if work_raw.get('locations'):
             best_oa_location = work_raw.get('best_oa_location')
             primary_location = work_raw.get('primary_location')
-            if work_raw.get('locations'):
-                locations = await self.add_locations(work_raw.get('locations'), work, best_oa_location, primary_location)
-                await work.locations.aset(locations)
+            work = await self.add_locations(work_raw.get('locations'), work, best_oa_location, primary_location)
 
-            if work_raw.get('grants'):
-                work = await self.add_grants(work_raw.get('grants'), work)
 
         #await work.raw_data.acreate(data=work_raw, source_collection='works_openalex')
 
@@ -735,20 +748,49 @@ class CreateSQL:
         async def make_location(location_raw:dict):
             try:
                 source = await Source.objects.aget(openalex_id=location_raw.get('source').get('id'))
+                source_type = source.source_type
             except Exception as e:
-                print(f'{e} while retrieving source {location_raw.get('source')} for location {location_raw.get('id')}')
                 source = None
-            
+                source_type = None
 
-            location_dict = {}
+            if not source:
+                source = None
+                source_type = Source.SourceType.UNKNOWN
+
+            location_dict = {
+                'source':source,
+                'source_type':source_type,
+                'is_oa':location_raw.get('is_oa') if isinstance(location_raw.get('is_oa'), bool) else False,
+                'landing_page_url':location_raw.get('landing_page_url'),
+                'pdf_url':location_raw.get('pdf_url'),
+                'license':location_raw.get('license'),
+                'license_id':location_raw.get('license_id'),
+                'version':location_raw.get('version'),
+                'is_accepted':location_raw.get('is_accepted') if isinstance(location_raw.get('is_accepted'), bool) else False,
+                'is_published':location_raw.get('is_published') if isinstance(location_raw.get('is_published'), bool) else False,
+            }
+
+            if best_oa_location:
+                if best_oa_location.get('landing_page_url') == location_raw.get('landing_page_url'):
+                    location_dict['is_best_oa'] = True
+            if primary_location:
+                if primary_location.get('landing_page_url') == location_raw.get('landing_page_url'):
+                    location_dict['is_primary'] = True
+
             location = Location(**location_dict)
             await location.asave()
             return location
         
-        locations = []        
-        for location in locations_raw:
-            locations.append(await make_location(location))
-        await work.locations.aset(locations)
+        location_tasks : list[asyncio.Task] = []
+        async with asyncio.TaskGroup() as tg:
+            for location in locations_raw:
+                location_tasks.append(tg.create_task(make_location(location)))
+        
+        locations : list[Location] = []
+        for task in location_tasks:
+            locations.append(task.result())
+        if locations:
+            await work.locations.aset(locations)
         return work
 
 
@@ -761,14 +803,38 @@ class CreateSQL:
     async def add_authorships(self, authorships_raw:list[dict], work:Work) -> list[Authorship]:
         authorships = []
         for authorship_raw in authorships_raw:
-            try:
-                author = await Author.objects.aget(openalex_id=authorship_raw.get('author').get('id'))
+            try:    
+                author = await Author.objects.filter(openalex_id=authorship_raw.get('author').get('id')).afirst()
             except Exception as e:
                 print(f'{e} while retrieving author {authorship_raw.get("author")} for authorship {authorship_raw.get("id")}')
                 continue
-            
-            # don't forget to add rest of authorship data to the object!
-            authorship = Authorship(author=author, work=work).asave()
+            if not author:
+                self.missing_authors.append(authorship_raw.get('author').get('id'))
+                continue
+
+            authorship_dict = {
+                'author':author,
+                'work':work,
+                'is_corresponding':authorship_raw.get('is_corresponding'),
+            }
+            match authorship_raw.get('author_position'):
+                case 'first':
+                    authorship_dict['position'] = Authorship.PositionTypes.FIRST
+                case 'middle':
+                    authorship_dict['position'] = Authorship.PositionTypes.MIDDLE
+                case 'last':
+                    authorship_dict['position'] = Authorship.PositionTypes.LAST
+                case _:
+                    authorship_dict['position'] = Authorship.PositionTypes.UNKNOWN
+            authorship = Authorship(**authorship_dict)
+            await authorship.asave()
+
+            if authorship_raw.get('institutions'):
+                for inst in authorship_raw.get('institutions'):
+                    institution = await Organization.objects.filter(openalex_id=inst.get('id')).afirst()
+                    if institution:
+                        await authorship.affiliations.aadd(institution)
+
             authorships.append(authorship)
         return authorships
 
@@ -776,8 +842,22 @@ class CreateSQL:
     async def add_grants(self, grants_raw:list[dict], work:Work) -> Work:
         grants = []
         # work is a fk to the work object, so we can add grants to it directly
+        
         for grant_raw in grants_raw:
-            ...
+            funder = await Funder.objects.filter(openalex_id=grant_raw.get('funder')).afirst()
+            if not funder:
+                self.missing_funders.append(grant_raw.get('funder'))
+                continue
+            grant_dict = {
+                'funder':funder,
+                'award_id':grant_raw.get('award_id'),
+                'funder_name':grant_raw.get('funder_name'),
+                'work':work,
+            }
+            grant = Grant(**grant_dict)
+            await grant.asave()
+            grants.append(grant)
+
         return grants
 
     # these are not used standalone but as part of all other models

@@ -225,7 +225,8 @@ class Organization(MusModel):
     topics = models.ManyToManyField('Topic', through='OrganizationTopic', related_name="organizations")
     repositories = models.ManyToManyField('Source', related_name="repositories")
     lineage = models.ManyToManyField('Organization', related_name="org_children")
-    # use tags of tagtype 'ORG_TYPE' ('OT') to store the type of this institution instance + all related institutions (see 'roles' field in api data)
+    
+    # idea: use tags of tagtype 'ORG_TYPE' ('OT') to store the type of this institution instance + all related institutions (see 'roles' field in api data)
     # note: double check for accidental duplicates when going through the list of related items!!
     # the actual type should be in the 'notes' field of the tag
     # these are the types that can be used:
@@ -286,6 +287,14 @@ class Publisher(MusModel):
     i10_index = models.IntegerField(null=True)
     works_count = models.IntegerField()
 
+    class Meta:
+        indexes = [
+            models.Index(fields=["openalex_id"]),
+            models.Index(fields=["ror"]),
+            models.Index(fields=["wikidata"]),
+            models.Index(fields=["image_url"]),
+            models.Index(fields=["image_thumbnail_url"]),
+        ]
 class Source(MusModel):
     class SourceType(models.TextChoices):
         JOURNAL = 'J'
@@ -331,6 +340,18 @@ class Source(MusModel):
     apc_prices = models.JSONField(encoder=DjangoJSONEncoder, null=True)
     apc_usd = models.IntegerField(null=True)
 
+    class Meta:
+        indexes = [
+            models.Index(fields=["openalex_id"]),
+            models.Index(fields=["issn_l"]),
+            models.Index(fields=["issn"]),
+            models.Index(fields=["wikidata"]),
+            models.Index(fields=["source_type"]),
+            models.Index(fields=["homepage_url"]),
+            models.Index(fields=["is_in_doaj"]),
+            models.Index(fields=["is_oa"]),
+            models.Index(fields=["country_code"]),
+        ]
 class Author(MusModel):
     affiliations = models.ManyToManyField(Organization,through='Affiliation', related_name="authors")
     topics = models.ManyToManyField(Topic, related_name="authors")
@@ -380,6 +401,12 @@ class Author(MusModel):
     class Meta:
         indexes = [
             models.Index(fields=["openalex_id"]),
+            models.Index(fields=["pure_uuid"]),
+            models.Index(fields=["pure_id"]),
+            models.Index(fields=["orcid"]),
+            models.Index(fields=["scopus"]),
+            models.Index(fields=["isni"]),
+            models.Index(fields=["email"]),
         ]
 
 class Affiliation(MusModel):
@@ -428,10 +455,23 @@ class DealData(MusModel):
     openalex_issn_l = models.JSONField(encoder=DjangoJSONEncoder, null=True)
     openalex_type = models.CharField(blank=True, default='')
 
+    class Meta:
+        indexes = [
+            models.Index(fields=["openalex_id"]),
+            models.Index(fields=["openalex_display_name"]),
+            models.Index(fields=["openalex_issn"]),
+            models.Index(fields=["openalex_issn_l"]),
+            models.Index(fields=["openalex_type"]),
+            models.Index(fields=["journal_title"]),
+            models.Index(fields=["publisher_name"]),
+            models.Index(fields=["jb_url"]),
+            models.Index(fields=["issns"]),
+            models.Index(fields=["dealtype"]),
+        ]
+
 class Location(MusModel):
     # based on the subitem from OpenAlex Works
-    source = models.ForeignKey('Source', on_delete=models.CASCADE, related_name="locations", db_index=True)
-
+    source = models.ForeignKey('Source', on_delete=models.CASCADE, related_name="locations", db_index=True, null=True)
     source_type = models.CharField(choices=Source.SourceType, default=None, null=True)
     is_oa = models.BooleanField(default=False)
     landing_page_url = models.URLField(max_length=20000,null=True)
@@ -443,6 +483,19 @@ class Location(MusModel):
     is_published = models.BooleanField(default=False)
     is_primary = models.BooleanField(default=False)
     is_best_oa = models.BooleanField(default=False)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["source", "source_type"]),
+            models.Index(fields=["landing_page_url"]),
+            models.Index(fields=["pdf_url"]),
+            models.Index(fields=["license"]),
+            models.Index(fields=["license_id"]),
+            models.Index(fields=["is_best_oa"]),
+            models.Index(fields=["is_accepted"]),
+            models.Index(fields=["is_published"]),
+            models.Index(fields=["is_primary"]),
+        ]
 
 class Abstract(MusModel):
     text = models.TextField()
@@ -541,7 +594,15 @@ class Work(MusModel):
             models.Index(fields=["publication_date"]),
             models.Index(fields=["publication_year"]),
             models.Index(fields=["oa_status"]),
+            models.Index(fields=["pmid"]),
+            models.Index(fields=["pmcid"]),
+            models.Index(fields=["isbn"]),
+            models.Index(fields=["mag"]),
+            models.Index(fields=["is_also_green"]),
+            models.Index(fields=["is_oa"]),
             models.Index(fields=["itemtype"]),
+            models.Index(fields=["type_crossref"]),
+
         ]
 
 class RepositoryData(MusModel):
@@ -566,6 +627,7 @@ class Authorship(MusModel):
     work = models.ForeignKey(Work, on_delete=models.CASCADE, related_name="authorships")
     position = models.CharField(choices=PositionTypes, default=PositionTypes.UNKNOWN)
     is_corresponding = models.BooleanField(default=False)
+    affiliations = models.ManyToManyField(Organization, related_name="authorships")
 
     class Meta:
         indexes = [
@@ -575,14 +637,15 @@ class Authorship(MusModel):
         ]
         
 class Grant(MusModel):
-    funder = models.ForeignKey('Funder', on_delete=models.CASCADE, related_name="grants")
+    funder = models.ForeignKey('Funder', on_delete=models.CASCADE, related_name="grants", null=True)
     award_id = models.CharField(null=True)
-    funder_name = models.CharField()
-    works = models.ManyToManyField('Work', related_name="grants")
-    openalex_id = models.URLField(max_length=20000)
+    funder_name = models.CharField(null=True)
+    work = models.ForeignKey('Work', related_name="grants", on_delete=models.CASCADE)
 
     class Meta:
         indexes = [
-            models.Index(fields=["openalex_id"]),
             models.Index(fields=["award_id"]),
+            models.Index(fields=["funder_name"]),
+            models.Index(fields=["work"]),
+            models.Index(fields=["funder"]),
         ]
