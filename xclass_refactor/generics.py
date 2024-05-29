@@ -5,6 +5,13 @@ import httpx
 from rich import print, progress
 import aiometer
 import functools
+from xclass_refactor.models import MusModel
+from datetime import datetime, timedelta
+from dataclasses import dataclass
+from typing import Optional
+
+
+
 class GenericScraper():
     '''
     Generic Scraper class, with default methods
@@ -177,3 +184,173 @@ class GenericAPI():
         print('call_api is an abstract function and it needs to be overloaded in subclass')
         result = {}
         return result
+
+@dataclass
+class FunctionCallsStats:
+    '''
+    class that stores time-related stats for a function call of a certain method.
+    Meant to used as part of a Performance object to get insight into the performance.
+    Attributes:
+        duration: float
+            the duration of the function call in seconds with max 2 decimals
+        start: datetime
+            date+time when the function was called
+        end: datetime
+            date+time when the function returned
+
+    '''
+    duration: float
+    start: datetime
+    end: datetime
+    method: callable
+
+    def __init__(self, method:callable):
+        '''
+        Parameters:
+        method: callable
+            the function that was called
+        '''
+        self.method = method
+        self.start = datetime.now()
+        self.end = None
+    def set_end(self) -> None:
+        '''
+        Sets the end time of the function call
+        '''
+        self.end = datetime.now()
+        self.duration = round((self.end - self.start).total_seconds(),2)
+
+@dataclass
+class Performance:
+    '''
+    class that stores the results of all function class of a certain method.
+    Meant to be used for a continuous series of function calls in order to get insight into the performance
+    Advice: use a separate instance for each batch of sql additions, e.g. work_performance, source_performance, etc
+
+    Usage:
+    - Init a Performance object for each batch of method calls
+        perf = Performance()
+    - Call start_call(method) for each inidividual method call
+        perf.start_call(add_items)
+    - end_call() once the method ends
+        perf.end_call()
+
+    Then view results using:
+        perf.total_counted_duration()
+        perf.elapsed_time()
+        perf.time_per_call()
+    
+    '''
+
+    calls: list[FunctionCallsStats]
+
+    def __init__(self) -> None:
+        self.calls = []
+    def __str__(self) -> str:
+        return f'{len(self.calls)} calls in {self.total_measured_duration()} s - {self.time_per_call()} s/call'
+    def start_call(self, method:callable) -> None:
+        '''
+        Records the start time of a new function call of method
+        '''
+        self.calls.append(FunctionCallsStats(method))
+    def end_call(self) -> None:
+        '''
+        Records the end time of the function call
+        '''
+        self.calls[-1].set_end()
+    def total_measured_duration(self, method:Optional[callable]=None) -> int:
+        '''
+        Returns the sum of all function call durations in seconds (int)
+        if method is passed, only the duration of instances of that method is returned
+        '''
+        if not self.calls:
+            return 0
+        if method:
+            return sum([funcstat.duration for funcstat in self.calls if funcstat.method == method])
+        else:
+            return sum([funcstat.duration for funcstat in self.calls])
+    def elapsed_time(self) -> int:
+        '''
+        Returns the time between the first start and last end of all calls in the list in seconds (int)
+        '''
+        if not self.calls:
+            return 0
+        self.calls.sort(key=lambda funcstat: funcstat.start)
+        first = self.calls[0].start
+        self.calls.sort(key=lambda funcstat: funcstat.end)
+        last = self.calls[-1].end
+        return int((last - first).total_seconds())
+    def time_per_call(self, method:Optional[callable]=None) -> float:
+        '''
+        Returns the average time per item in seconds (with max 2 decimals)
+        '''
+        if not self.calls:
+            return 0
+        if not method:
+            return round((self.total_measured_duration()/len(self.calls)),2)
+        else:
+            calls = [funcstat for funcstat in self.calls if funcstat.method == method]
+            return round((self.total_measured_duration()/len(calls)),2)
+
+class GenericSQLImport():
+    '''
+    Class that abstracts out common operations and enforces standard for importing data from a mongodb collection to sql db
+    '''
+
+    def __init__(self, collection: motor.motor_asyncio.AsyncIOMotorCollection, model: MusModel, unique_id_field:str='openalex_id') -> None:
+        self.performance : Performance = Performance()
+        self.collection: motor.motor_asyncio.AsyncIOMotorCollection = collection
+        self.model: MusModel = model
+        self.results : dict = {
+            'type':model.__name__,
+            'items': [],
+            'added_to_sql':0,
+            'raw_items':0,
+            'already_in_sql':0,
+            'errors':0,
+            'm2m_items':0,
+        }
+        self.unique_id_field : str = unique_id_field
+        self.items : list = []
+        self.raw_items : list = []
+        self.batch_size : int = 50
+
+    async def import_all(self) -> dict:
+        models_in_db = self.model.objects.all().values_list(self.unique_id_field, flat=True)
+        models_in_db = {model async for model in models_in_db}
+        async for item in self.collection.find({}):
+                self.results['raw_items'] += 1
+                if item.get('id') not in models_in_db:
+                    self.performance.start_call(self.add_item)
+                    try:
+                        await self.add_item(item)
+                    except Exception:
+                        self.results['errors'] += 1
+                        self.performance.end_call()
+                        continue
+                    self.performance.end_call()
+                    self.results['added_to_sql'] += 1
+                else:
+                    self.results['already_in_sql'] += 1
+                if len(self.raw_items) >= self.batch_size:
+                    new_items = await self.model.objects.abulk_create(self.raw_items)
+                    self.raw_items = []
+
+        self.results['elapsed_time'] = self.performance.elapsed_time()
+        self.results['average_time_per_call'] = self.performance.time_per_call()
+        self.results['total_measured_duration'] = self.performance.total_measured_duration()
+        return self.results
+    async def add_item(self, raw_item:dict):
+        print('add_item is an abstract function and it needs to be overloaded in subclass')
+        print('this method should make an instance of type self.model and add it to self.raw_items.')
+        print('do not yet add m2m relations to this instance, that will be done in add_m2m_relations')
+        print('example barebone implementation below:')
+
+        item_dict = {
+            'field':raw_item.get('field'),
+        }
+        item = self.model(**item_dict)
+        self.raw_items.append(item)
+    
+
+

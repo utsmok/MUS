@@ -51,7 +51,7 @@ import pytz
 from nameparser import HumanName
 from collections import defaultdict
 from dataclasses import dataclass
-
+from xclass_refactor.generics import GenericSQLImport
 # TODO
 # refactor common operations
 # use same structure for each model
@@ -59,32 +59,6 @@ from dataclasses import dataclass
 # do something with missing items
 # add bulk operations instead of single checks / n+1 adds, especially for sources and works
 # calculate stats for every call and store in class dict to see performance
-
-@dataclass
-class FuncStats:
-    duration: int
-    date: datetime
-    method: callable
-    model: MusModel
-
-
-@dataclass
-class Performance:
-    funcstats: list[FuncStats]
-
-    def total_counted_duration(self) -> int:
-        '''
-        Returns the total duration of all function calls in seconds (int)
-        '''
-        return sum([funcstat.duration for funcstat in self.funcstats])
-
-    def elapsed_time(self) -> int:
-        '''
-        Returns the time between the first and last function call in seconds
-        '''
-        self.funcstats.sort(key=lambda funcstat: funcstat.date)
-        return int((self.funcstats[0].date - self.funcstats[-1].date).total_seconds())
-
 
 
 
@@ -102,7 +76,6 @@ class CreateSQL:
         self.missing_authors: list[str] = []
         self.missing_sources: list[str] = []
         self.detailed_topics = detailed_topics
-        self.performance_data = defaultdict(Performance)
 
     async def load_topics(self):
         self.all_topics : list[Topic] = [topic async for topic in Topic.objects.all()]
@@ -118,57 +91,31 @@ class CreateSQL:
         we finish with works, grants, authorships, locations, and abstracts
         '''
         print('adding topics')
-        time = datetime.now()
-        async with asyncio.TaskGroup() as tg:
-            topics = tg.create_task(self.add_all_itemtype(self.motorclient.topics_openalex, self.add_topic, Topic))
-
-        time_taken = round((datetime.now() - time).total_seconds(),2)
-        print(f'added {len(topics.result())} topics in {time_taken} seconds ({len(topics.result())/time_taken} items/sec) ')
+        topics = self.ImportTopic(self.motorclient.topics_openalex)
+        topic_results = await topics.import_all()
+        print(topic_results)
         await self.load_topics()
-        print('adding funders, sources, dealdata, publishers, organizations')
-        time = datetime.now()
+        topic_siblings_results = await topics.add_siblings(self.all_topics, self.topics_dict)
+        print(topic_siblings_results)
+
+        return None
         async with asyncio.TaskGroup() as tg:
-            if self.detailed_topics:
-                topics_siblings = tg.create_task(self.add_topic_siblings())
             funders = tg.create_task(self.add_all_itemtype(self.motorclient.funders_openalex, self.add_funder, Funder))
             sources = tg.create_task(self.add_all_itemtype(self.motorclient.sources_openalex, self.add_source, Source))
             publishers = tg.create_task(self.add_all_itemtype(self.motorclient.publishers_openalex, self.add_publisher, Publisher))
             organizations = tg.create_task(self.add_all_itemtype(self.motorclient.institutions_openalex, self.add_organization, Organization))
 
-        time_taken = round((datetime.now() - time).total_seconds(),2)
-        if self.detailed_topics:
-            print(f'added {len(topics_siblings.result())} topic siblings in {time_taken} seconds')
-            await self.load_topics()
-        print(f'added {len(funders.result())} funders')
-        print(f'added {len(sources.result())} sources')
-        print(f'added {len(publishers.result())} publishers')
-        print(f'added {len(organizations.result())} organizations')
-        print(f'total items: {len(  funders.result()) + len(sources.result()) + len(publishers.result()) + len(organizations.result())}')
-        print(f'total time: {round((datetime.now() - time).total_seconds(),2)} seconds')
-        print(f'avg items per second: {round(len(funders.result() + sources.result() + publishers.result() + organizations.result())/(datetime.now() - time).total_seconds(),2)}')
-
-
-
-        print('adding authors')
         async with asyncio.TaskGroup() as tg:
-            #linked = tg.create_task(self.add_org_links())
+            linked = tg.create_task(self.add_org_links())
             authors = tg.create_task(self.add_all_authors())
 
-        #print(f'added m2m relations to {len(linked.result())} items (organizations, funders, sources, publishers)')
-        print(f'added {len(authors.result())} authors')
         if len(self.missing_orgs) > 0:
-            print(f'retrieved {len(self.missing_orgs)} organizations that were not found')
             from xclass_refactor.openalex_import import OpenAlexAPI
             openalexresult = await OpenAlexAPI(openalex_requests={'institutions_openalex':self.missing_orgs}).run()
-            print('done adding missing organizations to mongodb, now adding to sql db')
             more_orgs = await self.add_all_itemtype(self.motorclient.institutions_openalex, self.add_organization, Organization)
-            print(f'added {len(more_orgs)} orgs to sql db')
 
-        print('adding works')
         async with asyncio.TaskGroup() as tg:
             works = tg.create_task(self.add_all_itemtype(self.motorclient.works_openalex, self.add_work, Work))
-        print(f' Done with CreateSQL.run(). Methods not implemented yet: add_org_links')
-        print(f' currently also mainly processing data from openalex. Missing data from openaire, crossref, orcid, datacite, and repository')
 
     async def add_all_itemtype(self, collection: motor.motor_asyncio.AsyncIOMotorCollection, add_function: callable, model: MusModel)-> list:
         """
@@ -214,54 +161,61 @@ class CreateSQL:
             amount += 1
             results.append(await self.add_author(final_dict))
         return results
-    async def add_topic(self, topic_raw:dict) -> Topic:
-        if await Topic.objects.filter(openalex_id=topic_raw.get('id')).aexists():
-            return await Topic.objects.aget(openalex_id=topic_raw.get('id'))
-        field_type = None
-        domain_type = None
-        for field in Topic.FieldTypes.values:
-            if field.lower() == topic_raw.get('field').get('display_name').lower():
-                field_type = field
-                break
-        for domain in Topic.DomainTypes.values:
-            if domain.lower() == topic_raw.get('domain').get('display_name').lower():
-                domain_type = domain
-                break
-        if not field_type:
-            print(f'field type not found for {topic_raw.get("field").get("display_name")}')
-        if not domain_type:
-            print(f'domain type not found for {topic_raw.get("domain").get("display_name")}')
+    
+    class ImportTopic(GenericSQLImport):
+        def __init__(self, collection : motor.motor_asyncio.AsyncIOMotorCollection) -> None:
+            super().__init__(collection, Topic)
 
-        topic_dict = {
-            'description':topic_raw.get('description'),
-            'name':topic_raw.get('display_name'),
-            'domain':domain_type,
-            'field':field_type,
-            'openalex_id':topic_raw.get('id'),
-            'works_count':topic_raw.get('works_count'),
-            'keywords':topic_raw.get('keywords'),
-            'wikipedia':topic_raw.get('ids').get('wikipedia'),
-            'subfield':topic_raw.get('subfield').get('display_name'),
-            'subfield_id':topic_raw.get('subfield').get('id').strip('https://openalex.org/subfields/'),
-        }
+        async def add_item(self, raw_item:dict) -> None:
+            if await Topic.objects.filter(openalex_id=raw_item.get('id')).aexists():
+                return await Topic.objects.aget(openalex_id=raw_item.get('id'))
+            field_type = None
+            domain_type = None
+            for field in Topic.FieldTypes.values:
+                if field.lower() == raw_item.get('field').get('display_name').lower():
+                    field_type = field
+                    break
+            for domain in Topic.DomainTypes.values:
+                if domain.lower() == raw_item.get('domain').get('display_name').lower():
+                    domain_type = domain
+                    break
 
-        topic = Topic(**topic_dict)
-        await topic.asave()
-        #await topic.raw_data.acreate(data=topic_raw, source_collection='topics_openalex')
-        return topic
+            topic_dict = {
+                'description':raw_item.get('description'),
+                'name':raw_item.get('display_name'),
+                'domain':domain_type,
+                'field':field_type,
+                'openalex_id':raw_item.get('id'),
+                'works_count':raw_item.get('works_count'),
+                'keywords':raw_item.get('keywords'),
+                'wikipedia':raw_item.get('ids').get('wikipedia'),
+                'subfield':raw_item.get('subfield').get('display_name'),
+                'subfield_id':raw_item.get('subfield').get('id').strip('https://openalex.org/subfields/'),
+            }
 
-    async def add_topic_siblings(self) -> list[str]:
-        full_siblist = []
-        for topic in self.all_topics:
-            siblings = await self.motorclient.topics_openalex.find_one({'id':topic.openalex_id}, projection={'_id':0, 'id':1, 'siblings':1})
-            siblist = []
-            full_siblist.extend([sibling.get('id') for sibling in siblings.get('siblings')])
-            for sibling in siblings.get('siblings'):
-                if sibling.get('id') in self.topics_dict:
-                    siblist.append(self.topics_dict[sibling.get('id')])
-            if siblist:
-                await topic.siblings.aset(siblist)
-        return full_siblist
+            topic = Topic(**topic_dict)
+            self.raw_items.append(topic)
+
+        async def add_siblings(self, all_topics: list[Topic], topics_dict: dict[str:Topic]) -> None:
+            full_siblist = []
+            self.performance.start_call(self.add_siblings)
+            for topic in all_topics:
+                siblings = await self.collection.find_one({'id':topic.openalex_id}, projection={'_id':0, 'id':1, 'siblings':1})
+                siblist = []
+                full_siblist.extend([sibling.get('id') for sibling in siblings.get('siblings')])
+                for sibling in siblings.get('siblings'):
+                    if sibling.get('id') in topics_dict:
+                        siblist.append(topics_dict[sibling.get('id')])
+                        self.results['m2m_items'] += 1
+                if siblist:
+                    await topic.siblings.aset(siblist)
+            self.performance.end_call()
+            self.results['elapsed_time_m2m'] = self.performance.elapsed_time()
+            self.results['average_time_per_call_m2m'] = self.performance.time_per_call(self.add_siblings)
+            self.results['total_measured_duration_m2m'] = self.performance.total_measured_duration(self.add_siblings)
+            return self.results
+
+
 
     async def add_funder(self, raw_funder:dict) -> Funder:
         if await Funder.objects.filter(openalex_id=raw_funder.get('id')).aexists():
