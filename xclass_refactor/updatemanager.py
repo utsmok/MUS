@@ -211,7 +211,6 @@ class UpdateManager:
             tasks.append(datacite)
             tasks.append(openaire)
             tasks.append(orcid)
-            tasks.append(journalbrowser)
             #tasks.append(peoplepage)
             '''
             for task in tasks:
@@ -272,7 +271,7 @@ class UpdateManager:
 def main():
     mngr = UpdateManager()
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    include = {'all':True, 'skip_two':True}
+    include = {'all':True}
     asyncio.run(mngr.run(include=include))
 
 

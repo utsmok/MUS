@@ -4,7 +4,6 @@ from dotenv import load_dotenv
 import os
 from loguru import logger
 from django_query_profiler.settings import *
-
 #from pyzotero import zotero
 #ZOTERO = zotero.Zotero(ZOTERO_PUBLIC, 'user', ZOTERO_PRIVATE)
 
@@ -71,10 +70,11 @@ INSTALLED_APPS = [
     "slippers",
     'explorer',
     'xclass_refactor.apps.XClassRefactorConfig',
-
+    'iommi'
 ]
 
 MIDDLEWARE = [
+    'iommi.live_edit.Middleware',
     'corsheaders.middleware.CorsMiddleware',
     "django.middleware.security.SecurityMiddleware",
     'django_query_profiler.client.middleware.QueryProfilerMiddleware',
@@ -84,7 +84,11 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    'iommi.sql_trace.Middleware',
+    'iommi.profiling.Middleware',
     "allauth.account.middleware.AccountMiddleware",
+    'iommi.middleware',
+
 
 ]
 
@@ -216,3 +220,14 @@ CACHE_TTL = 60 * 5
 EXPLORER_CONNECTIONS = { 'Default': 'readonly' }
 EXPLORER_DEFAULT_CONNECTION = 'readonly'
 
+from iommi.style_bootstrap5 import bootstrap5
+from iommi import Asset, Style
+
+IOMMI_DEFAULT_STYLE = Style(
+    bootstrap5,
+    base_template='base.html',
+    #root__assets=dict(
+    #    my_project_custom_css=Asset.css(attrs__href='/static/custom.css'),
+    #    my_project_custom_js=Asset.js(attrs__src='/static/custom.js'),
+    #),
+)

@@ -1,0 +1,111 @@
+{% block content %}
+{% load static %}
+<nav class="navbar navbar-expand-lg navbar-light bg-primary" style='--mdb-bg-opacity: 0.2;'>
+    <div class="container-fluid justify-content-center ">
+      <div class="d-flex align-items-center">
+        <a class="navbar-brand me-2 mb-1 d-flex align-items-center" href="https://samuelmok.cc">
+          <img
+            src="{% static 'samuelmokcclogo.svg' %}"
+            height="50"
+            alt="samuelmok.cc"
+            loading="lazy"
+            style="margin-top: 2px;"
+          />
+        </a>
+        
+        <a class="navbar-brand me-2 mb-1 d-flex align-items-center" href="{% url 'PureOpenAlex:home' %}">
+          <img
+            src="{% static 'MUSfulllogo.svg' %}"
+            height="50"
+            alt="MUS"
+            loading="lazy"
+            style="margin-top: 2px;"
+          />
+        </a>
+        <ul class="navbar-nav flex-row">
+          <li class="nav-item ps-5 me-3 me-lg-1 ">
+              <strong class="d-none d-sm-block ms-1 fs-4 text-black"> Hi <span class='text-primary'><i class="fas fa-circle-user"></i></span>  {{user.username}}!</strong>
+          </li>
+        </ul>
+      </div>
+      <div class='d-flex w-25'>
+      </div>
+      <ul class="navbar-nav flex-row d-none d-md-flex">
+        <li class="nav-item me-3 me-lg-1 active text-center justify-content-center">
+            <a class="nav-link" href="{% url 'PureOpenAlex:home' %}">
+            <div style='font-size: 0.8em;'>home</div>
+            <span class='fs-5 text-warning' style='text-shadow: 1px 1px black;'><i class="fas fa-house"></i></span>
+          </a>
+        </li>
+        <div class="vr vr-blurry" style='currentColor: black'></div>
+
+        <li class="nav-item me-3 me-lg-1 active text-center justify-content-center">
+          <a class="nav-link" href="{% url 'PureOpenAlex:faculty' 'marked' %}">
+            <div style='font-size: 0.8em;'>marks</div>
+            <span class='fs-5 text-success' style='text-shadow: 1px 1px black;'><i class="fas fa-bookmark"></i></span>
+            {% if stats %}
+                <span class="badge rounded-pill badge-notification bg-success">{{stats.numarticles}}</span>
+            {% endif %}
+          </a>
+        </li>
+        <div class="vr vr-blurry" style='currentColor: black'></div>
+
+        <li class="nav-item me-3 me-lg-1 active text-center justify-content-center">
+            <a class="nav-link" href="{% url 'PureOpenAlex:filtertools' %}">
+            <div style='font-size: 0.8em;'>filter</div>
+
+              <span class='fs-5 text-info' style='text-shadow: 1px 1px black;'><i class="fas fa-filter"></i></span>
+            </a>
+          </li>
+          <div class="vr vr-blurry" style='currentColor: black'></div>
+
+          <li class="nav-item me-3 me-lg-1 active text-center justify-content-center">
+            
+            <a class="nav-link" href="{% url 'PureOpenAlex:dbinfo' %}">
+            <div style='font-size: 0.8em;'>lists</div>
+
+            <span class='fs-5 text-primary' style='text-shadow: 1px 1px black;'><i class="fas fa-clipboard-list"></i></span>
+          </a>
+        </li>
+
+      </ul>
+    </div>
+  </nav>
+  
+  <div class="row row-cols-2 row-cols-md-2 g-4 pt-5">
+    <div class="container-fluid justify-content-center  w-50" >
+      <div id="doi-input" class="card justify-content-center ">
+        <div class="card-header bg-warning bg-gradient " style="--mdb-bg-opacity: 0.9;">
+          <h5 class="text-black ps-5 mb-0">
+            <i class="far fa-keyboard"></i>  |  Search, Bookmark & Add
+          </h5>
+        </div>
+        <div class="card-body text-dark bg-secondary bg-gradient" style="--mdb-bg-opacity: 0.4;">
+          <div class="form-outline " data-mdb-input-init>
+            {% csrf_token %}
+            <input type="search" class="form-control " id="doi" name="doi" hx-get="/search/results/" hx-trigger="keyup changed delay:1s, doi" hx-target="#search-results" hx-indicator=".htmx-indicator" hx-swap='outerHTML' />
+            <label class="form-label" id="doi-label" for="doi">Type doi, title, or author name to start searching...</label>
+          </div>
+          <form id="myForm">
+            <h3>
+              <span class="htmx-indicator">
+                <img src="{% static 'bars.svg' %}">
+              </span>
+            </h3>
+            <div id="search-results">
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+    <div class="container-fluid w-50">
+      <div class= 'card justify-content-center'>
+        <div class="card-header  bg-primary bg-gradient">
+          <h5 class='text-light ps-5 mb-0'><i class="fas fa-message"></i>  |  Notifications</h5>
+        </div>
+        <div class='col card-body bg-secondary bg-gradient' id='messages' style="--mdb-bg-opacity: 0.4;">
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}
