@@ -17,6 +17,7 @@ console = Console()
 ---------------- Not implemented yet ----------------
 '''
 
+
 class SemanticScholarAPI(GenericAPI):
     def __init__(self):
         ...
@@ -314,7 +315,7 @@ class OpenAIREAPI(GenericAPI):
 
 
 class ORCIDAPI(GenericAPI):
-    
+
     def __init__(self, itemlist = None) -> None:
         super().__init__('items_orcid', 'orcid', itemlist)
         self.refresh_access_token()

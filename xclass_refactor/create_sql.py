@@ -1,6 +1,7 @@
 """
 The logic for creating the SQL entries from the MongoDB data will be put here
 """
+from time import time
 from rich import print
 from xclass_refactor.models import (
     MusModel,
@@ -45,10 +46,49 @@ from xclass_refactor.constants import (
 from xclass_refactor.utils import parse_reversed_abstract
 import motor.motor_asyncio
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 from nameparser import HumanName
 from collections import defaultdict
+from dataclasses import dataclass
+
+# TODO
+# refactor common operations
+# use same structure for each model
+# make generic function that includes results, details, etc etc for each type
+# do something with missing items
+# add bulk operations instead of single checks / n+1 adds, especially for sources and works
+# calculate stats for every call and store in class dict to see performance
+
+@dataclass
+class FuncStats:
+    duration: int
+    date: datetime
+    method: callable
+    model: MusModel
+
+
+@dataclass
+class Performance:
+    funcstats: list[FuncStats]
+
+    def total_counted_duration(self) -> int:
+        '''
+        Returns the total duration of all function calls in seconds (int)
+        '''
+        return sum([funcstat.duration for funcstat in self.funcstats])
+
+    def elapsed_time(self) -> int:
+        '''
+        Returns the time between the first and last function call in seconds
+        '''
+        self.funcstats.sort(key=lambda funcstat: funcstat.date)
+        return int((self.funcstats[0].date - self.funcstats[-1].date).total_seconds())
+
+
+
+
+
 
 class CreateSQL:
     def __init__(self, detailed_topics=False):
@@ -62,6 +102,7 @@ class CreateSQL:
         self.missing_authors: list[str] = []
         self.missing_sources: list[str] = []
         self.detailed_topics = detailed_topics
+        self.performance_data = defaultdict(Performance)
 
     async def load_topics(self):
         self.all_topics : list[Topic] = [topic async for topic in Topic.objects.all()]
@@ -136,9 +177,12 @@ class CreateSQL:
         results = []
         models_in_db = model.objects.all().values_list('openalex_id', flat=True)
         models_in_db = {model async for model in models_in_db}
+        amount = 0
         async for item in collection.find():
                 if item.get('id') not in models_in_db:
                     results.append(await add_function(item))
+                    amount += 1
+        done_time = int(time())
         return results
 
     async def add_all_authors(self) -> list:
@@ -156,6 +200,7 @@ class CreateSQL:
         employee_data = self.motorclient.employees_peoplepage.find({})
         employee_match_dict = {match['id']:match async for match in employee_data}
         authoridlist = {author.openalex_id:'' async for author in Author.objects.all()}
+        amount = 0
         async for openalex_author in self.motorclient.authors_openalex.find({}):
             if openalex_author['id'] in authoridlist:
                 continue
@@ -166,9 +211,8 @@ class CreateSQL:
             if openalex_author['id'] in employee_match_dict:
                 employee_match = employee_match_dict[openalex_author['id']]
                 final_dict = employee_match | final_dict
-
+            amount += 1
             results.append(await self.add_author(final_dict))
-
         return results
     async def add_topic(self, topic_raw:dict) -> Topic:
         if await Topic.objects.filter(openalex_id=topic_raw.get('id')).aexists():
@@ -681,16 +725,19 @@ class CreateSQL:
             datacite = DataCiteData(data=datacite_raw)
             await datacite.asave()
             work_dict['datacite_data'] = datacite
+            work_dict['found_in_datacite'] = True
         openaire_raw = await self.motorclient.items_openaire.find_one({'id':work_raw.get('id')}, projection={'_id':0})
         if openaire_raw:
             openaire = OpenAireData(data=openaire_raw)
             await openaire.asave()
             work_dict['openaire_data'] = openaire
+            work_dict['found_in_openaire'] = True
         crossref_raw = await self.motorclient.items_crossref.find_one({'id':work_raw.get('id')}, projection={'_id':0})
         if crossref_raw:
             crossref = CrossrefData(data=crossref_raw)
             await crossref.asave()
             work_dict['crossref_data'] = crossref
+            work_dict['found_in_crossref'] = True
         repository_raw = await self.motorclient['items_pure_oaipmh'].find_one({'id':work_raw.get('id')}, projection={'_id':0})
         if repository_raw:
             repository = RepositoryData(data=repository_raw)
@@ -710,7 +757,7 @@ class CreateSQL:
 
 
 
-        if work_raw.get('abstract'):
+        if work_raw.get('abstract_inverted_index'):
             abstract = await self.add_abstract(work_raw.get('abstract'))
             work.abstract = abstract
             await work.asave()

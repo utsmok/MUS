@@ -67,13 +67,15 @@ class Tag(TimeStampedModel, models.Model):
     object_id = models.PositiveIntegerField()
     content_object = GenericForeignKey("content_type", "object_id")
 
+    def __str__(self):
+        return f'{self.tag_type} - {self.notes}'
     class Meta:
         indexes = [
             models.Index(fields=["content_type", "object_id",  "tag_type"]),
         ]
 
 '''
-here's the base class for the rest of the models: tags and raw_data as explained above + timestamps from TimeStampedModel
+base class for the rest of the models: tags and raw_data as explained above + timestamps from TimeStampedModel
 '''
 class MusModel(TimeStampedModel, models.Model):
     raw_data = GenericRelation(MongoData)
@@ -101,6 +103,11 @@ class Group(models.Model):
 
     name = models.CharField()
     faculty = models.CharField(choices=Faculties)
+
+    def __str__(self):
+        return f'{self.name} ({self.faculty})'
+
+
     class Meta:
         indexes = [
             models.Index(fields=["name"]),
@@ -154,6 +161,9 @@ class Topic(MusModel):
     subfield = models.CharField()
     subfield_id = models.IntegerField()
 
+    def __str__(self):
+        return f'{self.name} [{self.field}]'
+
     class Meta:
         indexes = [
             models.Index(fields=["openalex_id"]),
@@ -165,6 +175,9 @@ class SourceTopic(MusModel):
     topic = models.ForeignKey('Topic', on_delete=models.CASCADE, related_name="source_topics", db_index=True)
     count = models.IntegerField()
 
+    def __str__(self):
+        return f'{self.topic} | {self.count}'
+
     class Meta:
         indexes = [
             models.Index(fields=["source", "topic"]),
@@ -173,6 +186,9 @@ class OrganizationTopic(MusModel):
     organization = models.ForeignKey('Organization', on_delete=models.CASCADE, related_name="organization_topics", db_index=True)
     topic = models.ForeignKey('Topic', on_delete=models.CASCADE, related_name="organization_topics", db_index=True)
     count = models.IntegerField()
+
+    def __str__(self):
+        return f'{self.topic} | {self.count}'
 
     class Meta:
         indexes = [
@@ -203,6 +219,9 @@ class Funder(MusModel):
     i10_index = models.IntegerField()
     works_count = models.IntegerField()
     cited_by_count = models.IntegerField()
+
+    def __str__(self):
+        return f'{self.name}'
 
     class Meta:
         indexes = [
@@ -256,6 +275,9 @@ class Organization(MusModel):
     image_thumbnail_url = models.URLField(max_length=20000,null=True)
     image_url = models.URLField(max_length=20000,null=True)
 
+    def __str__(self):
+        return f'{self.name}'
+
     class Meta:
         indexes = [
             models.Index(fields=["openalex_id"]),
@@ -289,6 +311,9 @@ class Publisher(MusModel):
     h_index = models.IntegerField(null=True)
     i10_index = models.IntegerField(null=True)
     works_count = models.IntegerField()
+
+    def __str__(self):
+        return f'{self.name}'
 
     class Meta:
         indexes = [
@@ -342,6 +367,9 @@ class Source(MusModel):
 
     apc_prices = models.JSONField(encoder=DjangoJSONEncoder, null=True)
     apc_usd = models.IntegerField(null=True)
+
+    def __str__(self):
+        return f'{self.name}'
 
     class Meta:
         indexes = [
@@ -401,6 +429,15 @@ class Author(MusModel):
     found_name = models.CharField(null=True)
     match_similarity = models.FloatField(null=True)
 
+    def __str__(self):
+        groups = ''
+        for a in self.affiliation_details.all():
+            for g in a.groups.all():
+                groups = groups + f'| {g}'
+        if groups != '':
+            return f'{self.name} {groups}'
+        return f'{self.name}'
+
     class Meta:
         indexes = [
             models.Index(fields=["openalex_id"]),
@@ -424,6 +461,9 @@ class Affiliation(MusModel):
     groups = models.ManyToManyField(Group, related_name="affiliations")
     start_date = models.DateField(null=True)
     end_date = models.DateField(null=True)
+
+    def __str__(self):
+        return f'{self.organization} | {min(self.years)} - {max(self.years)} | {self.groups}'
 
     class Meta:
         indexes = [
@@ -458,6 +498,9 @@ class DealData(MusModel):
     openalex_issn_l = models.JSONField(encoder=DjangoJSONEncoder, null=True)
     openalex_type = models.CharField(blank=True, default='')
 
+    def __str__(self):
+        return f'{self.dealtype}'
+
     class Meta:
         indexes = [
             models.Index(fields=["openalex_id"]),
@@ -487,6 +530,11 @@ class Location(MusModel):
     is_primary = models.BooleanField(default=False)
     is_best_oa = models.BooleanField(default=False)
 
+    def __str__(self):
+        if not self.landing_page_url:
+            return f'{self.pdf_url}'
+        return f'{self.landing_page_url}'
+
     class Meta:
         indexes = [
             models.Index(fields=["source", "source_type"]),
@@ -502,6 +550,9 @@ class Location(MusModel):
 
 class Abstract(MusModel):
     text = models.TextField()
+
+    def __str__(self):
+        return f'{self.text}'
 
 class Work(MusModel):
     class OAStatus(models.TextChoices):
@@ -590,6 +641,9 @@ class Work(MusModel):
     found_in_crossref = models.BooleanField(default=False)
     crossref_data = models.OneToOneField('CrossrefData', on_delete=models.CASCADE, null=True)
 
+    def __str__(self):
+        return f'{self.title} - {self.doi}'
+
     class Meta:
         indexes = [
             models.Index(fields=["openalex_id"]),
@@ -607,6 +661,7 @@ class Work(MusModel):
             models.Index(fields=["type_crossref"]),
 
         ]
+
 
 class RepositoryData(MusModel):
     data = models.JSONField(encoder=DjangoJSONEncoder)
@@ -632,6 +687,12 @@ class Authorship(MusModel):
     is_corresponding = models.BooleanField(default=False)
     affiliations = models.ManyToManyField(Organization, related_name="authorships")
 
+    def __str__(self):
+        if self.is_corresponding:
+            return f'{self.author} - {self.position} (corresponding)'
+        else:
+            return f'{self.author} - {self.position}'
+
     class Meta:
         indexes = [
             models.Index(fields=["author", "work"]),
@@ -644,6 +705,9 @@ class Grant(MusModel):
     award_id = models.CharField(null=True)
     funder_name = models.CharField(null=True)
     work = models.ForeignKey('Work', related_name="grants", on_delete=models.CASCADE)
+
+    def __str__(self):
+        return f'{self.funder_name} - {self.award_id}'
 
     class Meta:
         indexes = [

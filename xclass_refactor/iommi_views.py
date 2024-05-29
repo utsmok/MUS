@@ -11,13 +11,10 @@ def view_work(request, pk):
     if not work.exists():
         return HttpResponseNotFound('No work found with id {}'.format(pk))
     work_table = Table(auto__rows=work).bind(request=request)
-
     authorships = Table(auto__rows=work.first().authorships.all(),
-                        columns__author=Column(attr='author__name'),
-                        columns__work__include=False,
                         columns__created__include=False,
                         columns__modified__include=False,
-                        columns__affiliations=Column(attr='affiliations', cell__format=lambda value, **_: " | ".join([a.name for a in value.all()]),),                        
+                        columns__work__include=False
                         ).bind(request=request)
     return render(request, 'work.html', context={'work': work_table, 'authorships':authorships})
 

@@ -271,7 +271,7 @@ class UpdateManager:
 def main():
     mngr = UpdateManager()
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    include = {'all':True}
+    include = {'skip_one':True, 'skip_two':True, 'skip_three':True}
     asyncio.run(mngr.run(include=include))
 
 
