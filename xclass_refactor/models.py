@@ -570,7 +570,8 @@ class Work(MusModel):
         REPORT = 'report'
         OTHER = 'other'
         NOT_SET = 'not_set'
-        # add more types and map to pure, openalex & crossref types
+        # TODO:
+        # add more types and map to pure, openalex, crossref ... types
         # store this mapping somewhere to be viewed by users in the UI as well
 
     authors = models.ManyToManyField(Author, through='Authorship', related_name="works")

@@ -675,6 +675,10 @@ class CreateSQL:
         # calls add_location, add_abstract, add_authorship, add_grants during work creation
         if await Work.objects.filter(openalex_id=work_raw.get('id')).aexists():
             return await Work.objects.aget(openalex_id=work_raw.get('id'))
+
+        # TODO: itemtype classification
+        # NOTE: Openalex: 'We added four new work types, reclassifying existing works: “preprint” (5.7M), “libguides” (1.8M), “review” (820k), and “supplementary-materials” (50k).'
+
         work_dict = {
 
             'openalex_id':work_raw.get('id'),
