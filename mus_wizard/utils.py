@@ -1,14 +1,13 @@
 
-from collections import defaultdict
-from xclass_refactor.mus_mongo_client import MusMongoClient
+from mus_wizard.database.mongo_client import MusMongoClient
 from datetime import datetime, date
-import motor.motor_asyncio
 from rich.console import Console
 
 cons = Console()
 async def get_mongo_collection_mapping():
     '''
-    iterate over all mongodb collections to map the key/values in there
+    Iterates over all mongodb collections and recursively maps all dicts.
+    Output is a dict with the key names as keys, and a string representation of the type(s) of the value(s) as the value. 
     '''
     def get_one(value):
         if value in ['', list, dict, str, None, datetime, date]:

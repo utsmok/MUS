@@ -1,4 +1,4 @@
-from xclass_refactor.constants import MONGOURL
+from mus_wizard.constants import MONGOURL
 import motor.motor_asyncio
 from pymongo import IndexModel, DESCENDING
 
@@ -9,7 +9,7 @@ class MusMongoClient:
     wraps search and update functions
     '''
     def __init__(self):
-        self.mongoclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unificiation_system
+        self.mongoclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unification_system
 
         self.works_openalex : motor.motor_asyncio.AsyncIOMotorCollection = self.mongoclient['works_openalex']
         self.authors_openalex : motor.motor_asyncio.AsyncIOMotorCollection = self.mongoclient['authors_openalex']

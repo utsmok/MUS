@@ -1,13 +1,13 @@
 
-from xclass_refactor.generics import GenericScraper
-from collections import defaultdict
+from mus_wizard.harvester.base_classes import GenericScraper
 import aiometer
 import functools
 import pandas as pd
 from polyfuzz.models import TFIDF
 from polyfuzz import PolyFuzz
-from rich import print, table
+from rich import print
 from nameparser import HumanName
+
 class PeoplePageScraper(GenericScraper):
     def __init__(self):
         super().__init__('employees_peoplepage')

@@ -29,7 +29,7 @@ x 1. Add methods in create_sql.py for missing models -- works & related models, 
 
 7. make a webui wizard that lets the user pick settings and options (most of which are currently in secrets.env)
 
-8. turn xclass_refactor into proper django app
+8. turn mus_wizard into proper django app
 
 
 

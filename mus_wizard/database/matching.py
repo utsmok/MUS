@@ -2,14 +2,14 @@ import pandas as pd
 from polyfuzz.models import TFIDF
 from polyfuzz import PolyFuzz
 import datetime
-from xclass_refactor.mus_mongo_client import MusMongoClient
-from xclass_refactor.openalex_import import OpenAlexQuery
+from mus_wizard.database.mongo_client import MusMongoClient
+from mus_wizard.harvester.openalex import OpenAlexQuery
 import motor.motor_asyncio
-from xclass_refactor.constants import APIEMAIL, OPENAIRETOKEN, MONGOURL, ORCID_CLIENT_ID, ORCID_CLIENT_SECRET, ORCID_ACCESS_TOKEN
+from mus_wizard.constants import APIEMAIL, OPENAIRETOKEN, MONGOURL, ORCID_CLIENT_ID, ORCID_CLIENT_SECRET, ORCID_ACCESS_TOKEN
 import json
 
 class AuthorMatcher():
-    motorclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unificiation_system
+    motorclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unification_system
 
     def __init__(self):
         self.double_check_names = [
@@ -90,7 +90,7 @@ class WorkMatcher():
     # start with matching DOIs and ISBNs
     # then maybe by using other data if much is missing
     
-    motorclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unificiation_system
+    motorclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unification_system
 
     def __init__(self):
         self.results = {'total':0, 'works':[]}

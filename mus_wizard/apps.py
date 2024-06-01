@@ -1,7 +1,7 @@
 from django.apps import AppConfig
 import os
 
-class XClassRefactorConfig(AppConfig):
+class MUSWizard(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
-    name = "xclass_refactor"
+    name = "mus_wizard"
     path = os.path.dirname(os.path.abspath(__file__))

@@ -19,23 +19,24 @@ from concurrent.futures import ProcessPoolExecutor
 
 '''
 
-from loguru import logger
-from xclass_refactor.pure_report_import import PureReport
-from xclass_refactor.pure_import import PureAPI,PureAuthorCSV
-from xclass_refactor.openalex_import import OpenAlexAPI
-from xclass_refactor.mus_mongo_client import MusMongoClient
-from xclass_refactor.journal_browser_scraper import JournalBrowserScraper
-from xclass_refactor.other_apis_import import CrossrefAPI, DataCiteAPI, OpenAIREAPI, ORCIDAPI
-from xclass_refactor.people_page_scraper import PeoplePageScraper
-from xclass_refactor.matching import AuthorMatcher, WorkMatcher
-from xclass_refactor.constants import MONGOURL
-from xclass_refactor.create_sql import CreateSQL
+from mus_wizard.harvester.oai_pmh import PureAPI,PureAuthorCSV
+from mus_wizard.harvester.openalex import OpenAlexAPI
+from mus_wizard.database.mongo_client import MusMongoClient
+from mus_wizard.harvester.journal_browser import JournalBrowserScraper
+from mus_wizard.harvester.openaire import OpenAIREAPI
+from mus_wizard.harvester.datacite import DataCiteAPI
+from mus_wizard.harvester.crossref import CrossrefAPI
+from mus_wizard.harvester.orcid import ORCIDAPI
+from mus_wizard.utwente.people_pages import PeoplePageScraper
+from mus_wizard.database.matching import AuthorMatcher, WorkMatcher
+from mus_wizard.constants import MONGOURL
+from mus_wizard.database.create_sql import CreateSQL
 import asyncio
 import motor.motor_asyncio
 
 
-class UpdateManager:
-    def __init__(self, years: list[int] = None):
+class Wizard:
+    def __init__(self, years: list[int] = None, include: dict[str,bool] = None):
         '''
         years: get items published in these years -- used for retrieving works from pure OAI-PMH & openalex for instance
 
@@ -44,7 +45,7 @@ class UpdateManager:
             self.years = years
         else:
             self.years = None
-        self.motorclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unificiation_system
+        self.motorclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unification_system
 
     async def run(self, include: dict[str,bool] = None):
         '''
@@ -131,15 +132,25 @@ class UpdateManager:
         overview.add_column('')
         overview.add_row(":white_check_mark:", "1. Get data from OpenAlex & Pure", style='dim')
         overview.add_row(":arrow_right:","2. Run other APIs and scrapers, e.g. ORCID, OpenAIRE, JournalBrowser, etc", style='cyan')
-        overview.add_row(":blue_square:", "3. Cleaning, matching & deduplication of items")
-        overview.add_row(":blue_square:", "4. Gather and process data to import into SQL database")
-        overview.add_row(":blue_square:", "5. Import data into SQL database & report results")
+        overview.add_row(":arrow_right:", "3. Cleaning, matching & deduplication of items")
+        overview.add_row(":arrow_right:", "4. Gather and process data to import into SQL database")
+        overview.add_row(":arrow_right:", "5. Import data into SQL database & report results")
         cons.print(Panel(overview, title="Progress", style='magenta'))
         apilists = Table(title='Number of items per API', show_lines=True,title_style='bold cyan')
         apilists.add_column('API')
         apilists.add_column('item source')
         apilists.add_column('id type')
         apilists.add_column('number of items')
+        tasks : list[asyncio.Task|None] = []
+        async with asyncio.TaskGroup() as tg:
+            journalbrowser = tg.create_task(JournalBrowserScraper().run())
+            authormatcher = tg.create_task(AuthorMatcher().run())
+            workmatcher = tg.create_task(WorkMatcher().run())
+            add_indexes = tg.create_task(musmongoclient.add_indexes())
+        tasks.append(journalbrowser)
+        tasks.append(authormatcher)
+        tasks.append(workmatcher)
+        tasks.append(add_indexes)
 
         if 'skip_two' not in include:
             cons.print("APIs included: Crossref, DataCite, OpenAIRE, ORCID, Journal Browser, UT People Page")
@@ -184,7 +195,7 @@ class UpdateManager:
 
             cons.print(apilists)
 
-            tasks : list[asyncio.Task|None] = []
+
             async with asyncio.TaskGroup() as tg:
                 if 'crossref' in include or 'all' in include:
                     crossref = tg.create_task(CrossrefAPI(itemlist=crossreflist).run())
@@ -202,16 +213,21 @@ class UpdateManager:
                     orcid = tg.create_task(ORCIDAPI(itemlist=orcidlist).run())
                 else:
                     orcid = 'orcid'
-                if 'peoplepage' in include or 'all' in include:
+    
+                create_sql = tg.create_task(CreateSQL().add_all())
+
+                #if 'peoplepage' in include or 'all' in include:
                     #peoplepage = tg.create_task(PeoplePageScraper().run())
-                    print('peoplepage not implemented yet')
-                else:
-                    peoplepage = 'peoplepage'
+                    #print('check peoplepage implementation!')
+                #else:
+                    #peoplepage = 'peoplepage'
             tasks.append(crossref)
             tasks.append(datacite)
             tasks.append(openaire)
             tasks.append(orcid)
+            tasks.append(create_sql)
             #tasks.append(peoplepage)
+
             '''
             for task in tasks:
                 if isinstance(task, asyncio.Task):
@@ -219,7 +235,6 @@ class UpdateManager:
                         full_results[result['type']] = result['total']
                 else:
                     full_results[task] = 0'''
-
             stats = Table(title='Retrieved items', title_style='dark_violet', show_header=True)
             stats.add_column('Source', style='cyan')
             stats.add_column('# added/updated', style='orange1')
@@ -227,25 +242,7 @@ class UpdateManager:
                 stats.add_row(str(key), str(full_results[key]))
             cons.print(stats)
 
-        overview = Table(title='Tasks', show_lines=False, box=box.SIMPLE_HEAD, title_style='bold yellow', show_header=False)
-        overview.add_column('')
-        overview.add_column('')
-        overview.add_row(":white_check_mark:", "1. Get data from OpenAlex & Pure", style='dim')
-        overview.add_row(":white_check_mark:","2. Run other APIs and scrapers, e.g. ORCID, OpenAIRE, JournalBrowser, etc", style='dim')
-        overview.add_row(":arrow_right:", "3. Cleaning, matching & deduplication of items", style='cyan')
-        overview.add_row(":blue_square:", "4. Gather and process data to import into SQL database")
-        overview.add_row(":blue_square:", "5. Import data into SQL database & report results")
-        if 'skip_three' not in include:
-            cons.print(Panel(overview, title="Progress", style='magenta'))
-            cons.print('Implemented functions: matching Pure authors (from CSV import) with OpenAlex authors, matching OpenAlex works to Pure works')
-            tasks : list[asyncio.Task|None] = []
-            async with asyncio.TaskGroup() as tg:
-                journalbrowser = tg.create_task(JournalBrowserScraper().run())
-                authormatcher = tg.create_task(AuthorMatcher().run())
-                workmatcher = tg.create_task(WorkMatcher().run())
-            tasks.append(journalbrowser)
-            tasks.append(authormatcher)
-            tasks.append(workmatcher)
+
 
         overview = Table(title='Tasks', show_lines=False, box=box.SIMPLE_HEAD, title_style='bold yellow', show_header=False)
         overview.add_column('')
@@ -258,10 +255,6 @@ class UpdateManager:
         cons.print(Panel(overview, title="Progress", style='magenta'))
         cons.print('Now running the CreateSQL class to add data to the database')
 
-        # rerun add_indexes to ensure all collections have indexes before sql import
-        await musmongoclient.add_indexes()
-        sql_creator = CreateSQL()
-        add_sql_result = await sql_creator.add_all()
 
         cons.print('Update Manager finished.')
 
@@ -269,9 +262,9 @@ class UpdateManager:
 
 
 def main():
-    mngr = UpdateManager()
+    mngr = Wizard()
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    include = {'skip_one':True, 'skip_two':True, 'skip_three':True}
+    include = {'all':True}
     asyncio.run(mngr.run(include=include))
 
 

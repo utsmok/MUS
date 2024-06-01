@@ -28,5 +28,5 @@ urlpatterns = [
     path("api/", api.urls),
     path('explorer/', include('explorer.urls')),
     path('django_query_profiler/', include('django_query_profiler.client.urls')),
-    path('iommi/', include('xclass_refactor.iommi_views')),
+    path('iommi/', include('mus_wizard.frontend.iommi_views')),
 ]

@@ -2,14 +2,14 @@
 from itertools import chain
 from typing import Iterable
 import pyalex
-from xclass_refactor.mus_mongo_client import MusMongoClient
+from mus_wizard.database.mongo_client import MusMongoClient
 from pyalex import Authors, Funders, Institutions, Sources, Works, Topics, Publishers
 from pyalex.api import BaseOpenAlex
 from rich.console import Console
 
 import httpx
 import motor.motor_asyncio
-from xclass_refactor.constants import APIEMAIL, ROR, INSTITUTE_ALT_NAME, INSTITUTE_NAME, OPENALEX_INSTITUTE_ID
+from mus_wizard.constants import APIEMAIL, ROR, INSTITUTE_ALT_NAME, INSTITUTE_NAME, OPENALEX_INSTITUTE_ID
 import asyncio
 
 cons = Console(markup=True)
@@ -40,7 +40,8 @@ class OpenAlexAPI():
                 'funders_openalex': None,
                 'institutions_openalex': None,
                 'topics_openalex': None,
-                'publishers_openalex': None
+                'publishers_openalex': None,
+                'non_institution_authors_openalex': None
             }
         self.requested_works = self.openalex_requests.get('works_openalex')
         self.requested_authors = self.openalex_requests.get('authors_openalex')
@@ -125,7 +126,7 @@ class OpenAlexQuery():
 
     '''
 
-    def __init__(self, mongoclient:MusMongoClient, mongocollection:motor.motor_asyncio.AsyncIOMotorCollection, pyalextype:str, item_ids:Iterable[str]=None, years:list[int]=[2019, 2020, 2021, 2022, 2023, 2024 , 2025]):
+    def __init__(self, mongoclient:MusMongoClient, mongocollection:motor.motor_asyncio.AsyncIOMotorCollection, pyalextype:str, item_ids:Iterable[str]=None, years:list[int]=[2022, 2023, 2024 , 2025]):
         self.mongoclient:MusMongoClient = mongoclient
         self.collection:motor.motor_asyncio.AsyncIOMotorCollection = mongocollection
         self.item_ids:Iterable[str]  = item_ids
@@ -190,7 +191,6 @@ class OpenAlexQuery():
                                             institution['display_name'].lower() in [name.lower() for name in INSTITUTE_ALT_NAME]]):
                                                 authorlist.add(authorship['author']['id'])
                                                 break
-
                     if self.pyalextype == 'sources':
                         async for work in self.mongoclient.works_openalex.find({}, projection={'locations':1}, sort=[('locations', 1)]):
                             if 'locations' in work:

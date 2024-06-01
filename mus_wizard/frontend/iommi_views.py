@@ -1,10 +1,10 @@
 from iommi import Form, Table, Column
-from xclass_refactor.models import Group, Tag, Work, Author, Authorship, Affiliation, Topic, Source, Location, Grant, DealData, Organization
+from mus_wizard.models import Group, Tag, Work, Author, Authorship, Affiliation, Topic, Source, Location, Grant, DealData, Organization
 from django.urls import include, path
 from django.shortcuts import get_object_or_404, render
 from django.http import HttpResponseNotFound
 
-app_name = 'xclass_refactor'
+app_name = 'mus_wizard'
 
 def view_work(request, pk):
     work = Work.objects.filter(pk=pk)

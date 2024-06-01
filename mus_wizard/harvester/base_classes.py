@@ -1,11 +1,11 @@
 import motor.motor_asyncio
 from collections import defaultdict
-from xclass_refactor.constants import MONGOURL
+from mus_wizard.constants import MONGOURL
 import httpx
 from rich import print, progress
 import aiometer
 import functools
-from xclass_refactor.models import MusModel
+from mus_wizard.models import MusModel
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 from typing import Optional
@@ -25,7 +25,7 @@ class GenericScraper():
     - scrape_items: this is the method that actually scrapes the url for each item in the itemlist
     '''
 
-    motorclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unificiation_system
+    motorclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unification_system
     scraperclient : httpx.AsyncClient = httpx.AsyncClient(timeout=30)
 
 
@@ -106,7 +106,7 @@ class GenericAPI():
         else:
             self.itemlist : list = []
         self.NAMESPACES : dict = {}
-        self.motorclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unificiation_system
+        self.motorclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unification_system
         self.collection : motor.motor_asyncio.AsyncIOMotorCollection = self.motorclient[collection] # the collection to store results in
         self.collectionname : str = collection
         self.results : dict = {'ids':[], item_id_type+'s':[], 'total':0, 'type':collection}

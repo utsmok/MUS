@@ -69,7 +69,7 @@ INSTALLED_APPS = [
     "ajax_datatable",
     "slippers",
     'explorer',
-    'xclass_refactor.apps.XClassRefactorConfig',
+    'mus_wizard.apps.MUSWizard',
     'iommi'
 ]
 

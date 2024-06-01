@@ -3,7 +3,7 @@ The logic for creating the SQL entries from the MongoDB data will be put here
 """
 from time import time
 from rich import print
-from xclass_refactor.models import (
+from mus_wizard.models import (
     MusModel,
     MongoData,
     Tag,
@@ -28,7 +28,7 @@ from xclass_refactor.models import (
     CrossrefData,
     DataCiteData
 )
-from xclass_refactor.constants import (
+from mus_wizard.constants import (
     get_flat_groups,
     UTRESEARCHGROUPS_FLAT,
     UTRESEARCHGROUPS_HIERARCHY,
@@ -43,7 +43,7 @@ from xclass_refactor.constants import (
     OPENALEX_INSTITUTE_ID,
 )
 
-from xclass_refactor.utils import parse_reversed_abstract
+from mus_wizard.utils import parse_reversed_abstract
 import motor.motor_asyncio
 import asyncio
 from datetime import datetime, timedelta
@@ -51,7 +51,7 @@ import pytz
 from nameparser import HumanName
 from collections import defaultdict
 from dataclasses import dataclass
-from xclass_refactor.generics import GenericSQLImport
+from mus_wizard.harvester.base_classes import GenericSQLImport
 # TODO
 # refactor common operations
 # use same structure for each model
@@ -67,7 +67,7 @@ from xclass_refactor.generics import GenericSQLImport
 class CreateSQL:
     def __init__(self, detailed_topics=False):
         self.INSTITUTE_GROUPS: dict[str, str] = get_flat_groups()
-        self.motorclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unificiation_system
+        self.motorclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unification_system
         self.timezone = pytz.utc
         self.topics_dict: dict[str:Topic] = None
         self.all_topics: list[Topic] = []
@@ -98,7 +98,6 @@ class CreateSQL:
         topic_siblings_results = await topics.add_siblings(self.all_topics, self.topics_dict)
         print(topic_siblings_results)
 
-        return None
         async with asyncio.TaskGroup() as tg:
             funders = tg.create_task(self.add_all_itemtype(self.motorclient.funders_openalex, self.add_funder, Funder))
             sources = tg.create_task(self.add_all_itemtype(self.motorclient.sources_openalex, self.add_source, Source))
@@ -106,11 +105,11 @@ class CreateSQL:
             organizations = tg.create_task(self.add_all_itemtype(self.motorclient.institutions_openalex, self.add_organization, Organization))
 
         async with asyncio.TaskGroup() as tg:
-            linked = tg.create_task(self.add_org_links())
+            #linked = tg.create_task(self.add_org_links())
             authors = tg.create_task(self.add_all_authors())
 
         if len(self.missing_orgs) > 0:
-            from xclass_refactor.openalex_import import OpenAlexAPI
+            from mus_wizard.harvester.openalex import OpenAlexAPI
             openalexresult = await OpenAlexAPI(openalex_requests={'institutions_openalex':self.missing_orgs}).run()
             more_orgs = await self.add_all_itemtype(self.motorclient.institutions_openalex, self.add_organization, Organization)
 
@@ -124,12 +123,9 @@ class CreateSQL:
         results = []
         models_in_db = model.objects.all().values_list('openalex_id', flat=True)
         models_in_db = {model async for model in models_in_db}
-        amount = 0
         async for item in collection.find():
                 if item.get('id') not in models_in_db:
                     results.append(await add_function(item))
-                    amount += 1
-        done_time = int(time())
         return results
 
     async def add_all_authors(self) -> list:

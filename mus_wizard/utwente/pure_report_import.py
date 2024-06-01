@@ -9,11 +9,11 @@ import openpyxl_dictreader
 from zipfile import BadZipFile
 from datetime import datetime, timedelta
 import termcharts
-from xclass_refactor.constants import MONGOURL
+from mus_wizard.constants import MONGOURL
 
 class PureReport():
     def __init__(self, filenames: list[str] = None):
-        self.mongoclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unificiation_system
+        self.mongoclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unification_system
         self.filenames : list[str] = filenames
         self.library_employees = ['M7731800',
                                     'M7642439'

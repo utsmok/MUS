@@ -1,10 +1,10 @@
-from xclass_refactor.generics import GenericScraper
+from mus_wizard.harvester.base_classes import GenericScraper
 import urllib.parse
 from bs4 import BeautifulSoup as bs
 from rich.console import Console
 import aiometer
 import functools
-from xclass_refactor.constants import JOURNAL_BROWSER_URL
+from mus_wizard.constants import JOURNAL_BROWSER_URL
 cons = Console(markup=True)
 class JournalBrowserScraper(GenericScraper):
     def __init__(self):

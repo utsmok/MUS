@@ -1,8 +1,8 @@
 
 from datetime import datetime
-from xclass_refactor.mus_mongo_client import MusMongoClient
-from xclass_refactor.generics import GenericAPI
-from xclass_refactor.constants import OAI_PMH_URL
+from mus_wizard.database.mongo_client import MusMongoClient
+from mus_wizard.harvester.base_classes import GenericAPI
+from mus_wizard.constants import OAI_PMH_URL
 from rich.console import Console
 import functools
 import aiometer
