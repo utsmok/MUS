@@ -90,14 +90,21 @@ class CreateSQL:
         then we add authors and affiliations
         we finish with works, grants, authorships, locations, and abstracts
         '''
-        print('adding topics')
-        topics = self.ImportTopic(self.motorclient.topics_openalex)
-        topic_results = await topics.import_all()
-        print(topic_results)
-        await self.load_topics()
-        topic_siblings_results = await topics.add_siblings(self.all_topics, self.topics_dict)
-        print(topic_siblings_results)
+        if False:
+            print('adding topics')
+            topics = self.ImportTopic(self.motorclient.topics_openalex)
+            topic_results = await topics.import_all()
+            print(topic_results)
+            await self.load_topics()
+            topic_siblings_results = await topics.add_siblings(self.all_topics, self.topics_dict)
+            print(topic_siblings_results)
 
+        groups = self.ImportGroup(self.motorclient.openaire_cris_orgs)
+        group_results = await groups.import_all()
+        print(group_results)
+        group_part_of_results = await groups.add_part_of()
+        print(group_part_of_results)
+        return None
         async with asyncio.TaskGroup() as tg:
             funders = tg.create_task(self.add_all_itemtype(self.motorclient.funders_openalex, self.add_funder, Funder))
             sources = tg.create_task(self.add_all_itemtype(self.motorclient.sources_openalex, self.add_source, Source))
@@ -211,8 +218,48 @@ class CreateSQL:
             self.results['total_measured_duration_m2m'] = self.performance.total_measured_duration(self.add_siblings)
             return self.results
 
+    class ImportGroup(GenericSQLImport):
+        def __init__(self, collection : motor.motor_asyncio.AsyncIOMotorCollection) -> None:
+            super().__init__(collection, Group, 'internal_repository_id')
+        
+        async def add_item(self, raw_item:dict) -> None:
+            if await Group.objects.filter(internal_repository_id=raw_item.get('internal_repository_id')).aexists():
+                return True
 
+            faculty = None
+            if raw_item.get('part_of'):
+                if raw_item.get('part_of').get('name') in FACULTYNAMES:
+                    faculty = raw_item.get('part_of').get('name')
+                
+            group_dict = {
+                'name':raw_item.get('name'),
+                'faculty':faculty,
+                'internal_repository_id':raw_item.get('internal_repository_id'),
+                'org_type':raw_item.get('type'),
+                'scopus_affiliation_ids':raw_item.get('identifiers').get('Scopus affiliation ID') if raw_item.get('identifiers') else None,
+                'acronym':raw_item.get('acronym'),
+            }
 
+            group = Group(**group_dict)
+            self.raw_items.append(group)
+
+        async def add_part_of(self) -> None:
+            self.performance.start_call(self.add_part_of)
+            all_groups = {g.internal_repository_id:g async for g in Group.objects.all()}
+            for group in all_groups.values():
+                raw_group = await self.collection.find_one({'internal_repository_id':group.internal_repository_id})
+                if raw_group:
+                    if raw_group.get('part_of'):
+                        part_of_id = raw_group.get('part_of').get('internal_repository_id')
+                        if part_of_id in all_groups:
+                            await group.part_of.aadd(all_groups[part_of_id])
+                            self.results['m2m_items'] += 1
+            self.performance.end_call()
+            self.results['elapsed_time_m2m'] = self.performance.elapsed_time()
+            self.results['average_time_per_call_m2m'] = self.performance.time_per_call(self.add_part_of)
+            self.results['total_measured_duration_m2m'] = self.performance.total_measured_duration(self.add_part_of)
+            return self.results
+        
     async def add_funder(self, raw_funder:dict) -> Funder:
         if await Funder.objects.filter(openalex_id=raw_funder.get('id')).aexists():
             return await Funder.objects.aget(openalex_id=raw_funder.get('id'))
@@ -596,7 +643,7 @@ class CreateSQL:
                     if item.get('department') in FACULTYNAMES:
                         faculty = item.get('department')
                     else:
-                        faculty = Group.Faculties.OTHER
+                        faculty = 'Other'
                     group, created = await Group.objects.aget_or_create(name=item.get('section'), faculty=faculty)
                     groups.append(group)
                 except Exception as e:

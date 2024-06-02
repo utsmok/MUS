@@ -92,26 +92,22 @@ class Group(models.Model):
     simple class to hold data for author's group (+ faculty)
     will be used in Affiliation model if the Organization == the primary institution
     '''
-    class Faculties(models.TextChoices):
-        # TODO: import from env instead of hardcoding
-        EEMCS = 'EEMCS'
-        BMS = 'BMS'
-        ET = 'ET'
-        ITC = 'ITC'
-        TNW = 'TNW'
-        OTHER = 'OTHER'
-
     name = models.CharField()
-    faculty = models.CharField(choices=Faculties)
-
+    faculty = models.CharField(null=True)
+    internal_repository_id = models.CharField(null=True)
+    org_type = models.CharField(null=True)
+    scopus_affiliation_ids = models.JSONField(encoder=DjangoJSONEncoder, null=True)
+    acronym = models.CharField(null=True)
+    part_of = models.ManyToManyField('self', related_name="subgroups", symmetrical=False)
     def __str__(self):
         return f'{self.name} ({self.faculty})'
-
-
     class Meta:
         indexes = [
             models.Index(fields=["name"]),
             models.Index(fields=["faculty"]),
+            models.Index(fields=["internal_repository_id"]),
+            models.Index(fields=["org_type"]),
+            models.Index(fields=["acronym"]),
         ]
 
 class Topic(MusModel):

@@ -265,7 +265,7 @@ def main():
     mngr = Wizard()
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     include = {'all':True}
-    asyncio.run(mngr.run(include=include))
+    asyncio.run(CreateSQL().add_all())
 
 
 #! MongoDB find calls:

@@ -21,7 +21,8 @@ class MusMongoClient:
         self.non_instution_authors_openalex : motor.motor_asyncio.AsyncIOMotorCollection = self.mongoclient['non_instution_authors_openalex']
 
         self.authors_pure : motor.motor_asyncio.AsyncIOMotorCollection = self.mongoclient['authors_pure']
-
+        self.openaire_cris_orgs : motor.motor_asyncio.AsyncIOMotorCollection = self.mongoclient['openaire_cris_orgs']
+        self.openaire_cris_persons : motor.motor_asyncio.AsyncIOMotorCollection = self.mongoclient['openaire_cris_persons']
         self.items_pure_oaipmh : motor.motor_asyncio.AsyncIOMotorCollection = self.mongoclient['items_pure_oaipmh']
         self.items_pure_reports : motor.motor_asyncio.AsyncIOMotorCollection = self.mongoclient['items_pure_reports']
         self.items_datacite : motor.motor_asyncio.AsyncIOMotorCollection = self.mongoclient['items_datacite']

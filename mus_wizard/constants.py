@@ -91,6 +91,11 @@ FACULTYNAMES = [
     "ITC",
     "TNW",
     ]
+FACULTYNAMES.extend(['Faculty of Science and Technology', 
+                    'Faculty of Engineering Technology',
+                    'Faculty of Behavioural, Management and Social Sciences',
+                    'Faculty of Geo-Information Science and Earth Observation',
+                    'Faculty of Electrical Engineering, Mathematics and Computer Science'])
 FACULTYNAMES.extend([item.lower() for item in FACULTYNAMES])
 
 

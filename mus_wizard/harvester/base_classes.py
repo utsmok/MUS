@@ -324,8 +324,9 @@ class GenericSQLImport():
                     self.performance.start_call(self.add_item)
                     try:
                         await self.add_item(item)
-                    except Exception:
+                    except Exception as e:
                         self.results['errors'] += 1
+                        print(f'error {e} while adding {self.model.__name__}')
                         self.performance.end_call()
                         continue
                     self.performance.end_call()
