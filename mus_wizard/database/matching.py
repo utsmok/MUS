@@ -6,6 +6,7 @@ from mus_wizard.database.mongo_client import MusMongoClient
 from mus_wizard.harvester.openalex import OpenAlexQuery
 import motor.motor_asyncio
 from mus_wizard.constants import APIEMAIL, OPENAIRETOKEN, MONGOURL, ORCID_CLIENT_ID, ORCID_CLIENT_SECRET, ORCID_ACCESS_TOKEN
+from mus_wizard.utils import normalize_doi
 import json
 
 class AuthorMatcher():
@@ -94,6 +95,8 @@ class WorkMatcher():
 
     def __init__(self):
         self.results = {'total':0, 'works':[]}
+        self.missing_dois = {}
+        self.missing_isbns = {}
 
     async def run(self):
         await self.get_works()
@@ -104,7 +107,19 @@ class WorkMatcher():
     async def get_works(self):
         works = {}
         async for work in self.motorclient.works_openalex.find({}, projection={'id':1, 'doi':1, 'ids.isbn':1}):
-            works[work['doi']] = {'id':work.get('id'), 'isbn':work.get('ids').get('isbn') if work.get('ids') else None, 'doi':str(work.get('doi')).lower()}
+            try:
+                doi = await normalize_doi(work.get('doi')) if work.get('doi') else None
+            except ValueError as e:
+                print(f'{work.get("id")} has invalid DOI: {work.get("doi")} - got error: {e}')
+                doi = None
+            isbn = work.get('ids').get('isbn') if work.get('ids') else None
+            fulldict = {'id':work.get('id'), 'isbn':isbn, 'doi':doi}
+            works[work.get('id')] = fulldict
+            if doi:
+                works[doi] = fulldict
+            if isbn:
+                works[isbn] = fulldict
+            works
         self.works = works
 
 
@@ -116,26 +131,46 @@ class WorkMatcher():
 
         num_items = 0
         num_matched = 0
-        num_total = await self.motorclient.items_pure_oaipmh.estimated_document_count()
-        num_without_match = await self.motorclient.items_pure_oaipmh.estimated_document_count({'id':{'$exists':False}})
+        num_total = await self.motorclient.openaire_cris_publications.estimated_document_count()
+        num_without_match = await self.motorclient.openaire_cris_publications.estimated_document_count({'id':{'$exists':False}})
         print(f'matching {num_total} pure items -- {num_without_match} without a match')
+        num_dois = 0
+        num_isbns = 0
         # here is the functioncall to get all items, but it is missing the filter for items that already have a value in the 'id' field
-        async for pure_item in self.motorclient['items_pure_oaipmh'].find({'id':{'$exists':False}}, projection={'_id':1, 'id':1, 'identifier':1}):
+        async for pure_item in self.motorclient['openaire_cris_publications'].find({'id':{'$exists':False}}):
             num_items = num_items + 1
             if num_items % 250 == 0:
                 print(f'{num_items} total checked (+250)')
             if pure_item.get('id'): # already matched, shouldn't happen
                 continue
-            if pure_item.get('identifier'):
-                if isinstance(pure_item.get('identifier'), list):
-                    for identifier in pure_item.get('identifier'):
-                        if isinstance(identifier, dict):
-                            if identifier.get('type') == 'doi':
-                                    if str(identifier.get('value')).lower() in self.works:
-                                        await self.motorclient.items_pure_oaipmh.update_one({'_id': pure_item['_id']}, {'$set': {'id': self.works[identifier.get('identifier')]['id']}})
-                                        num_matched = num_matched + 1
-        
-        print(f'matched {num_matched} out of {num_items} items -- ~{num_total} total items in the collection')
+            if pure_item.get('doi'):
+                num_dois = num_dois + 1
+                doi = await normalize_doi(pure_item['doi'])
+                if doi in self.works:
+                    await self.motorclient.openaire_cris_publications.update_one({'_id': pure_item['_id']}, {'$set': {'id': self.works[doi]['id']}})
+                    num_matched = num_matched + 1
+                    continue
+                else:
+                    self.missing_dois[doi] = pure_item
+            if pure_item.get('isbn'):
+                for isbn_entry in pure_item['isbn']:
+                    num_isbns = num_isbns + 1
+                    isbn = isbn_entry.get('value')
+                    if isbn:
+                        if isbn in self.works:
+                            await self.motorclient.openaire_cris_publications.update_one({'_id': pure_item['_id']}, {'$set': {'id': self.works[isbn]['id']}})
+                            num_matched = num_matched + 1
+                            continue
+                        else:
+                            self.missing_isbns[isbn] = pure_item
+        print(f'matched {num_matched} out of {num_items} items \n found {num_dois} dois and {num_isbns} isbns in repo data \n ~{num_total} total items in the collection')
         
 
+    async def get_missing_dois(self):
+        # grab missing dois from openalex api
+        ...
+    
+    async def get_missing_isbns(self):
+        # grab missing isbns from openalex api
+        ...
         

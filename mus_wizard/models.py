@@ -108,6 +108,7 @@ class Group(models.Model):
             models.Index(fields=["internal_repository_id"]),
             models.Index(fields=["org_type"]),
             models.Index(fields=["acronym"]),
+            
         ]
 
 class Topic(MusModel):
@@ -216,6 +217,7 @@ class Funder(MusModel):
     works_count = models.IntegerField()
     cited_by_count = models.IntegerField()
 
+    internal_repository_id = models.CharField(null=True)
     def __str__(self):
         return f'{self.name}'
 
@@ -229,6 +231,7 @@ class Funder(MusModel):
             models.Index(fields=["image_url"]),
             models.Index(fields=["image_thumbnail_url"]),
             models.Index(fields=["wikidata"]),
+            models.Index(fields=["internal_repository_id"]),
         ]
 
 
@@ -270,7 +273,7 @@ class Organization(MusModel):
 
     image_thumbnail_url = models.URLField(max_length=20000,null=True)
     image_url = models.URLField(max_length=20000,null=True)
-
+    internal_repository_id = models.CharField(null=True)
     def __str__(self):
         return f'{self.name}'
 
@@ -283,6 +286,7 @@ class Organization(MusModel):
             models.Index(fields=["country_code"]),
             models.Index(fields=["image_url"]),
             models.Index(fields=["image_thumbnail_url"]),
+            models.Index(fields=["internal_repository_id"]),
         ]
 
 class Publisher(MusModel):
@@ -307,7 +311,7 @@ class Publisher(MusModel):
     h_index = models.IntegerField(null=True)
     i10_index = models.IntegerField(null=True)
     works_count = models.IntegerField()
-
+    internal_repository_id = models.CharField(null=True)
     def __str__(self):
         return f'{self.name}'
 
@@ -318,6 +322,7 @@ class Publisher(MusModel):
             models.Index(fields=["wikidata"]),
             models.Index(fields=["image_url"]),
             models.Index(fields=["image_thumbnail_url"]),
+            models.Index(fields=["internal_repository_id"]),
         ]
 class Source(MusModel):
     class SourceType(models.TextChoices):
@@ -363,7 +368,7 @@ class Source(MusModel):
 
     apc_prices = models.JSONField(encoder=DjangoJSONEncoder, null=True)
     apc_usd = models.IntegerField(null=True)
-
+    internal_repository_id = models.CharField(null=True)
     def __str__(self):
         return f'{self.name}'
 
@@ -378,6 +383,7 @@ class Source(MusModel):
             models.Index(fields=["is_in_doaj"]),
             models.Index(fields=["is_oa"]),
             models.Index(fields=["country_code"]),
+            models.Index(fields=["internal_repository_id"]),
         ]
 class Author(MusModel):
     affiliations = models.ManyToManyField(Organization,through='Affiliation', related_name="authors")
@@ -410,7 +416,7 @@ class Author(MusModel):
     h_index = models.IntegerField(null=True)
     i10_index = models.IntegerField(null=True)
 
-    # from pure/institute
+    # from repo/ris/pure of institute
     pure_uuid = models.UUIDField(default=None, null=True, unique=True)
     pure_id = models.IntegerField(null=True)
     pure_last_modified = models.DateTimeField(null=True)
@@ -419,6 +425,7 @@ class Author(MusModel):
     profile_url = models.URLField(max_length=20000,null=True)
     research_url = models.URLField(max_length=20000,null=True)
     email = models.CharField(null=True)
+    internal_repository_id = models.CharField(null=True)
 
     # name-match info openalex <-> pure/institute data
     searched_name = models.CharField(null=True)
@@ -443,6 +450,7 @@ class Author(MusModel):
             models.Index(fields=["scopus"]),
             models.Index(fields=["isni"]),
             models.Index(fields=["email"]),
+            models.Index(fields=["internal_repository_id"]),
         ]
 
 class Affiliation(MusModel):
@@ -628,6 +636,8 @@ class Work(MusModel):
     found_in_institute_repo = models.BooleanField(default=False)
     repo_data = models.OneToOneField('RepositoryData', on_delete=models.CASCADE, null=True)
     repo_keywords = models.JSONField(encoder=DjangoJSONEncoder, null=True)
+    internal_repository_id = models.CharField(null=True)
+    pure_id = models.IntegerField(null=True)
 
     found_in_openaire = models.BooleanField(default=False)
     openaire_data = models.OneToOneField('OpenAireData', on_delete=models.CASCADE, null=True)
@@ -656,12 +666,13 @@ class Work(MusModel):
             models.Index(fields=["is_oa"]),
             models.Index(fields=["itemtype"]),
             models.Index(fields=["type_crossref"]),
-
+            models.Index(fields=["internal_repository_id"]),
         ]
 
 
 class RepositoryData(MusModel):
     data = models.JSONField(encoder=DjangoJSONEncoder)
+    internal_repository_id = models.CharField(null=True)
 
 class OpenAireData(MusModel):
     data = models.JSONField(encoder=DjangoJSONEncoder)
@@ -702,6 +713,7 @@ class Grant(MusModel):
     award_id = models.CharField(null=True)
     funder_name = models.CharField(null=True)
     work = models.ForeignKey('Work', related_name="grants", on_delete=models.CASCADE)
+    internal_repository_id = models.CharField(null=True)
 
     def __str__(self):
         return f'{self.funder_name} - {self.award_id}'
@@ -712,4 +724,5 @@ class Grant(MusModel):
             models.Index(fields=["funder_name"]),
             models.Index(fields=["work"]),
             models.Index(fields=["funder"]),
+            models.Index(fields=["internal_repository_id"]),
         ]

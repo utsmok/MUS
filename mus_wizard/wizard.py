@@ -19,7 +19,7 @@ from concurrent.futures import ProcessPoolExecutor
 
 '''
 
-from mus_wizard.harvester.oai_pmh import PureAPI,PureAuthorCSV
+from mus_wizard.harvester.oai_pmh import PureAPI,PureAuthorCSV, OAI_PMH
 from mus_wizard.harvester.openalex import OpenAlexAPI
 from mus_wizard.database.mongo_client import MusMongoClient
 from mus_wizard.harvester.journal_browser import JournalBrowserScraper
@@ -265,7 +265,10 @@ def main():
     mngr = Wizard()
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     include = {'all':True}
-    asyncio.run(CreateSQL().add_all())
+    asyncio.run(WorkMatcher().run())
+    #asyncio.run(OAI_PMH().run())
+    #asyncio.run(mngr.run(include))
+    #asyncio.run(CreateSQL().add_all())
 
 
 #! MongoDB find calls:

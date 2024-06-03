@@ -2,8 +2,52 @@
 from mus_wizard.database.mongo_client import MusMongoClient
 from datetime import datetime, date
 from rich.console import Console
-
+import re
 cons = Console()
+
+async def normalize_doi(doi) -> str|None:
+    '''
+    retrieves a doi and normalizes it to a standard format:
+    https://doi.org/<doi>, in lowercase
+    '''
+    if not doi:
+        return None
+    if isinstance(doi, str):
+        doi = doi.lower()
+    if doi.startswith('10'):
+        stripped_doi = doi
+    elif doi.startswith('https://doi.org/'):
+        stripped_doi = doi.replace('https://doi.org/', '')
+    elif doi.startswith('http://dx.doi.org/'):
+        stripped_doi = doi.replace('http://dx.doi.org/', '')
+    elif doi.startswith('https://dx.doi.org/'):
+        stripped_doi = doi.replace('https://dx.doi.org/', '')
+    elif doi.startswith('/'):
+        stripped_doi = doi.replace('/', '')
+    elif doi.startswith('0.'):
+        stripped_doi = doi.replace('0.', '10.')
+    elif doi.startswith('doi:'):
+        stripped_doi = doi.replace('doi:', '').strip()
+    elif doi.startswith('doi.org/'):
+        stripped_doi = doi.replace('doi.org/', '').strip()
+    
+    else:
+        try:
+            stripped_doi = '10.'+doi.split('10.')[-1].strip()
+        except Exception as e:
+            print(f'DOI not recognized -- {doi}')
+            return None
+        if not stripped_doi:
+            print(f'DOI does not start with 10 or https://doi.org/ -- {doi}')
+            return None
+        
+    if not stripped_doi.startswith('https://doi.org/') and stripped_doi.startswith('10'):
+        # check if doi matched the regex
+        return f'https://doi.org/{stripped_doi}'
+    else:
+        raise ValueError(f'DOI does not match the expected format: {doi} ({stripped_doi} does not start with 10 or it does starts with https://doi.org/)')
+
+
 async def get_mongo_collection_mapping():
     '''
     Iterates over all mongodb collections and recursively maps all dicts.

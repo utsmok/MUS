@@ -107,8 +107,13 @@ class GenericAPI():
             self.itemlist : list = []
         self.NAMESPACES : dict = {}
         self.motorclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unification_system
-        self.collection : motor.motor_asyncio.AsyncIOMotorCollection = self.motorclient[collection] # the collection to store results in
-        self.collectionname : str = collection
+        if collection:
+            self.collection : motor.motor_asyncio.AsyncIOMotorCollection = self.motorclient[collection] # the collection to store results in
+            self.collectionname : str = collection
+        else:
+            self.collection = None
+            self.collectionname : str = ''
+        
         self.results : dict = {'ids':[], item_id_type+'s':[], 'total':0, 'type':collection}
         self.item_id_type : str = item_id_type
         self.api_settings : dict = {
@@ -135,17 +140,18 @@ class GenericAPI():
         convience method that runs the standard query and puts the results in the mongodb collection
         returns the 'self.results' dict
         '''
-        try:
-            if not self.itemlist:
-                await self.make_itemlist()
-            await self.get_item_results()
-        except Exception as e:
-            print(f'Error while getting items for {self.collectionname}: {e}')
+        #try:
+        if not self.itemlist:
+            await self.make_itemlist()
+        await self.get_item_results()
+        #except Exception as e:
+        #    print(f'Error while getting items for {self.collectionname}: {e}')
         return self.results
+    
     async def make_itemlist(self) -> None:
-        print('make_itemlist is an abstract function -- overload in subclass')
-        item = ...
-        self.itemlist.append(item)
+        print('make_itemlist is an unimplemented abstract function -- overload if an itemlist is needed')
+        #item = ''
+        #self.itemlist.append(item)
 
     async def get_item_results(self) -> None:
         '''
