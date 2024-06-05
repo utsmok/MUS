@@ -112,7 +112,7 @@ class OpenAIREAPI(GenericAPI):
         id = item.get('id')
         doi = item.get('doi')
         result = await httpget()
-        if not result == {}:
+        if isinstance(result, dict):
             result['id'] = id
             self.results['total'] += 1
             self.results['ids'].append(id)

@@ -133,6 +133,17 @@ class Wizard:
                 stats.add_row(str(key), str(full_results[key]))
             cons.print(stats)
 
+            tasks: list[asyncio.Task | None] = []
+            async with asyncio.TaskGroup() as tg:
+                journalbrowser = tg.create_task(JournalBrowserScraper().run())
+                authormatcher = tg.create_task(AuthorMatcher().run())
+                workmatcher = tg.create_task(WorkMatcher().run())
+                add_indexes = tg.create_task(musmongoclient.add_indexes())
+            tasks.append(journalbrowser)
+            tasks.append(authormatcher)
+            tasks.append(workmatcher)
+            tasks.append(add_indexes)
+
         overview = Table(show_lines=False, box=box.SIMPLE_HEAD, show_header=False)
         overview.add_column('')
         overview.add_column('')
@@ -148,17 +159,6 @@ class Wizard:
         apilists.add_column('item source')
         apilists.add_column('id type')
         apilists.add_column('number of items')
-        tasks: list[asyncio.Task | None] = []
-        async with asyncio.TaskGroup() as tg:
-            journalbrowser = tg.create_task(JournalBrowserScraper().run())
-            authormatcher = tg.create_task(AuthorMatcher().run())
-            workmatcher = tg.create_task(WorkMatcher().run())
-            add_indexes = tg.create_task(musmongoclient.add_indexes())
-        tasks.append(journalbrowser)
-        tasks.append(authormatcher)
-        tasks.append(workmatcher)
-        tasks.append(add_indexes)
-
         if 'skip_two' not in include:
             cons.print("APIs included: Crossref, DataCite, OpenAIRE, ORCID, Journal Browser, UT People Page")
             datacitelist = []
@@ -276,7 +276,7 @@ class Wizard:
 def main():
     mngr = Wizard()
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    include = {'all': True}
+    include = {'all': True, 'skip_one': True}
     #asyncio.run(WorkMatcher().run())
     # asyncio.run(OAI_PMH().run())
     asyncio.run(mngr.run(include))
