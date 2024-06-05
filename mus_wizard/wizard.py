@@ -19,24 +19,24 @@ from concurrent.futures import ProcessPoolExecutor
 
 '''
 
-from mus_wizard.harvester.oai_pmh import PureAPI,PureAuthorCSV, OAI_PMH
-from mus_wizard.harvester.openalex import OpenAlexAPI
-from mus_wizard.database.mongo_client import MusMongoClient
-from mus_wizard.harvester.journal_browser import JournalBrowserScraper
-from mus_wizard.harvester.openaire import OpenAIREAPI
-from mus_wizard.harvester.datacite import DataCiteAPI
-from mus_wizard.harvester.crossref import CrossrefAPI
-from mus_wizard.harvester.orcid import ORCIDAPI
-from mus_wizard.utwente.people_pages import PeoplePageScraper
-from mus_wizard.database.matching import AuthorMatcher, WorkMatcher
-from mus_wizard.constants import MONGOURL
-from mus_wizard.database.create_sql import CreateSQL
 import asyncio
 import motor.motor_asyncio
 
+from mus_wizard.constants import MONGOURL
+from mus_wizard.database.create_sql import CreateSQL
+from mus_wizard.database.matching import AuthorMatcher, WorkMatcher
+from mus_wizard.database.mongo_client import MusMongoClient
+from mus_wizard.harvester.crossref import CrossrefAPI
+from mus_wizard.harvester.datacite import DataCiteAPI
+from mus_wizard.harvester.journal_browser import JournalBrowserScraper
+from mus_wizard.harvester.oai_pmh import PureAPI, PureAuthorCSV, OAI_PMH
+from mus_wizard.harvester.openaire import OpenAIREAPI
+from mus_wizard.harvester.openalex import OpenAlexAPI
+from mus_wizard.harvester.orcid import ORCIDAPI
+
 
 class Wizard:
-    def __init__(self, years: list[int] = None, include: dict[str,bool] = None):
+    def __init__(self, years: list[int] = None, include: dict[str, bool] = None):
         '''
         years: get items published in these years -- used for retrieving works from pure OAI-PMH & openalex for instance
 
@@ -45,9 +45,10 @@ class Wizard:
             self.years = years
         else:
             self.years = None
-        self.motorclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unification_system
+        self.motorclient: motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(
+            MONGOURL).metadata_unification_system
 
-    async def run(self, include: dict[str,bool] = None):
+    async def run(self, include: dict[str, bool] = None):
         '''
         runs the queries based on the include dict
         example: include = {'pure':True, 'openalex':True, 'journalbrowser':True, 'orcid':True}
@@ -58,8 +59,8 @@ class Wizard:
         with open(filename, 'w', encoding='utf-8') as f:
             json.dump(mapping,f)'''
 
-        from rich import print, box
-        from rich.console import Console, SVG_EXPORT_THEME
+        from rich import box
+        from rich.console import Console
         from rich.table import Table
         from rich.panel import Panel
         from rich.progress import Progress
@@ -69,7 +70,8 @@ class Wizard:
 
         full_results = {}
         cons = Console(markup=True)
-        notes = Table(title="Notes", show_lines=False, box=box.SIMPLE_HEAD, title_style='bold magenta', show_header=False)
+        notes = Table(title="Notes", show_lines=False, box=box.SIMPLE_HEAD, title_style='bold magenta',
+                      show_header=False)
         notes.add_column('', style='cyan')
         notes.add_row("this is a temporary update manager that will be replaced with a more robust one in the future")
         notes.add_row("the current update manager is not tested")
@@ -79,14 +81,15 @@ class Wizard:
         notes.add_row("errors are not all handled properly")
         notes.add_row("matching / combining data not properly implemented")
         notes.add_row("moving data to SQL partly implemented, barely tested")
-        notes.add_row("for some data cleanup is needed; e.g. datacite: only 3 columns, one of which holds almost all relevant data as a dict -> move this to top level")
+        notes.add_row(
+            "for some data cleanup is needed; e.g. datacite: only 3 columns, one of which holds almost all relevant data as a dict -> move this to top level")
         cons.print(Panel(notes, title="MUS Update Manager", style='magenta'))
 
         overview = Table(show_lines=False, box=box.SIMPLE_HEAD, show_header=False)
         overview.add_column('')
         overview.add_column('')
         overview.add_row(":arrow_right:", "1. Get data from OpenAlex & Pure", style='cyan')
-        overview.add_row(":blue_square:","2. Run other APIs and scrapers, e.g. ORCID, OpenAIRE, JournalBrowser, etc")
+        overview.add_row(":blue_square:", "2. Run other APIs and scrapers, e.g. ORCID, OpenAIRE, JournalBrowser, etc")
         overview.add_row(":blue_square:", "3. Cleaning, matching & deduplication of items")
         overview.add_row(":blue_square:", "4. Gather and process data to import into SQL database")
         overview.add_row(":blue_square:", "5. Import data into SQL database & report results")
@@ -94,17 +97,19 @@ class Wizard:
         if 'skip_one' not in include:
             async with asyncio.TaskGroup() as tg:
                 if 'openalex' in include or 'all' in include:
-                    openalex =tg.create_task(OpenAlexAPI().run())
+                    openalex = tg.create_task(OpenAlexAPI().run())
                 else:
                     openalex = None
                 if 'pure' in include or 'all' in include:
                     pure = tg.create_task(PureAPI().run())
+                    cerif = tg.create_task(OAI_PMH().run())
                 else:
                     pure = None
                 if 'pure_csv_authors' in include or 'all' in include:
                     pure_csv_authors = tg.create_task(PureAuthorCSV().run())
                 else:
                     pure_csv_authors = None
+
 
             if openalex:
                 for result in openalex.result():
@@ -113,6 +118,7 @@ class Wizard:
                 full_results['openalex'] = 0
             if pure:
                 full_results['pure_oai_pmh'] = pure.result()['total']
+                full_results['cerif'] = cerif.result()['total']
             else:
                 full_results['pure_oai_pmh'] = 0
             if pure_csv_authors:
@@ -131,17 +137,18 @@ class Wizard:
         overview.add_column('')
         overview.add_column('')
         overview.add_row(":white_check_mark:", "1. Get data from OpenAlex & Pure", style='dim')
-        overview.add_row(":arrow_right:","2. Run other APIs and scrapers, e.g. ORCID, OpenAIRE, JournalBrowser, etc", style='cyan')
+        overview.add_row(":arrow_right:", "2. Run other APIs and scrapers, e.g. ORCID, OpenAIRE, JournalBrowser, etc",
+                         style='cyan')
         overview.add_row(":arrow_right:", "3. Cleaning, matching & deduplication of items")
         overview.add_row(":arrow_right:", "4. Gather and process data to import into SQL database")
         overview.add_row(":arrow_right:", "5. Import data into SQL database & report results")
         cons.print(Panel(overview, title="Progress", style='magenta'))
-        apilists = Table(title='Number of items per API', show_lines=True,title_style='bold cyan')
+        apilists = Table(title='Number of items per API', show_lines=True, title_style='bold cyan')
         apilists.add_column('API')
         apilists.add_column('item source')
         apilists.add_column('id type')
         apilists.add_column('number of items')
-        tasks : list[asyncio.Task|None] = []
+        tasks: list[asyncio.Task | None] = []
         async with asyncio.TaskGroup() as tg:
             journalbrowser = tg.create_task(JournalBrowserScraper().run())
             authormatcher = tg.create_task(AuthorMatcher().run())
@@ -163,38 +170,46 @@ class Wizard:
                     numpapers = await self.motorclient['works_openalex'].count_documents({})
                     task = p.add_task("Getting list of dois for Datacite/Crossref/OpenAIRE", total=numpapers)
 
-                    async for paper in self.motorclient['works_openalex'].find({}, projection={'id':1, 'doi':1}, sort=[('id', 1)]):
+                    async for paper in self.motorclient['works_openalex'].find({}, projection={'id': 1, 'doi': 1},
+                                                                               sort=[('id', 1)]):
                         if paper.get('doi'):
-                            if not await self.motorclient['items_datacite'].find_one({'id':paper['id']}, projection={'id': 1}):
-                                datacitelist.append({'doi':paper['doi'].replace('https://doi.org/',''), 'id':paper['id']})
-                            if not await self.motorclient['items_openaire'].find_one({'id':paper['id']}, projection={'id': 1}):
-                                openairelist.append({'doi':paper['doi'].replace('https://doi.org/',''), 'id':paper['id']})
-                            if not await self.motorclient['items_crossref'].find_one({'id':paper['id']}, projection={'id': 1}):
-                                crossreflist.append({'doi':paper['doi'].replace('https://doi.org/',''), 'id':paper['id']})
+                            if not await self.motorclient['items_datacite'].find_one({'id': paper['id']},
+                                                                                     projection={'id': 1}):
+                                datacitelist.append(
+                                    {'doi': paper['doi'].replace('https://doi.org/', ''), 'id': paper['id']})
+                            if not await self.motorclient['items_openaire'].find_one({'id': paper['id']},
+                                                                                     projection={'id': 1}):
+                                openairelist.append(
+                                    {'doi': paper['doi'].replace('https://doi.org/', ''), 'id': paper['id']})
+                            if not await self.motorclient['items_crossref'].find_one({'id': paper['id']},
+                                                                                     projection={'id': 1}):
+                                crossreflist.append(
+                                    {'doi': paper['doi'].replace('https://doi.org/', ''), 'id': paper['id']})
                         p.update(task, advance=1)
-                apilists.add_row('DataCite','works openalex','doi', str(len(datacitelist)))
-                apilists.add_row('OpenAIRE','works openalex','doi', str(len(openairelist)))
-                apilists.add_row('Crossref','works openalex','doi', str(len(crossreflist)))
+                apilists.add_row('DataCite', 'works openalex', 'doi', str(len(datacitelist)))
+                apilists.add_row('OpenAIRE', 'works openalex', 'doi', str(len(openairelist)))
+                apilists.add_row('Crossref', 'works openalex', 'doi', str(len(crossreflist)))
             if 'orcid' in include or 'all' in include:
                 with Progress() as p:
 
-
-                    numauths = await self.motorclient['authors_openalex'].count_documents({'ids.orcid':{'$exists':True}})
+                    numauths = await self.motorclient['authors_openalex'].count_documents(
+                        {'ids.orcid': {'$exists': True}})
                     task = p.add_task("Getting list of orcids ", total=numauths)
-                    async for auth in self.motorclient['authors_openalex'].find({'ids.orcid':{'$exists':True}}, projection={'id':1, 'ids':1}):
+                    async for auth in self.motorclient['authors_openalex'].find({'ids.orcid': {'$exists': True}},
+                                                                                projection={'id': 1, 'ids': 1}):
                         p.update(task, advance=1)
                         if auth.get('ids').get('orcid'):
-                            check = await self.motorclient['items_orcid'].find_one({'id':auth['id']}, projection={'id': 1, 'orcid-identifier': 1})
+                            check = await self.motorclient['items_orcid'].find_one({'id': auth['id']},
+                                                                                   projection={'id'              : 1,
+                                                                                               'orcid-identifier': 1})
                             if check:
                                 if check.get('orcid-identifier'):
                                     continue
-                            orcidlist.append({'orcid':auth['ids']['orcid'].replace('https://orcid.org/',''), 'id':auth['id']})
-                apilists.add_row('ORCID','authors openalex','orcid', str(len(orcidlist)))
-
-
+                            orcidlist.append(
+                                {'orcid': auth['ids']['orcid'].replace('https://orcid.org/', ''), 'id': auth['id']})
+                apilists.add_row('ORCID', 'authors openalex', 'orcid', str(len(orcidlist)))
 
             cons.print(apilists)
-
 
             async with asyncio.TaskGroup() as tg:
                 if 'crossref' in include or 'all' in include:
@@ -213,20 +228,20 @@ class Wizard:
                     orcid = tg.create_task(ORCIDAPI(itemlist=orcidlist).run())
                 else:
                     orcid = 'orcid'
-    
+
                 create_sql = tg.create_task(CreateSQL().add_all())
 
-                #if 'peoplepage' in include or 'all' in include:
-                    #peoplepage = tg.create_task(PeoplePageScraper().run())
-                    #print('check peoplepage implementation!')
-                #else:
-                    #peoplepage = 'peoplepage'
+                # if 'peoplepage' in include or 'all' in include:
+                # peoplepage = tg.create_task(PeoplePageScraper().run())
+                # print('check peoplepage implementation!')
+                # else:
+                # peoplepage = 'peoplepage'
             tasks.append(crossref)
             tasks.append(datacite)
             tasks.append(openaire)
             tasks.append(orcid)
             tasks.append(create_sql)
-            #tasks.append(peoplepage)
+            # tasks.append(peoplepage)
 
             '''
             for task in tasks:
@@ -242,57 +257,54 @@ class Wizard:
                 stats.add_row(str(key), str(full_results[key]))
             cons.print(stats)
 
-
-
-        overview = Table(title='Tasks', show_lines=False, box=box.SIMPLE_HEAD, title_style='bold yellow', show_header=False)
+        overview = Table(title='Tasks', show_lines=False, box=box.SIMPLE_HEAD, title_style='bold yellow',
+                         show_header=False)
         overview.add_column('')
         overview.add_column('')
         overview.add_row(":white_check_mark:", "1. Get data from OpenAlex & Pure", style='dim')
-        overview.add_row(":white_check_mark:","2. Run other APIs and scrapers, e.g. ORCID, OpenAIRE, JournalBrowser, etc", style='dim')
+        overview.add_row(":white_check_mark:",
+                         "2. Run other APIs and scrapers, e.g. ORCID, OpenAIRE, JournalBrowser, etc", style='dim')
         overview.add_row(":white_check_mark:", "3. Cleaning, matching & deduplication of items", style='dim')
         overview.add_row(":arrow_right:", "4. Gather and process data to import into SQL database", style='red')
         overview.add_row(":x:", "5. Import data into SQL database & report results", style='red')
         cons.print(Panel(overview, title="Progress", style='magenta'))
         cons.print('Now running the CreateSQL class to add data to the database')
 
-
         cons.print('Update Manager finished.')
-
-
 
 
 def main():
     mngr = Wizard()
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    include = {'all':True}
-    asyncio.run(WorkMatcher().run())
-    #asyncio.run(OAI_PMH().run())
-    #asyncio.run(mngr.run(include))
-    #asyncio.run(CreateSQL().add_all())
+    include = {'all': True}
+    #asyncio.run(WorkMatcher().run())
+    # asyncio.run(OAI_PMH().run())
+    asyncio.run(mngr.run(include))
+    # asyncio.run(CreateSQL().add_all())
 
 
-#! MongoDB find calls:
+# ! MongoDB find calls:
 # force use of index, see https://www.mongodb.com/community/forums/t/how-to-speed-up-find-projection-id-true-on-a-large-collection/124514
 
-#! When implementing the new update manager into current MUS code:
+# ! When implementing the new update manager into current MUS code:
 # collections need to be renamed in mus_backend and PureOpenAlex.
 #
 # 'rough' Mapping (from old to new) listed below.
 # however: take care to check actual usage of the collections in the backend -- e.g. the fields could have different names or structures etc etc.
 
 mongo_mapping = {
-'api_responses_works_openalex':'works_openalex',
-'api_responses_pure':'items_pure_oaipmh',
-'api_responses_datacite':'items_datacite',
-'api_responses_crossref':'items_crossref',
-'api_responses_openaire':'items_openaire',
-'api_responses_authors_openalex':'authors_openalex',
-'api_responses_UT_authors_openalex':'None',# unknown? check implementation
-'api_responses_openalex':'works_openalex',
-'api_responses_journals_openalex':'sources_openalex',
-'api_responses_UT_authors_peoplepage':'employees_peoplepage',
-'api_responses_journals_dealdata_scraped':'deals_journalbrowser',
-'pure_report_start_tcs':'items_pure_reports',
-'pure_report_ee':'items_pure_reports',
-'pure_xmls': 'None',
+    'api_responses_works_openalex'           : 'works_openalex',
+    'api_responses_pure'                     : 'items_pure_oaipmh',
+    'api_responses_datacite'                 : 'items_datacite',
+    'api_responses_crossref'                 : 'items_crossref',
+    'api_responses_openaire'                 : 'items_openaire',
+    'api_responses_authors_openalex'         : 'authors_openalex',
+    'api_responses_UT_authors_openalex'      : 'None',  # unknown? check implementation
+    'api_responses_openalex'                 : 'works_openalex',
+    'api_responses_journals_openalex'        : 'sources_openalex',
+    'api_responses_UT_authors_peoplepage'    : 'employees_peoplepage',
+    'api_responses_journals_dealdata_scraped': 'deals_journalbrowser',
+    'pure_report_start_tcs'                  : 'items_pure_reports',
+    'pure_report_ee'                         : 'items_pure_reports',
+    'pure_xmls'                              : 'None',
 }

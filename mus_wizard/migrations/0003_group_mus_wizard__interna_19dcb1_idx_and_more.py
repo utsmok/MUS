@@ -4,7 +4,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("mus_wizard", "0002_group_acronym_group_internal_repository_id_and_more"),
     ]

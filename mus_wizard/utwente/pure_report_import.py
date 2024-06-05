@@ -1,66 +1,69 @@
-
-import motor.motor_asyncio
-from collections import defaultdict
-import pandas as pd
 import csv
-import aiometer
-from rich import print, console, table, panel, layout, text
-import openpyxl_dictreader
+from collections import defaultdict
+from datetime import datetime
 from zipfile import BadZipFile
-from datetime import datetime, timedelta
+
+import aiometer
+import motor.motor_asyncio
+import openpyxl_dictreader
 import termcharts
+from rich import console, layout, panel, print, table
+
 from mus_wizard.constants import MONGOURL
+
 
 class PureReport():
     def __init__(self, filenames: list[str] = None):
-        self.mongoclient : motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unification_system
-        self.filenames : list[str] = filenames
+        self.mongoclient: motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(
+            MONGOURL).metadata_unification_system
+        self.filenames: list[str] = filenames
         self.library_employees = ['M7731800',
-                                    'M7642439'
-                                    'M7642471',
-                                    'M7641474',
-                                    'M7640169',
-                                ]
-        self.namemapping = {'M7731800':'Schipper, Liene (UT-LISA) [library] [library]',
-                            'M7642471':'Bevers, René (UT-LISA) [library] [library]',
-                            'M7641474':'Leusink-Eikelboom, Yvonne (UT-LISA) [library] [library]',
-                            'M7640169':'Bakker-Koorman, Karin (UT-LISA) [library] [library]',
-                            'M7642439':'Exterkate-ten Heggeler, Yvonne (UT-LISA) [library] [library]',
-                            'M7692738':'Scholten-Koop, Bertine (UT-EEMCS) [secretary] [SCS]',
-                            'M7693261':'Steenbergen-Boeringa, Marion (UT-EEMCS) [secretary] [FMT]',
-                            'M7640406':'Broersma, Hajo (UT-EEMCS) [researcher] [FMT]',
-                            'M7668993':'Lopuhaä-Zwakenberg, Milan (UT-EEMCS) [researcher] [FMT]',
-                            'M7660017':'Meuwly, Didier (UT-EEMCS) [researcher] [DMB]',
-                            'M7688543':'Huisman, Marieke (UT-EEMCS) [researcher] [FMT]',
-                            'M7687683':'Jonker, Mattijs (UT-EEMCS) [researcher] [DACS]',
-                            'M7662106':'Bukhsh, Faiza (UT-EEMCS) [researcher] [DMB]',
-                            'M7712831':'Prince Sales, Tiago (UT-EEMCS) [researcher] [SCS]',
-                            'M7667645':'Wang, Shenghui (UT-EEMCS) [researcher] [HMI]',
-                            'M7715214':'Miranda Soares, Filipi (UT-EEMCS) [researcher] [SCS]',
-                            'M7680523':'Stoelinga, Mariëlle (UT-EEMCS) [researcher] [FMT]',
-                            'M7660096':'Kamminga, Jacob (UT-EEMCS) [researcher] [PS]',
-                            'M7663975':'Müller, Moritz (UT-EEMCS) [researcher] [DACS]',
-                            'M7646927':'Theune, Mariet (UT-EEMCS) [researcher] [HMI]',
-                            'M7716307':'Varenhorst, Ivo (UT-EEMCS) [researcher] [CAES]',
-                            'M7666116':'Bemthuis, Rob (UT-EEMCS) [researcher] [PS]',
-                            'M7700606':'Chen, Kuan (UT-EEMCS) [researcher] [CAES]',
-                            'M7695442':'Le Viet Duc, Duc (UT-EEMCS) [researcher] [PS]',
-                            'M7668390':'Atashgahi, Zahra (UT-EEMCS) [researcher] [DMB]',
-                            'M7664330':'Seifert, Christin (UT-EEMCS) [researcher] [DMB]',
-                            'M7700813':'Rook, Jeroen (UT-EEMCS) [researcher] [DMB]',
-                            'M7717102':'Khadka, Shyam Krishna (UT-EEMCS) [researcher] [DACS]',
-                            'M7642982':'Rijswijk-Deij, Roland van (UT-EEMCS) [researcher] [DACS]',
-                            'M7700625':'Nguyen, Minh Son (UT-EEMCS) [researcher] [PS]',
-                            'M7664572':'Ham-de Vos, Jeroen van der (UT-EEMCS) [researcher] [DACS]',
-                            'M7668017':'Sarmah, Dipti (UT-EEMCS) [researcher] [SCS]',
-                            'M7647139':'Veldhuis, Raymond (UT-EEMCS) [researcher] [DMB]',
-                            'M7704167':'Gillani, Ghayoor (UT-EEMCS) [researcher] [CAES]',
-                            'M7668807':'Haq, Yasir (UT-BMS) [researcher] [IEBIS]',
-                            'M7669053':'Rangel Carneiro Magalhaes, Syllas (UT-EEMCS) [researcher] [DACS]',
-                            'M7700537':'Talavera Martínez, Estefanía (UT-EEMCS) [researcher] [DMB]'
+                                  'M7642439'
+                                  'M7642471',
+                                  'M7641474',
+                                  'M7640169',
+                                  ]
+        self.namemapping = {'M7731800': 'Schipper, Liene (UT-LISA) [library] [library]',
+                            'M7642471': 'Bevers, René (UT-LISA) [library] [library]',
+                            'M7641474': 'Leusink-Eikelboom, Yvonne (UT-LISA) [library] [library]',
+                            'M7640169': 'Bakker-Koorman, Karin (UT-LISA) [library] [library]',
+                            'M7642439': 'Exterkate-ten Heggeler, Yvonne (UT-LISA) [library] [library]',
+                            'M7692738': 'Scholten-Koop, Bertine (UT-EEMCS) [secretary] [SCS]',
+                            'M7693261': 'Steenbergen-Boeringa, Marion (UT-EEMCS) [secretary] [FMT]',
+                            'M7640406': 'Broersma, Hajo (UT-EEMCS) [researcher] [FMT]',
+                            'M7668993': 'Lopuhaä-Zwakenberg, Milan (UT-EEMCS) [researcher] [FMT]',
+                            'M7660017': 'Meuwly, Didier (UT-EEMCS) [researcher] [DMB]',
+                            'M7688543': 'Huisman, Marieke (UT-EEMCS) [researcher] [FMT]',
+                            'M7687683': 'Jonker, Mattijs (UT-EEMCS) [researcher] [DACS]',
+                            'M7662106': 'Bukhsh, Faiza (UT-EEMCS) [researcher] [DMB]',
+                            'M7712831': 'Prince Sales, Tiago (UT-EEMCS) [researcher] [SCS]',
+                            'M7667645': 'Wang, Shenghui (UT-EEMCS) [researcher] [HMI]',
+                            'M7715214': 'Miranda Soares, Filipi (UT-EEMCS) [researcher] [SCS]',
+                            'M7680523': 'Stoelinga, Mariëlle (UT-EEMCS) [researcher] [FMT]',
+                            'M7660096': 'Kamminga, Jacob (UT-EEMCS) [researcher] [PS]',
+                            'M7663975': 'Müller, Moritz (UT-EEMCS) [researcher] [DACS]',
+                            'M7646927': 'Theune, Mariet (UT-EEMCS) [researcher] [HMI]',
+                            'M7716307': 'Varenhorst, Ivo (UT-EEMCS) [researcher] [CAES]',
+                            'M7666116': 'Bemthuis, Rob (UT-EEMCS) [researcher] [PS]',
+                            'M7700606': 'Chen, Kuan (UT-EEMCS) [researcher] [CAES]',
+                            'M7695442': 'Le Viet Duc, Duc (UT-EEMCS) [researcher] [PS]',
+                            'M7668390': 'Atashgahi, Zahra (UT-EEMCS) [researcher] [DMB]',
+                            'M7664330': 'Seifert, Christin (UT-EEMCS) [researcher] [DMB]',
+                            'M7700813': 'Rook, Jeroen (UT-EEMCS) [researcher] [DMB]',
+                            'M7717102': 'Khadka, Shyam Krishna (UT-EEMCS) [researcher] [DACS]',
+                            'M7642982': 'Rijswijk-Deij, Roland van (UT-EEMCS) [researcher] [DACS]',
+                            'M7700625': 'Nguyen, Minh Son (UT-EEMCS) [researcher] [PS]',
+                            'M7664572': 'Ham-de Vos, Jeroen van der (UT-EEMCS) [researcher] [DACS]',
+                            'M7668017': 'Sarmah, Dipti (UT-EEMCS) [researcher] [SCS]',
+                            'M7647139': 'Veldhuis, Raymond (UT-EEMCS) [researcher] [DMB]',
+                            'M7704167': 'Gillani, Ghayoor (UT-EEMCS) [researcher] [CAES]',
+                            'M7668807': 'Haq, Yasir (UT-BMS) [researcher] [IEBIS]',
+                            'M7669053': 'Rangel Carneiro Magalhaes, Syllas (UT-EEMCS) [researcher] [DACS]',
+                            'M7700537': 'Talavera Martínez, Estefanía (UT-EEMCS) [researcher] [DMB]'
                             }
+
     def run(self):
-        #self.mongoclient.get_io_loop().run_until_complete(self.load_reports())
+        # self.mongoclient.get_io_loop().run_until_complete(self.load_reports())
         self.mongoclient.get_io_loop().run_until_complete(self.process_data())
 
     async def load_reports(self):
@@ -80,6 +83,7 @@ class PureReport():
                             row[key] = [i.strip() for i in value.split('|')]
                     data.append(row)
             return [filename, data]
+
         self.results = defaultdict()
         async with aiometer.amap(load_report, self.filenames, max_at_once=5, max_per_second=5) as results:
             async for response in results:
@@ -109,14 +113,16 @@ class PureReport():
                     item['pilot_paper'] = False
                 newpapers.append(item)
 
-        monthmapping = {1:'Jan', 2:'Feb', 3:'Mar', 4:'Apr', 5:'May', 6:'Jun', 7:'Jul', 8:'Aug', 9:'Sep', 10:'Oct', 11:'Nov', 12:'Dec'}
-        data_per_month = {2023:{}, 2024:{}}
+        monthmapping = {1 : 'Jan', 2: 'Feb', 3: 'Mar', 4: 'Apr', 5: 'May', 6: 'Jun', 7: 'Jul', 8: 'Aug', 9: 'Sep',
+                        10: 'Oct', 11: 'Nov', 12: 'Dec'}
+        data_per_month = {2023: {}, 2024: {}}
         for year in range(2023, 2025):
             for month in range(1, 13):
                 if year == 2024:
                     if month > 4:
                         data_per_month[year][monthmapping[month]] = 0
-                data_per_month[year][monthmapping[month]] = sum([1 for x in monthdatalist if x.month == month and x.year == year])
+                data_per_month[year][monthmapping[month]] = sum(
+                    [1 for x in monthdatalist if x.month == month and x.year == year])
         listnum = 0
         charts = []
         statstables = []
@@ -138,18 +144,20 @@ class PureReport():
                 counts[id] += 1
             try:
                 for id, count in counts.items():
-                    idlist.append({'id': id,
-                            'name': self.namemapping[id].split('(')[0] if id in self.namemapping else '-',
-                            'faculty': self.namemapping[id].split('(UT-')[1].split(')')[0] if id in self.namemapping else '-',
-                            'group': self.namemapping[id].split('[')[2].split(']')[0] if id in self.namemapping else '-',
-                            'role': self.namemapping[id].split('[')[1].split(']')[0] if id in self.namemapping else '-',
-                            'count': count
-                        })
+                    idlist.append({'id'     : id,
+                                   'name'   : self.namemapping[id].split('(')[0] if id in self.namemapping else '-',
+                                   'faculty': self.namemapping[id].split('(UT-')[1].split(')')[
+                                       0] if id in self.namemapping else '-',
+                                   'group'  : self.namemapping[id].split('[')[2].split(']')[
+                                       0] if id in self.namemapping else '-',
+                                   'role'   : self.namemapping[id].split('[')[1].split(']')[
+                                       0] if id in self.namemapping else '-',
+                                   'count'  : count
+                                   })
             except Exception as e:
                 print(e)
                 print(id, count)
                 print(self.namemapping[id])
-
 
             idlist.sort(key=lambda x: x['count'], reverse=True)
 
@@ -173,32 +181,36 @@ class PureReport():
                 pergroup[item['group']] += 1
             idtables.append(idtable)
             if listnum == 1:
-                charts.append(termcharts.bar(data_per_month[2024], rich=True, mode = 'v'))
+                charts.append(termcharts.bar(data_per_month[2024], rich=True, mode='v'))
                 days = datetime(2024, 4, 23) - datetime(2024, 3, 6)
                 numpapers = len(paperset)
-                papers_per_day = round(numpapers/days.days, 1)
+                papers_per_day = round(numpapers / days.days, 1)
                 titles.append(f'TCS items added [cyan]during pilot[/cyan] (~{papers_per_day} per day)')
             elif listnum == 2:
                 days = datetime(2023, 12, 31) - datetime(2023, 1, 1)
                 numpapers = len(paperset)
-                papers_per_day = round(numpapers/days.days, 1)
-                charts.append(termcharts.bar(data_per_month[2023], rich=True, mode = 'v'))
+                papers_per_day = round(numpapers / days.days, 1)
+                charts.append(termcharts.bar(data_per_month[2023], rich=True, mode='v'))
                 titles.append(f'TCS items added in [red]all of 2023[/red] (~{papers_per_day} per day)')
 
             nums = {}
-            for item in [['Article'], ['Preprint'], ['Conference contribution', 'Conference article'], ['Book', 'Chapter']]:
-                nums[item[0]]=sum([1 for i in paperset if i['item_type'] in item])
+            for item in [['Article'], ['Preprint'], ['Conference contribution', 'Conference article'],
+                         ['Book', 'Chapter']]:
+                nums[item[0]] = sum([1 for i in paperset if i['item_type'] in item])
             statstable = table.Table(show_lines=True)
             statstable.add_column('Added', justify='left', style='yellow')
             statstable.add_column('#', justify='center', style='green')
             statstable.add_column('%', justify='center', style='cyan')
             statstable.add_row('total', str(len(ids)), '-')
-            statstable.add_row('by library backoffice', str(sum([i['count'] for i in idlist if i['role'] == 'library'])), str(round(sum([i['count'] for i in idlist if i['role'] == 'library'])*100/len(ids)))+'%')
+            statstable.add_row('by library backoffice',
+                               str(sum([i['count'] for i in idlist if i['role'] == 'library'])), str(round(
+                    sum([i['count'] for i in idlist if i['role'] == 'library']) * 100 / len(ids))) + '%')
             statstable.add_row('Item types', '#', '%', style='white')
-            statstable.add_row('articles', str(nums['Article']), str(round(nums['Article']*100/len(ids)))+'%')
-            statstable.add_row('preprints', str(nums['Preprint']), str(round(nums['Preprint']*100/len(ids)))+'%')
-            statstable.add_row('conference papers', str(nums['Conference contribution']), str(round(nums['Conference contribution']*100/len(ids)))+'%')
-            statstable.add_row('book (/chapters)', str(nums['Book']), str(round(nums['Book']*100/len(ids)))+'%')
+            statstable.add_row('articles', str(nums['Article']), str(round(nums['Article'] * 100 / len(ids))) + '%')
+            statstable.add_row('preprints', str(nums['Preprint']), str(round(nums['Preprint'] * 100 / len(ids))) + '%')
+            statstable.add_row('conference papers', str(nums['Conference contribution']),
+                               str(round(nums['Conference contribution'] * 100 / len(ids))) + '%')
+            statstable.add_row('book (/chapters)', str(nums['Book']), str(round(nums['Book'] * 100 / len(ids))) + '%')
             statstables.append(statstable)
 
         lay = layout.Layout()

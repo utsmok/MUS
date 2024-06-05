@@ -1,18 +1,23 @@
-from mus_wizard.harvester.base_classes import GenericAPI
-from rich.table import Table
+from typing import Any
+
 from rich.console import Console
+from rich.table import Table
+
 from mus_wizard.constants import ROR
+from mus_wizard.harvester.base_classes import GenericAPI
+
 console = Console()
 
-class DataCiteAPI(GenericAPI):
-    def __init__(self, itemlist = None):
-        super().__init__('items_datacite', 'doi', itemlist)
-        self.set_api_settings(headers = {"accept": "application/vnd.api+json"},
-                            max_per_second=5,
-                            max_at_once=5,
-                            )
 
-    async def get_ut_items(self) -> None:
+class DataCiteAPI(GenericAPI):
+    def __init__(self, itemlist=None):
+        super().__init__('items_datacite', 'doi', itemlist)
+        self.set_api_settings(headers={"accept": "application/vnd.api+json"},
+                              max_per_second=5,
+                              max_at_once=5,
+                              )
+
+    async def get_ut_items(self) -> list[dict[str | Any, list | dict | str | Any]]:
         ut_results = []
         url = f"https://api.datacite.org/dois?affiliation=true&query=creators.affiliation.affiliationIdentifier:%22{ROR}%22&page[size]=1000&affiliation=true&detail=true&publisher=true"
         try:
@@ -23,40 +28,42 @@ class DataCiteAPI(GenericAPI):
         except Exception as e:
             console.print(f'Error while retrieving all UT datacite items: {e}')
         for item in response_json["data"]:
-            tmp={}
-            attrs=item['attributes']
+            tmp = {}
+            attrs = item['attributes']
             for key, value in attrs.items():
                 if value is not None:
                     if isinstance(value, list):
-                        if value!=[]:
-                            tmp[key]=value
+                        if value != []:
+                            tmp[key] = value
                     elif isinstance(value, dict):
-                        if value!={}:
-                            tmp[key]=value
+                        if value != {}:
+                            tmp[key] = value
                     elif isinstance(value, str):
                         if value != "":
-                            tmp[key]=value
-            tmp['id']=item['id']
-            tmp['type']=item['type']
-            tmp['relationships']=item['relationships']
+                            tmp[key] = value
+            tmp['id'] = item['id']
+            tmp['type'] = item['type']
+            tmp['relationships'] = item['relationships']
             ut_results.append(tmp)
 
         return ut_results
+
     async def make_itemlist(self) -> None:
         ptable = Table(title=f"{self.item_id_type}s from OpenAlex works")
         ptable.add_column("# checked", style="green")
-        ptable.add_column("# added",style="magenta")
-        i=0
+        ptable.add_column("# added", style="magenta")
+        i = 0
 
         numpapers = await self.motorclient['works_openalex'].count_documents({})
         console.print(f'getting dois from {numpapers} openalexworks to find in datacite')
 
-        async for paper in self.motorclient['works_openalex'].find(projection={'id':1, 'doi':1}):
-            i+=1
+        async for paper in self.motorclient['works_openalex'].find(projection={'id': 1, 'doi': 1}):
+            i += 1
             if paper.get('doi'):
-                if await self.collection.find_one({'id':paper['id']}, projection={'id': 1}):
+                if await self.collection.find_one({'id': paper['id']}, projection={'id': 1}):
                     continue
-                self.itemlist.append({self.item_id_type:paper['doi'].replace('https://doi.org/',''), 'id':paper['id']})
+                self.itemlist.append(
+                    {self.item_id_type: paper['doi'].replace('https://doi.org/', ''), 'id': paper['id']})
         ptable.add_row(str(i), str(len(self.itemlist)))
         console.print(ptable)
 
@@ -69,6 +76,7 @@ class DataCiteAPI(GenericAPI):
             except Exception as e:
                 console.print(f'error querying datacite for doi {doi}: {e}')
                 return None
+
         doi = item.get('doi')
         id = item.get('id')
         result = await httpget(doi)
@@ -77,5 +85,5 @@ class DataCiteAPI(GenericAPI):
         else:
             if result.get('meta').get('total') == 0:
                 return {'id': id, 'doi': doi}
-            result['id']=id
+            result['id'] = id
             return result

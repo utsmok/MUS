@@ -1,10 +1,12 @@
-from iommi import Form, Table, Column
-from mus_wizard.models import Group, Tag, Work, Author, Authorship, Affiliation, Topic, Source, Location, Grant, DealData, Organization
-from django.urls import include, path
-from django.shortcuts import get_object_or_404, render
 from django.http import HttpResponseNotFound
+from django.shortcuts import render
+from django.urls import path
+from iommi import Form, Table
+
+from mus_wizard.models import Group, Tag, Work
 
 app_name = 'mus_wizard'
+
 
 def view_work(request, pk):
     work = Work.objects.filter(pk=pk)
@@ -16,7 +18,8 @@ def view_work(request, pk):
                         columns__modified__include=False,
                         columns__work__include=False
                         ).bind(request=request)
-    return render(request, 'work.html', context={'work': work_table, 'authorships':authorships})
+    return render(request, 'work.html', context={'work': work_table, 'authorships': authorships})
+
 
 urlpatterns = [
     path('group-form/', Form.create(auto__model=Group).as_view()),

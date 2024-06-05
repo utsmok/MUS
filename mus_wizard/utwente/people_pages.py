@@ -1,45 +1,55 @@
+import functools
+
+import aiometer
+import pandas as pd
+from nameparser import HumanName
+from polyfuzz import PolyFuzz
+from polyfuzz.models import TFIDF
+from rich import print
 
 from mus_wizard.harvester.base_classes import GenericScraper
-import aiometer
-import functools
-import pandas as pd
-from polyfuzz.models import TFIDF
-from polyfuzz import PolyFuzz
-from rich import print
-from nameparser import HumanName
+
 
 class PeoplePageScraper(GenericScraper):
     def __init__(self):
         super().__init__('employees_peoplepage')
         self.set_scraper_settings(url='https://people.utwente.nl/data/search',
-                                headers = {
-                                    "X-Requested-With": "XMLHttpRequest",
-                                    "Host": "people.utwente.nl",
-                                    "Referer": "https://people.utwente.nl",
-                                    "Accept": "*/*",
-                                    "Accept-Encoding": "gzip, deflate, br",
-                                },
-                                max_at_once=100,
-                                max_per_second=20
-                                )
+                                  headers={
+                                      "X-Requested-With": "XMLHttpRequest",
+                                      "Host"            : "people.utwente.nl",
+                                      "Referer"         : "https://people.utwente.nl",
+                                      "Accept"          : "*/*",
+                                      "Accept-Encoding" : "gzip, deflate, br",
+                                  },
+                                  max_at_once=100,
+                                  max_per_second=20
+                                  )
+
     async def make_itemlist(self) -> None:
-        async for author in self.motorclient['authors_openalex'].find({}, projection={'id':1, 'display_name':1, 'display_name_alternatives':1, 'ids':1, 'affiliations':1}, sort=[('id', 1)]):
+        async for author in self.motorclient['authors_openalex'].find({}, projection={'id'                       : 1,
+                                                                                      'display_name'             : 1,
+                                                                                      'display_name_alternatives': 1,
+                                                                                      'ids'                      : 1,
+                                                                                      'affiliations'             : 1},
+                                                                      sort=[('id', 1)]):
             if author.get('affiliations'):
                 for affl in author['affiliations']:
                     inst = affl.get('institution')
                     if inst:
-                        if inst.get('ror')=='https://ror.org/006hf6230' or 'twente' in inst.get('display_name').lower():
+                        if inst.get('ror') == 'https://ror.org/006hf6230' or 'twente' in inst.get(
+                                'display_name').lower():
                             if 2024 in affl.get('years') or 2023 in affl.get('years') or 2022 in affl.get('years'):
-                                authordict = {}
-                                authordict['id'] = author['id']
-                                authordict['name'] = author['display_name']
-                                authordict['name_alternatives']=author['display_name_alternatives']
-                                authordict['ids']=author['ids']
+                                authordict = {
+                                    'id'               : author['id'],
+                                    'name'             : author['display_name'],
+                                    'name_alternatives': author['display_name_alternatives'],
+                                    'ids'              : author['ids']
+                                }
                                 self.itemlist.append(authordict)
         print(f'number of authors added: {len(self.itemlist)}')
 
-    async def call_api(self, item) -> dict:
-        async def get_data(id, searchname) -> list[dict]:
+    async def call_api(self, item) -> dict | None:
+        async def get_data(id, searchname) -> list[dict] | None:
             url = f'https://people.utwente.nl/peoplepagesopenapi/contacts?query={searchname}'
             try:
                 r = await self.scraperclient.get(url)
@@ -68,31 +78,30 @@ class PeoplePageScraper(GenericScraper):
                     checkname.first = first_name
 
                 tmp = {
-                        "searchname": searchname,
-                        "foundname": name,
-                        "fullname": full_name,
-                        'first_name': first_name,
-                        "position": jobtitle,
-                        "avatar_url": avatar,
-                        "research_url": research,
-                        "profile_url": profile,
-                        "email": email,
-                        'affiliation': affiliation,
-                        "grouplist": deptlist,
-                        "id":id,
-                        'checkname': str(checkname)
-                    }
+                    "searchname"  : searchname,
+                    "foundname"   : name,
+                    "fullname"    : full_name,
+                    'first_name'  : first_name,
+                    "position"    : jobtitle,
+                    "avatar_url"  : avatar,
+                    "research_url": research,
+                    "profile_url" : profile,
+                    "email"       : email,
+                    'affiliation' : affiliation,
+                    "grouplist"   : deptlist,
+                    "id"          : id,
+                    'checkname'   : str(checkname)
+                }
                 output.append(tmp)
             return output
-
 
         names = []
         result_list = []
         return_value = {
-                        'id':item.get('id'),
-                        'name':item.get('name'),
-                        'name_alternatives':item.get('name_alternatives')
-                    }
+            'id'               : item.get('id'),
+            'name'             : item.get('name'),
+            'name_alternatives': item.get('name_alternatives')
+        }
         names.append(item.get('name'))
         if isinstance(item.get('name_alternatives'), list):
             names.extend(item.get('name_alternatives'))
@@ -105,11 +114,11 @@ class PeoplePageScraper(GenericScraper):
                     if r is not None:
                         if len(r) == 1:
                             result_list.append(r[0])
-                        elif len(r)>1:
+                        elif len(r) > 1:
                             for rr in r:
                                 result_list.append(rr)
 
-        #now find the best namematch in list of results
+        # now find the best namematch in list of results
         if not result_list:
             return None
         to_list = [a['checkname'] for a in result_list]
@@ -121,17 +130,16 @@ class PeoplePageScraper(GenericScraper):
         results: pd.DataFrame = matchlist.get_matches()
         if results.empty:
             return None
-        top_results=results[results['Similarity']>0.9]
+        top_results = results[results['Similarity'] > 0.9]
         if top_results.empty:
             return None
         final_match = top_results.sort_values(by='Similarity', ascending=False).iloc[0]
         return_value['similarity'] = final_match['Similarity']
         for match in result_list:
             if match['checkname'] == final_match['To']:
-                for k,v in match.items():
+                for k, v in match.items():
                     if k not in return_value:
                         return_value[k] = v
-        self.collection.update_one({'id':item.get('id')}, {'$set':return_value}, upsert=True)
+        await self.collection.update_one({'id': item.get('id')}, {'$set': return_value}, upsert=True)
         self.results['total'] = self.results['total'] + 1
         self.results['items_added'].append(return_value['id'])
-

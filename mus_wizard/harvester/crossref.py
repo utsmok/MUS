@@ -1,41 +1,46 @@
-from mus_wizard.harvester.base_classes import GenericAPI
-from mus_wizard.constants import APIEMAIL
-from rich.console import Console
 import xmltodict
-from rich.table import Table
 from habanero import Crossref
+from rich.console import Console
+from rich.table import Table
+
+from mus_wizard.constants import APIEMAIL
+from mus_wizard.harvester.base_classes import GenericAPI
+
 console = Console()
+
+
 class CrossrefAPI(GenericAPI):
     '''
     TODO: import xml data instead of json, see https://www.crossref.org/documentation/retrieve-metadata/xml-api/doi-to-metadata-query/
     '''
-    def __init__(self, itemlist = None):
+
+    def __init__(self, itemlist=None):
         super().__init__('items_crossref', 'doi', itemlist)
-        self.set_api_settings(headers = {"accept": "application/vnd.api+json"},
-                            max_per_second=5,
-                            max_at_once=5,
-                            )
+        self.set_api_settings(headers={"accept": "application/vnd.api+json"},
+                              max_per_second=5,
+                              max_at_once=5,
+                              )
         self.crossref = Crossref(mailto=APIEMAIL)
-        self.pagesize=100
+        self.pagesize = 100
 
     async def make_itemlist(self) -> None:
         ptable = Table(title=f"{self.item_id_type}s from OpenAlex works")
         ptable.add_column("# checked", style="green")
-        ptable.add_column("# added",style="magenta")
-        i=0
+        ptable.add_column("# added", style="magenta")
+        i = 0
 
         numpapers = await self.motorclient['works_openalex'].count_documents({})
         console.print(f'getting dois from {numpapers} openalexworks to find in crossref')
 
-        async for paper in self.motorclient['works_openalex'].find(projection={'id':1, 'doi':1}):
-            i+=1
+        async for paper in self.motorclient['works_openalex'].find(projection={'id': 1, 'doi': 1}):
+            i += 1
             if paper.get('doi'):
-                if await self.collection.find_one({'id':paper['id']}, projection={'id': 1}):
+                if await self.collection.find_one({'id': paper['id']}, projection={'id': 1}):
                     continue
-                self.itemlist.append({self.item_id_type:paper['doi'].replace('https://doi.org/',''), 'id':paper['id']})
+                self.itemlist.append(
+                    {self.item_id_type: paper['doi'].replace('https://doi.org/', ''), 'id': paper['id']})
         ptable.add_row(str(i), str(len(self.itemlist)))
         console.print(ptable)
-
 
     async def call_api(self, item):
         async def addrecord(record, openalexid, doi):
@@ -70,7 +75,7 @@ class CrossrefAPI(GenericAPI):
         results = []
         try:
             r = await self.httpxclient.get(url)
-            data = xmltodict.parse(r.text, attr_prefix='',dict_constructor=dict)
+            data = xmltodict.parse(r.text, attr_prefix='', dict_constructor=dict)
         except Exception as e:
             console.print(f'error querying crossref for doi {item['doi']}: {e}')
         try:
@@ -82,7 +87,7 @@ class CrossrefAPI(GenericAPI):
                             result = {'id': item['id'], 'doi': item['doi']}
                         results.append(result)
                 else:
-                    result =await addrecord(data.get('doi_records').get('doi_record'), item['id'], item['doi'])
+                    result = await addrecord(data.get('doi_records').get('doi_record'), item['id'], item['doi'])
                     if not result:
                         result = {'id': item['id'], 'doi': item['doi']}
 

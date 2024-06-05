@@ -1,5 +1,6 @@
-from dotenv import load_dotenv
 import os
+
+from dotenv import load_dotenv
 
 # -------------------------------------------------------
 #
@@ -23,7 +24,7 @@ OPENAIRETOKEN = str(os.getenv('OPENAIRETOKEN'))
 INSTITUTE_NAME = str(os.getenv('INSTITUTE_NAME'))
 INSTITUTE_ALT_NAME = str(os.getenv('INSTITUTE_ALT_NAME'))
 
-if ';' in INSTITUTE_ALT_NAME: # if there are multiple names separated by semicolons, split them up
+if ';' in INSTITUTE_ALT_NAME:  # if there are multiple names separated by semicolons, split them up
     INSTITUTE_ALT_NAME = INSTITUTE_ALT_NAME.split(';')
     INSTITUTE_ALT_NAME = [item.strip() for item in INSTITUTE_ALT_NAME]
 
@@ -41,8 +42,9 @@ JOURNAL_BROWSER_URL = str(os.getenv('JOURNAL_BROWSER_URL'))
 OAI_PMH_URL = str(os.getenv('OAI_PMH_URL'))
 
 # System settings
-MONGOURL = str(os.getenv('MONGOURL')) # mongodb connection string; separated from main django settings so this whole module can eventually be used as a separate service
-
+MONGOURL = str(os.getenv(
+    'MONGOURL'))  # mongodb connection string; separated from main django settings so this whole module can
+# eventually be used as a separate service
 
 # -------------------------------------------------------
 #
@@ -90,19 +92,18 @@ FACULTYNAMES = [
     "ET",
     "ITC",
     "TNW",
-    ]
-FACULTYNAMES.extend(['Faculty of Science and Technology', 
-                    'Faculty of Engineering Technology',
-                    'Faculty of Behavioural, Management and Social Sciences',
-                    'Faculty of Geo-Information Science and Earth Observation',
-                    'Faculty of Electrical Engineering, Mathematics and Computer Science'])
+]
+FACULTYNAMES.extend(['Faculty of Science and Technology',
+                     'Faculty of Engineering Technology',
+                     'Faculty of Behavioural, Management and Social Sciences',
+                     'Faculty of Geo-Information Science and Earth Observation',
+                     'Faculty of Electrical Engineering, Mathematics and Computer Science'])
 FACULTYNAMES.extend([item.lower() for item in FACULTYNAMES])
 
-
 UTRESEARCHGROUPS_HIERARCHY = {
-    'ITC':{},
-    'TNW':{
-        'Applied Nanophotonics (AN)':[
+    'ITC'  : {},
+    'TNW'  : {
+        'Applied Nanophotonics (AN)'                 : [
             'Biomedical Photonic Imaging (BPI)',
             'Complex Photonic Systems (COPS)',
             'Laser Physics and Non-linear Optics (LPNO)',
@@ -111,7 +112,7 @@ UTRESEARCHGROUPS_HIERARCHY = {
             'Nanobiophysics (NBP)',
             'Adaptive Quantum Optics (AQO)',
         ],
-        'Bioengineering Technologies (BT)': [
+        'Bioengineering Technologies (BT)'           : [
             'Advanced Organ Bioengineering and Therapeutics (AOT)',
             'Applied Stem Cell Technologies (AST)',
             'Bioelectronics (BE)',
@@ -119,27 +120,27 @@ UTRESEARCHGROUPS_HIERARCHY = {
             'Developmental Bioengineering (DBE)',
             'Molecular Nanofabrication (MNF)',
         ],
-        'Energy, Materials and Systems (EMS)':[
+        'Energy, Materials and Systems (EMS)'        : [
 
         ],
-        'Imaging and Diagnostics (ID)':[
+        'Imaging and Diagnostics (ID)'               : [
             'Biomedical Photonic Imaging (BMPI)',
             'Magnetic Detection & Imaging (MDI)',
             'Medical Cell Biophysics (MCBP)',
             'Multi-Modality Medical Imaging (M3I)',
             'Physics of Fluids (POF)',
         ],
-        'Membrane Science and Technology (MST)':[
+        'Membrane Science and Technology (MST)'      : [
             'Membrane Surface Science (MSUS)',
             'Soft matter, Fluidics and Interfaces (SFI)',
             'Films in Fluids (FIF)',
-            {'Membrane Process Technology (MPT)':[
+            {'Membrane Process Technology (MPT)': [
                 'Membranes for Harsh Conditions (MHC)',
                 'Membrane Processes for Food (MPF)',
                 'Membrane Technology and Engineering for Water Treatment (MTEWT)',
             ]},
         ],
-        'Nano Electronic Materials (NEM)':[
+        'Nano Electronic Materials (NEM)'            : [
             'Inorganic Materials Science (IMS)',
             'Interfaces and Correlated Electron Systems (ICE)',
             'Quantum Transport in Matter (QTM)',
@@ -147,33 +148,33 @@ UTRESEARCHGROUPS_HIERARCHY = {
             'Computational Chemical Physics (CCP)',
             'XUV Optics (XUV)',
         ],
-        'Department of molecules and Materials (DMM)':[
+        'Department of molecules and Materials (DMM)': [
             'Biomolecular Nanotechnology (BNT)',
             'Molecular Nanofabrication (MNF)',
             'Sustainable Polymer Chemistry (SPC)',
             'Hybrid Materials for Opto-Electronic (HMOE)',
         ],
-        'Physics Of Fluids (POF)':[
+        'Physics Of Fluids (POF)'                    : [
             'Physics Of Fluids (POF)',
         ],
-        'Process and Catalysis Engineering (PCE)':[
+        'Process and Catalysis Engineering (PCE)'    : [
             'Catalytic Processes and Materials (CPM)',
             'Sustainable Process Technology (SPT)',
             'Mesoscale Chemical Systems (MCS)',
             'Photocatalytic Syntheses (PCS)',
         ],
-        'Soft Matter (SM)':[
+        'Soft Matter (SM)'                           : [
             'Bioelectronics (BE)',
             'Physics of Complex Fluids (PCF)',
             'Nanobiophysics (NBP)',
         ],
-        'Translational Physiology (TP)':[
+        'Translational Physiology (TP)'              : [
             'Clinical Neurophysiology (CNPH)',
             'Cardio-Respiratory Physiology (CRPH)',
         ]
     },
-    'EEMCS':{
-        'Computer Science (CS)':[
+    'EEMCS': {
+        'Computer Science (CS)'      : [
             'Computer Architecture for Embedded Systems (CAES)',
             'Design and Analysis of Communication Systems (DACS)',
             'Data Management & Biometrics (DMB)',
@@ -182,7 +183,7 @@ UTRESEARCHGROUPS_HIERARCHY = {
             'Pervasive Systems (PS)',
             'Semantics, Cybersecurity and Services (SCS)',
         ],
-        'Electrical engineering (EE)':[
+        'Electrical engineering (EE)': [
             'Applied Microfluidics for BioEngineering Research  (AMBER)',
             'Biomedical Signals and Systems (BSS)',
             'The BIOS lab-on-a-chip group (BIOS)',
@@ -195,58 +196,58 @@ UTRESEARCHGROUPS_HIERARCHY = {
             'Computer Architecture for Embedded Systems (CAES)',
             'Design and Analysis of Communication Systems (DACS)',
         ],
-        'Applied mathematics (DAMUT)':[{
-            'Mathematics of Operations Research (MOR)':[
+        'Applied mathematics (DAMUT)': [{
+            'Mathematics of Operations Research (MOR)'          : [
                 'Discrete Mathematics and Mathematical Programming (DMMP)',
                 'Stochastic Operations Research (SOR)',
                 'Statistics (STAT)',
             ],
-            'Systems, Analysis and Computational Science (SACS)':[
+            'Systems, Analysis and Computational Science (SACS)': [
                 'Mathematics of Computational Science (MACS)',
                 'Mathematics of Imaging & AI (MIA)',
                 'Mathematics of Systems Theory (MAST)',
                 'Mathematics of Multiscale Modeling and Simulation (3MS)',
             ],
-            'Mathematics of Data Science (MDS)':[
+            'Mathematics of Data Science (MDS)'                 : [
                 'Mathematics of Imaging & AI (MIA)',
                 'Statistics (STAT)',
             ]
         }]
     },
-    'BMS':{
-        'Department of technology, policy and society (TPS)':[
+    'BMS'  : {
+        'Department of technology, policy and society (TPS)'               : [
             'Health Technology & Services Research (HTSR)',
             'Governance and Technology for Sustainability (CSTM)',
             'Philosophy of Science & Technology (PHIL)',
             'Knowledge, Transformation & Society (KITES)',
         ],
-        'Department of Technology, Human and Instititional behaviour (HIB)':[
+        'Department of Technology, Human and Instititional behaviour (HIB)': [
             'Psychology, Health & Technology (PHT)',
             'Psychology of Conflict, Risk and Safety (PCRS)',
             'Public Administration (PA)',
             'Communication Science (CS)',
         ],
-        'Department of Learning, Data analytics and Technology (LDT)':[
+        'Department of Learning, Data analytics and Technology (LDT)'      : [
             'ELAN Teacher Development',
             'Instructional Technology (IST)',
             'Professional Learning & Technology (PLT)',
             'Cognition, Data and Education (CODE)',
         ],
-        'Department of High-tech Business and Entrepreneurship (HBE)':[
+        'Department of High-tech Business and Entrepreneurship (HBE)'      : [
             'Industrial Engineering and Business Information Systems (IEBIS)',
             'Entrepeneurship, Technology and Management (ETM)',
             'Financial Engineering (FE)',
         ],
     },
-    'ET':{
-        'Biomechanical Engineering (BE)':[
+    'ET'   : {
+        'Biomechanical Engineering (BE)'                 : [
             'Biomechatronics and Rehabilitation Technology (BRT)',
             'Biomedical Device Design and Production (BDDP)',
             'Engineering Organ Support Technologies (EOST)',
             'Neuromechanical Engineering (NE)',
             'Surgical Robotics (SR)',
         ],
-        'Civil Engineering and Management (CEM)':[
+        'Civil Engineering and Management (CEM)'         : [
             'Integrated Project Delivery (IPD)',
             'Multidisciplinary Water Management (MWM)',
             'Water Engineering and Management, in particular Watersystems (WS)',
@@ -256,7 +257,7 @@ UTRESEARCHGROUPS_HIERARCHY = {
             'Transport Engineering and Management (TEM)',
             'Transport Planning (TP)',
         ],
-        'Design, Production and Management (DPM)':[
+        'Design, Production and Management (DPM)'        : [
             'Asset Management & Maintenance Engineering (AMME)',
             'Advanced Manufacturing, Sustainable products & Energy systems (AMSPES)',
             'Human Centred Design (HCD)',
@@ -266,7 +267,7 @@ UTRESEARCHGROUPS_HIERARCHY = {
             'Product-Market Relations (PMR)',
             'Systems Engineering & Multidisciplinary Design (SEMD)',
         ],
-        'Mechanics of Solids, Surfaces and Systems (MS3)':[
+        'Mechanics of Solids, Surfaces and Systems (MS3)': [
             'Applied Mechanics and Data Analysis (AMDA)',
             'Computational Design of Structural Materials (CDSM)',
             'Dynamics Based Maintenance (DBM)',
@@ -279,83 +280,84 @@ UTRESEARCHGROUPS_HIERARCHY = {
             'Surface technology and Tribology (STT)',
             'Tribology Based Maintenance (TBM)',
         ],
-        'Thermal and Fluid Engineering (TFE)':[
+        'Thermal and Fluid Engineering (TFE)'            : [
             'Engineering Fluid Dynamics (EFD)',
             'Multi-Scale Mechanics (MSM)',
             'Thermal Engineering (TE)',
         ],
     }
 }
-UTRESEARCHGROUPS_FLAT : dict[str, str] = {
-        'Advanced Membranes for Aqueous Applications (AMAA)':'TNW',
-        'Adaptive Quantum Optics (AQO)':'TNW',
-        'Analog signal processing devices and systems (ASPDS)':'TNW',
-        'Applied Stem Cell Technologies (AST)':'TNW',
-        'Bioelectric signaling and engineering (BIOEE)':'TNW',
-        'Bioelectronics (BE)':'TNW',
-        'Advanced Organ bioengineering and Therapeutics (AOT) ':'TNW',
-        'Biomedical Photonic Imaging (BMPI)':'TNW',
-        'Biomolecular Nanotechnology (BNT)':'TNW',
-        'Cardiovascular and Respiratory Physiology (CRPH)':'TNW',
-        'Catalytic Processes and Materials (CPM)':'TNW',
-        'Clinical Neurophysiology (CNPH)':'TNW',
-        'Computational Chemical Physics (CCP)':'TNW',
-        'Complex Photonic Systems (COPS)':'TNW',
-        'Developmental BioEngineering (DBE)':'TNW',
-        'Energy, Materials and Systems (EMS)':'TNW',
-        'Films in Fluids (FIF)':'TNW',
-        'Hybrid Materials for Opto-Electronic (HMOE)':'TNW',
-        'Industrial Focus Group XUV Optics (XUV)':'TNW',
-        'Inorganic Membranes (IM)':'TNW',
-        'Inorganic Materials Science (IMS)':'TNW',
-        'Interfaces and Correlated Electron Systems (ICE)':'TNW',
-        'Integrated Optical Systems (IOS)':'TNW',
-        'Laser Physics and Non-linear Optics (LPNO)':'TNW',
-        'Magnetic Detection & Imaging (MD&I)':'TNW',
-        'Materials Science and Technology of Polymers (MTP)':'TNW',
-        'Medical Cell BioPhysics (MCBP)':'TNW',
-        'Membrane Process Technology (MPT)':'TNW',
-        'Membrane Surface Science (MSUS)':'TNW',
-        'Mesoscale Chemical Systems (MCS)':'TNW',
-        'Molecular Nanofabrication (MNF)':'TNW',
-        'Multi-Modality Medical Imaging (M3I)':'TNW',
-        'Nanobiophysics (NBP)':'TNW',
-        'Nonlinear Nanophotonics Group (NLNP)':'TNW',
-        'Optical Sciences (OS)':'TNW',
-        'Photo-catalytic Synthesis (PCS)':'TNW',
-        'Physics of Complex Fluids (PCF)':'TNW',
-        'Physics of Fluids (POF)':'TNW',
-        'Physics of Interfaces and Nanomaterials (PIN)':'TNW',
-        'Polymer Chemistry and Biomaterials (PBM)':'TNW',
-        'Quantum Transport in Matter (QTM)':'TNW',
-        'Soft matter, Fluidics and Interfaces (SFI)':'TNW',
-        'Sustainable Polymer Chemistry (SPC)':'TNW',
-        'Sustainable Process Technology (SPT)':'TNW',
+UTRESEARCHGROUPS_FLAT: dict[str, str] = {
+    'Advanced Membranes for Aqueous Applications (AMAA)'   : 'TNW',
+    'Adaptive Quantum Optics (AQO)'                        : 'TNW',
+    'Analog signal processing devices and systems (ASPDS)' : 'TNW',
+    'Applied Stem Cell Technologies (AST)'                 : 'TNW',
+    'Bioelectric signaling and engineering (BIOEE)'        : 'TNW',
+    'Bioelectronics (BE)'                                  : 'TNW',
+    'Advanced Organ bioengineering and Therapeutics (AOT) ': 'TNW',
+    'Biomedical Photonic Imaging (BMPI)'                   : 'TNW',
+    'Biomolecular Nanotechnology (BNT)'                    : 'TNW',
+    'Cardiovascular and Respiratory Physiology (CRPH)'     : 'TNW',
+    'Catalytic Processes and Materials (CPM)'              : 'TNW',
+    'Clinical Neurophysiology (CNPH)'                      : 'TNW',
+    'Computational Chemical Physics (CCP)'                 : 'TNW',
+    'Complex Photonic Systems (COPS)'                      : 'TNW',
+    'Developmental BioEngineering (DBE)'                   : 'TNW',
+    'Energy, Materials and Systems (EMS)'                  : 'TNW',
+    'Films in Fluids (FIF)'                                : 'TNW',
+    'Hybrid Materials for Opto-Electronic (HMOE)'          : 'TNW',
+    'Industrial Focus Group XUV Optics (XUV)'              : 'TNW',
+    'Inorganic Membranes (IM)'                             : 'TNW',
+    'Inorganic Materials Science (IMS)'                    : 'TNW',
+    'Interfaces and Correlated Electron Systems (ICE)'     : 'TNW',
+    'Integrated Optical Systems (IOS)'                     : 'TNW',
+    'Laser Physics and Non-linear Optics (LPNO)'           : 'TNW',
+    'Magnetic Detection & Imaging (MD&I)'                  : 'TNW',
+    'Materials Science and Technology of Polymers (MTP)'   : 'TNW',
+    'Medical Cell BioPhysics (MCBP)'                       : 'TNW',
+    'Membrane Process Technology (MPT)'                    : 'TNW',
+    'Membrane Surface Science (MSUS)'                      : 'TNW',
+    'Mesoscale Chemical Systems (MCS)'                     : 'TNW',
+    'Molecular Nanofabrication (MNF)'                      : 'TNW',
+    'Multi-Modality Medical Imaging (M3I)'                 : 'TNW',
+    'Nanobiophysics (NBP)'                                 : 'TNW',
+    'Nonlinear Nanophotonics Group (NLNP)'                 : 'TNW',
+    'Optical Sciences (OS)'                                : 'TNW',
+    'Photo-catalytic Synthesis (PCS)'                      : 'TNW',
+    'Physics of Complex Fluids (PCF)'                      : 'TNW',
+    'Physics of Fluids (POF)'                              : 'TNW',
+    'Physics of Interfaces and Nanomaterials (PIN)'        : 'TNW',
+    'Polymer Chemistry and Biomaterials (PBM)'             : 'TNW',
+    'Quantum Transport in Matter (QTM)'                    : 'TNW',
+    'Soft matter, Fluidics and Interfaces (SFI)'           : 'TNW',
+    'Sustainable Polymer Chemistry (SPC)'                  : 'TNW',
+    'Sustainable Process Technology (SPT)'                 : 'TNW',
 }
+
 
 def get_flat_groups() -> dict[str, str]:
     flatgroups = {}
     global UTRESEARCHGROUPS_FLAT
     for fac, grouplist in UTRESEARCHGROUPS_HIERARCHY.items():
         if fac in ['ITC']:
-            continue # ITC still needs to be added
+            continue  # ITC still needs to be added
         else:
             for dept, groups in grouplist.items():
                 if isinstance(groups, list):
                     for group in groups:
                         if isinstance(group, str):
                             if group not in flatgroups.keys():
-                                flatgroups[group]=fac
-                            elif flatgroups[group]!=fac:
+                                flatgroups[group] = fac
+                            elif flatgroups[group] != fac:
                                 print(f'group with 2 faculties? curfac: {fac}. fac in list: {flatgroups[group]}')
                         elif isinstance(group, dict):
                             for subdept, subgroups in group.items():
                                 if subdept not in flatgroups.keys():
-                                    flatgroups[subdept]=fac
+                                    flatgroups[subdept] = fac
                                 for subgroup in subgroups:
                                     if subgroup not in flatgroups.keys():
-                                        flatgroups[subgroup]=fac
-    UTRESEARCHGROUPS_FLAT=UTRESEARCHGROUPS_FLAT | flatgroups
+                                        flatgroups[subgroup] = fac
+    UTRESEARCHGROUPS_FLAT = UTRESEARCHGROUPS_FLAT | flatgroups
     tempgroup = UTRESEARCHGROUPS_FLAT.copy()
     for k, v in tempgroup.items():
         UTRESEARCHGROUPS_FLAT[k.split('(')[0].strip().lower()] = v

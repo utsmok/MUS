@@ -1,11 +1,13 @@
+from datetime import date, datetime
+
+from rich.console import Console
 
 from mus_wizard.database.mongo_client import MusMongoClient
-from datetime import datetime, date
-from rich.console import Console
-import re
+
 cons = Console()
 
-async def normalize_doi(doi) -> str|None:
+
+async def normalize_doi(doi) -> str | None:
     '''
     retrieves a doi and normalizes it to a standard format:
     https://doi.org/<doi>, in lowercase
@@ -30,22 +32,23 @@ async def normalize_doi(doi) -> str|None:
         stripped_doi = doi.replace('doi:', '').strip()
     elif doi.startswith('doi.org/'):
         stripped_doi = doi.replace('doi.org/', '').strip()
-    
+
     else:
         try:
-            stripped_doi = '10.'+doi.split('10.')[-1].strip()
+            stripped_doi = '10.' + doi.split('10.')[-1].strip()
         except Exception as e:
             print(f'DOI not recognized -- {doi}')
             return None
         if not stripped_doi:
             print(f'DOI does not start with 10 or https://doi.org/ -- {doi}')
             return None
-        
+
     if not stripped_doi.startswith('https://doi.org/') and stripped_doi.startswith('10'):
         # check if doi matched the regex
         return f'https://doi.org/{stripped_doi}'
     else:
-        raise ValueError(f'DOI does not match the expected format: {doi} ({stripped_doi} does not start with 10 or it does starts with https://doi.org/)')
+        raise ValueError(
+            f'DOI does not match the expected format: {doi} ({stripped_doi} does not start with 10 or it does starts with https://doi.org/)')
 
 
 async def get_mongo_collection_mapping():
@@ -53,6 +56,7 @@ async def get_mongo_collection_mapping():
     Iterates over all mongodb collections and recursively maps all dicts.
     Output is a dict with the key names as keys, and a string representation of the type(s) of the value(s) as the value. 
     '''
+
     def get_one(value):
         if value in ['', list, dict, str, None, datetime, date]:
             return str(type(value)).replace('<class \'', '').replace('\'>', '')
@@ -76,25 +80,23 @@ async def get_mongo_collection_mapping():
             for v in value:
                 if isinstance(v, dict):
                     dct = {}
-                    for k, v in v.items():
+                    for k, val in v.items():
                         if k not in tmp:
                             tmp.append(k)
-                            dct[k] = get_one(v)
+                            dct[k] = get_one(val)
                     if dct:
                         result.append(dct)
                 else:
                     if v not in tmp2:
-                        res = get_one(v)
+                        ress = get_one(v)
                         tmp2.append(v)
-                        result.append(res)
+                        result.append(ress)
             return result
         else:
             return str(type(value)).replace('<class \'', '').replace('\'>', '')
-        
 
     def compare(new, old, level=0):
-        change = False
-        
+        new_result = False
 
         if isinstance(new, list) and not isinstance(old, list):
             old = new
@@ -115,31 +117,30 @@ async def get_mongo_collection_mapping():
                     if v_old != v_new and v_new not in ['', [], {}, {}, None] and v_new not in old:
                         try:
                             old.append(v_new)
-                            change = True
+                            new_result = True
                             cons.print(f'value "{v_new}" added to list level {level}')
                         except Exception as e:
                             cons.print(f'error appending item to list: {e}')
                             cons.print(f'old: {old}')
                             cons.print(f'new: {new}')
                 else:
-                    old, change = compare(v_new, v_old, level+1)
-                
+                    old, new_result = compare(v_new, v_old, level + 1)
+
         elif isinstance(new, dict) and isinstance(old, dict):
-                for k, v in new.items():    
-                    if k not in old.keys():
+            for k, v in new.items():
+                if k not in old.keys():
+                    old[k] = v
+                    cons.print(f'key "{k}" added to dict level {level}')
+                    new_result = True
+                elif v:
+                    if isinstance(v, dict) or isinstance(v, list):
+                        old[k], new_result = compare(v, old[k], level + 1)
+                    elif old[k] in ['', [], {}, None] and v not in ['', [], {}, {}, None]:
+                        cons.print(f'changed value for key "{k}" from {old[k]} to {v} level {level}')
                         old[k] = v
-                        cons.print(f'key "{k}" added to dict level {level}')
-                        change = True
-                    elif v:
-                        if isinstance(v, dict) or isinstance(v, list):
-                            old[k], change = compare(v, old[k], level+1)
-                        elif old[k] in ['', [], {}, None] and v not in ['', [], {}, {}, None]:
-                            cons.print(f'changed value for key "{k}" from {old[k]} to {v} level {level}')
-                            old[k] = v
-                            change = True
+                        new_result = True
 
-        return old, change
-
+        return old, new_result
 
     musmongoclient = MusMongoClient()
     mapping = {}
@@ -160,13 +161,14 @@ async def get_mongo_collection_mapping():
         'works_openalex'
     ]
     for collection in collist:
-        i=0
+        i = 0
         cons.print(f'getting mapping for {collection}')
         changed = False
         async for item in musmongoclient.mongoclient[collection].find({}):
-            res = get_one(item) 
-            
+            res = get_one(item)
+
             if collection in mapping.keys():
+                newres = ''
                 try:
                     newres, change = compare(res, mapping[collection])
                 except Exception as e:
@@ -181,9 +183,8 @@ async def get_mongo_collection_mapping():
             else:
                 mapping[collection] = res
 
-            
-            i=i+1
-            
+            i = i + 1
+
             '''
             if i%200 == 0:
                 if changed:
@@ -198,12 +199,10 @@ async def get_mongo_collection_mapping():
                     continue
             '''
 
-
-
-
     return mapping
 
-async def parse_reversed_abstract(abstract_raw:dict) -> str:
+
+async def parse_reversed_abstract(abstract_raw: dict) -> str:
     """
     Inverts the given abstract by converting it from a string representation to a dictionary.
     Then, it creates a list of word-index pairs by iterating over the inverted abstract dictionary.

@@ -2,73 +2,99 @@
 <html>
 <head>
     {% load static %}
-    <title>Metadata Unification System</title>
+        <title>Metadata Unification System</title>
     <style>
         .muslogo {
-        position:fixed;
-        top: 50px;
-        right: 0px;
-        opacity: 0.5;
-        z-index: 5;
-        height: 90px;
-        transition: 1s ease-in-out;
+            position: fixed;
+            top: 50px;
+            right: 0px;
+            opacity: 0.5;
+            z-index: 5;
+            height: 90px;
+            transition: 1s ease-in-out;
         }
+
         @keyframes mustextlogo {
-        0% {color: #cc0066;}
-        33% {color: #ffcc00;}
-        66% {color: #ff6666;}
-        100% {color: #cc0066;}
+            0% {
+                color: #cc0066;
+            }
+            33% {
+                color: #ffcc00;
+            }
+            66% {
+                color: #ff6666;
+            }
+            100% {
+                color: #cc0066;
+            }
         }
-        #mustextlogo{
-        font-weight: bold;
-        animation-name: mustextlogo;
-        animation-duration: 10s;
-        animation-iteration-count: infinite;
+
+        #mustextlogo {
+            font-weight: bold;
+            animation-name: mustextlogo;
+            animation-duration: 10s;
+            animation-iteration-count: infinite;
 
         }
+
         .transition-class {
-        transition: all 2s ease;
+            transition: all 2s ease;
         }
+
         html *:not('i') {
-        font-family: system-ui !important;
+            font-family: system-ui !important;
         }
-        #facultytable_wrapper{
-        margin-top: 30px;
-        margin-bottom: 30px;
+
+        #facultytable_wrapper {
+            margin-top: 30px;
+            margin-bottom: 30px;
         }
+
         #notification {
-        white-space: pre;
+            white-space: pre;
         }
+
         .all {
-        -webkit-user-select: all;
-        user-select: all;
+            -webkit-user-select: all;
+            user-select: all;
         }
+
         @keyframes fade-in {
-        from { opacity: 0; }
+            from {
+                opacity: 0;
+            }
         }
 
         @keyframes fade-out {
-        to { opacity: 0; }
+            to {
+                opacity: 0;
+            }
         }
 
         @keyframes slide-from-right {
-        from { transform: translateX(90px); }
+            from {
+                transform: translateX(90px);
+            }
         }
 
         @keyframes slide-to-left {
-        to { transform: translateX(-90px); }
+            to {
+                transform: translateX(-90px);
+            }
         }
 
         .htmx-slide {
-        view-transition-name: htmx-slide;
+            view-transition-name: htmx-slide;
         }
 
         ::view-transition-old(htmx-slide) {
-        animation: 180ms cubic-bezier(0.4, 0, 1, 1) both fade-out,
+            animation: 180ms cubic-bezier(0.4, 0, 1, 1) both fade-out,
         }
+
         ::view-transition-new(htmx-slide) {
-        animation: 420ms cubic-bezier(0, 0, 0.2, 1) 90ms both fade-in,
+            animation: 420ms cubic-bezier(0, 0, 0.2, 1) 90ms both fade-in,
         }
+
         .htmx-fade {
             opacity: 1;
             animation-name: fadeInOpacity;
@@ -86,21 +112,27 @@
             }
         }
     </style>
-    <!-- JQuery --><script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
-    <!-- htmx --> <script src="https://unpkg.com/htmx.org@1.9.10" integrity="sha384-D1Kt99CQMDuVetoL1lrYwg5t+9QdHe7NLX/SoJYkXDFfX37iInKRy5xLSi8nO7UC" crossorigin="anonymous"></script>
-    <script src = "{% static 'svg.min.js' %}"></script>
+    <!-- JQuery -->
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"
+            integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
+    <!-- htmx -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"
+            integrity="sha384-D1Kt99CQMDuVetoL1lrYwg5t+9QdHe7NLX/SoJYkXDFfX37iInKRy5xLSi8nO7UC"
+            crossorigin="anonymous"></script>
+    <script src="{% static 'svg.min.js' %}"></script>
 </head>
 <body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}' hx-ext="debug, event-header">
-    <a href="{% url 'PureOpenAlex:home' %}"><img src="{% static 'MUSsmalllogo.svg' %}" id ='muslogoheader' class="muslogo" alt="MUS logo"></a>
-    <?xml version="1.0" encoding="UTF-8" standalone="no"?>
-    {% include 'topbar.html' %}
-    <main>
-            {% block content %}
-            {% endblock %}
-    </main>
+<a href="{% url 'PureOpenAlex:home' %}"><img src="{% static 'MUSsmalllogo.svg' %}" id='muslogoheader' class="muslogo"
+                                             alt="MUS logo"></a>
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+{% include 'topbar.html' %}
+<main>
+    {% block content %}
+    {% endblock %}
+</main>
 </body>
 <script>
-    document.addEventListener('htmx:afterSettle', function() {
+    document.addEventListener('htmx:afterSettle', function () {
         $('#facultytable').DataTable();
     });
     htmx.config.globalViewTransitions = true;
