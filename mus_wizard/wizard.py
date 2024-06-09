@@ -33,6 +33,7 @@ from mus_wizard.harvester.oai_pmh import PureAPI, PureAuthorCSV, OAI_PMH
 from mus_wizard.harvester.openaire import OpenAIREAPI
 from mus_wizard.harvester.openalex import OpenAlexAPI
 from mus_wizard.harvester.orcid import ORCIDAPI
+from mus_wizard.utwente.people_pages import PeoplePageScraper
 
 
 class Wizard:
@@ -101,30 +102,18 @@ class Wizard:
                 else:
                     openalex = None
                 if 'pure' in include or 'all' in include:
-                    pure = tg.create_task(PureAPI().run())
                     cerif = tg.create_task(OAI_PMH().run())
-                else:
-                    pure = None
-                if 'pure_csv_authors' in include or 'all' in include:
-                    pure_csv_authors = tg.create_task(PureAuthorCSV().run())
-                else:
-                    pure_csv_authors = None
-
+                
+                add_indexes = tg.create_task(musmongoclient.add_indexes())
 
             if openalex:
                 for result in openalex.result():
                     full_results[result['type']] = len(result['results'])
             else:
                 full_results['openalex'] = 0
-            if pure:
-                full_results['pure_oai_pmh'] = pure.result()['total']
-                full_results['cerif'] = cerif.result()['total']
-            else:
-                full_results['pure_oai_pmh'] = 0
-            if pure_csv_authors:
-                full_results['pure_csv_authors'] = pure_csv_authors.result()['total']
-            else:
-                full_results['pure_csv_authors'] = 0
+            
+            full_results['cerif'] = cerif.result()['total']
+            
 
             stats = Table(title='Retrieved items', title_style='dark_violet', show_header=True)
             stats.add_column('Source', style='cyan')
@@ -133,16 +122,7 @@ class Wizard:
                 stats.add_row(str(key), str(full_results[key]))
             cons.print(stats)
 
-            tasks: list[asyncio.Task | None] = []
-            async with asyncio.TaskGroup() as tg:
-                journalbrowser = tg.create_task(JournalBrowserScraper().run())
-                authormatcher = tg.create_task(AuthorMatcher().run())
-                workmatcher = tg.create_task(WorkMatcher().run())
-                add_indexes = tg.create_task(musmongoclient.add_indexes())
-            tasks.append(journalbrowser)
-            tasks.append(authormatcher)
-            tasks.append(workmatcher)
-            tasks.append(add_indexes)
+
 
         overview = Table(show_lines=False, box=box.SIMPLE_HEAD, show_header=False)
         overview.add_column('')
@@ -210,46 +190,49 @@ class Wizard:
                 apilists.add_row('ORCID', 'authors openalex', 'orcid', str(len(orcidlist)))
 
             cons.print(apilists)
+            tasks: list[asyncio.Task | None] = []
 
             async with asyncio.TaskGroup() as tg:
-                if 'crossref' in include or 'all' in include:
-                    crossref = tg.create_task(CrossrefAPI(itemlist=crossreflist).run())
-                else:
-                    crossref = 'crossref'
-                if 'datacite' in include or 'all' in include:
-                    datacite = tg.create_task(DataCiteAPI(itemlist=datacitelist).run())
-                else:
-                    datacite = 'datacite'
-                if 'openaire' in include or 'all' in include:
-                    openaire = tg.create_task(OpenAIREAPI(itemlist=openairelist).run())
-                else:
-                    openaire = 'openaire'
-                if 'orcid' in include or 'all' in include:
-                    orcid = tg.create_task(ORCIDAPI(itemlist=orcidlist).run())
-                else:
-                    orcid = 'orcid'
+                #if 'crossref' in include or 'all' in include:
+                #    crossref = tg.create_task(CrossrefAPI(itemlist=crossreflist).run())
+                #else:
+                #    crossref = 'crossref'
+                #if 'datacite' in include or 'all' in include:
+                #    datacite = tg.create_task(DataCiteAPI(itemlist=datacitelist).run())
+                #else:
+                #    datacite = 'datacite'
+                ##if 'openaire' in include or 'all' in include:
+                #    #openaire = tg.create_task(OpenAIREAPI(itemlist=openairelist).run())
+                ##else:
+                #    #openaire = 'openaire'
+                #if 'orcid' in include or 'all' in include:
+                #    orcid = tg.create_task(ORCIDAPI(itemlist=orcidlist).run())
+                #else:
+                #    orcid = 'orcid'
 
-                create_sql = tg.create_task(CreateSQL().add_all())
+                journalbrowser = tg.create_task(JournalBrowserScraper().run())
+                authormatcher = tg.create_task(AuthorMatcher().run())
+                #workmatcher = tg.create_task(WorkMatcher().run())
+                add_indexes = tg.create_task(musmongoclient.add_indexes())
 
-                # if 'peoplepage' in include or 'all' in include:
-                # peoplepage = tg.create_task(PeoplePageScraper().run())
-                # print('check peoplepage implementation!')
-                # else:
-                # peoplepage = 'peoplepage'
-            tasks.append(crossref)
-            tasks.append(datacite)
-            tasks.append(openaire)
-            tasks.append(orcid)
-            tasks.append(create_sql)
-            # tasks.append(peoplepage)
+            #tasks.append(crossref)
+            #tasks.append(datacite)
+            #tasks.append(openaire)
+            #tasks.append(orcid)
+            tasks.append(journalbrowser)
+            tasks.append(authormatcher)
+            #tasks.append(workmatcher)
+            tasks.append(add_indexes)
 
-            '''
             for task in tasks:
                 if isinstance(task, asyncio.Task):
-                    for result in task.result():
-                        full_results[result['type']] = result['total']
+                    try:
+                        for result in task.result():
+                            full_results[result['type']] = result['total']
+                    except Exception as e:
+                        ...
                 else:
-                    full_results[task] = 0'''
+                    full_results[task] = 0
             stats = Table(title='Retrieved items', title_style='dark_violet', show_header=True)
             stats.add_column('Source', style='cyan')
             stats.add_column('# added/updated', style='orange1')
@@ -268,19 +251,20 @@ class Wizard:
         overview.add_row(":arrow_right:", "4. Gather and process data to import into SQL database", style='red')
         overview.add_row(":x:", "5. Import data into SQL database & report results", style='red')
         cons.print(Panel(overview, title="Progress", style='magenta'))
-        cons.print('Now running the CreateSQL class to add data to the database')
+        await CreateSQL().add_all()
 
         cons.print('Update Manager finished.')
 
 
 def main():
-    mngr = Wizard()
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    include = {'all': True, 'skip_one': True}
+    include = {'all': True}
+    
+    asyncio.run(Wizard().run(include))
+
     #asyncio.run(WorkMatcher().run())
     # asyncio.run(OAI_PMH().run())
-    asyncio.run(mngr.run(include))
-    # asyncio.run(CreateSQL().add_all())
+
+    #asyncio.run(CreateSQL().add_all())
 
 
 # ! MongoDB find calls:

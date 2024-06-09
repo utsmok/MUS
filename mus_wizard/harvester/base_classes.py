@@ -341,6 +341,7 @@ class GenericSQLImport():
         self.items: list = []
         self.raw_items: list = []
         self.batch_size: int = 50
+        self.new_items: list = []
 
     async def import_all(self) -> dict:
         models_in_db = self.model.objects.all().values_list(self.unique_id_field, flat=True)
@@ -358,11 +359,20 @@ class GenericSQLImport():
                     continue
                 self.performance.end_call()
                 self.results['added_to_sql'] += 1
+
             else:
                 self.results['already_in_sql'] += 1
             if len(self.raw_items) >= self.batch_size:
-                new_items = await self.model.objects.abulk_create(self.raw_items)
+                self.new_items.append(await self.model.objects.abulk_create(self.raw_items))
                 self.raw_items = []
+
+        if self.raw_items:
+            self.new_items.append(await self.model.objects.abulk_create(self.raw_items))
+            self.raw_items = []
+
+        print(len(self.new_items), self.model.__name__, "added to sql.")
+        if self.new_items:
+            await self.add_m2m_relations()
 
         self.results['elapsed_time'] = self.performance.elapsed_time()
         self.results['average_time_per_call'] = self.performance.time_per_call()
@@ -370,7 +380,7 @@ class GenericSQLImport():
         return self.results
 
     async def add_item(self, raw_item: dict):
-        print('add_item is an abstract function and it needs to be overloaded in subclass')
+        print(f'add_item is an abstract function and it needs to be overloaded in subclass for {self.model.__name__}')
         print('this method should make an instance of type self.model and add it to self.raw_items.')
         print('do not yet add m2m relations to this instance, that will be done in add_m2m_relations')
         print('example barebone implementation below:')
@@ -380,3 +390,6 @@ class GenericSQLImport():
         }
         item = self.model(**item_dict)
         self.raw_items.append(item)
+
+    async def add_m2m_relations(self) -> None:
+        print(f'add_m2m_relations is an abstract function and it needs to be overloaded in subclass for {self.model.__name__}')

@@ -54,7 +54,7 @@ class OpenAlexAPI():
         self.requested_topics = self.openalex_requests.get('topics_openalex')
         self.requested_publishers = self.openalex_requests.get('publishers_openalex')
         if not years:
-            self.years = [2022, 2023, 2024, 2025]
+            self.years = [2015,2016,2017,2018,2019,2020,2021,2022, 2023, 2024, 2025]
         else:
             self.years = years
         self.mongoclient = MusMongoClient()
@@ -140,7 +140,7 @@ class OpenAlexQuery():
     '''
 
     def __init__(self, mongoclient: MusMongoClient, mongocollection: motor.motor_asyncio.AsyncIOMotorCollection,
-                 pyalextype: str, item_ids: Iterable[str] = None, years: list[int] = [2022, 2023, 2024, 2025]):
+                pyalextype: str, item_ids: Iterable[str] = None, years: list[int] = [2022, 2023, 2024, 2025]):
         self.mongoclient: MusMongoClient = mongoclient
         self.collection: motor.motor_asyncio.AsyncIOMotorCollection = mongocollection
         self.item_ids: Iterable[str] = item_ids

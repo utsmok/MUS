@@ -768,9 +768,17 @@ class OAI_PMH(GenericAPI):
                 return results
 
     async def get_item_results(self):
-        # 'products':'openaire_cris_products', 'patents':'openaire_cris_patents', 'projects':'openaire_cris_projects', 'funding':'openaire_cris_funding'
-        # 'works': 'openaire_cris_publications', 'persons': 'openaire_cris_persons', 'orgs' : 'openaire_cris_orgunits',
-        all_itemsets = {'datasets': 'datasets:all'}
+        all_itemsets = {
+            'datasets': 'datasets:all',
+            'products':'openaire_cris_products', 
+            'patents':'openaire_cris_patents', 
+            'projects':'openaire_cris_projects', 
+            'funding':'openaire_cris_funding',
+            #'works': 'openaire_cris_publications', 
+            'persons': 'openaire_cris_persons', 
+            'orgs' : 'openaire_cris_orgunits',
+            }
+
         itemsets = [(k, v) for k, v in all_itemsets.items()]
 
         async with aiometer.amap(functools.partial(self.call_api), itemsets,

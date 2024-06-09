@@ -1,3 +1,4 @@
+import asyncio
 import functools
 
 import aiometer
@@ -6,24 +7,36 @@ from nameparser import HumanName
 from polyfuzz import PolyFuzz
 from polyfuzz.models import TFIDF
 from rich import print
-
+from bs4 import BeautifulSoup as bs
 from mus_wizard.harvester.base_classes import GenericScraper
 
 
 class PeoplePageScraper(GenericScraper):
     def __init__(self):
         super().__init__('employees_peoplepage')
-        self.set_scraper_settings(url='https://people.utwente.nl/data/search',
+        self.id = 1
+        self.set_scraper_settings(url='https://people.utwente.nl/wh_services/utwente_ppp/rpc/',
                                   headers={
-                                      "X-Requested-With": "XMLHttpRequest",
-                                      "Host"            : "people.utwente.nl",
-                                      "Referer"         : "https://people.utwente.nl",
-                                      "Accept"          : "*/*",
-                                      "Accept-Encoding" : "gzip, deflate, br",
+                                      "accept"            : "*/*",
+                                      "accept-language"   : "en-US,en;q=0.9",
+                                      "content-type"      : "application/json; charset=UTF-8",
+                                      "priority"          : "u=1, i",
+                                      "sec-ch-ua"         : "\"Google Chrome\";v=\"125\", \"Chromium\";v=\"125\", \"Not.A/Brand\";v=\"24\"",
+                                      "sec-ch-ua-mobile"  : "?0",
+                                      "sec-ch-ua-platform": "\"Windows\"",
+                                      "sec-fetch-dest"    : "empty",
+                                      "sec-fetch-mode"    : "cors",
+                                      "sec-fetch-site"    : "same-origin",
+                                      "referrer"          : "https://people.utwente.nl/overview?query=professor",
+                                      "referrerPolicy"    : "strict-origin-when-cross-origin",
                                   },
                                   max_at_once=100,
                                   max_per_second=20
                                   )
+        print('Currently the PeoplePageScraper is not working properly so the run() method just returns an empty dict.')
+
+    async def run(self):
+        return {}
 
     async def make_itemlist(self) -> None:
         async for author in self.motorclient['authors_openalex'].find({}, projection={'id'                       : 1,
@@ -50,21 +63,34 @@ class PeoplePageScraper(GenericScraper):
 
     async def call_api(self, item) -> dict | None:
         async def get_data(id, searchname) -> list[dict] | None:
-            url = f'https://people.utwente.nl/peoplepagesopenapi/contacts?query={searchname}'
+            url = 'https://people.utwente.nl/wh_services/utwente_ppp/rpc/'
+            body = {"id"    : self.id, "method": "SearchPersons",
+                    "params": [{"query": f"{searchname}", "page": 0, "resultsperpage": 10000, "langcode": "en"}]}
+
             try:
-                r = await self.scraperclient.get(url)
+                r = await self.scraperclient.post(url, headers=self.scraper_settings['headers'], json=body)
                 data = r.json()
             except Exception as e:
                 print(f'error getting data for {url}: {e}')
+                print(r.request.content)
+                print(r.request.headers)
+                print(r.request.url)
                 return None
             output = []
-
-            for entry in data['data']:
-                name = entry["displayName"] if entry["displayName"] is not None else ""
+            self.id = self.id + 1
+            try:
+                soup = bs(data['result']['resultshtml'], 'html.parser')
+            except Exception as e:
+                print(f'error getting results for data: {data}')
+                return None
+            #print(soup.prettify())
+            entries = soup.find_all('div', class_='ut-person-tile')
+            for entry in entries:
+                name = entry.find('h3', class_='ut-person-tile__title').text
                 full_name = entry["name"] if entry["name"] is not None else ""
                 first_name = entry["givenName"] if entry["givenName"] is not None else ""
                 email = entry["mail"] if entry["mail"] is not None else ""
-                avatar = entry["pictureUrl"] if entry["pictureUrl"] is not None else ""
+                avatar = entry.find('img', class_='ut-person-tile__image')['src']
                 research = entry["researchUrl"] if entry["researchUrl"] is not None else ""
                 profile = entry["profileUrl"] if entry["profileUrl"] is not None else ""
                 jobtitle = entry["jobtitle"] if entry["jobtitle"] is not None else ""
@@ -93,6 +119,7 @@ class PeoplePageScraper(GenericScraper):
                     'checkname'   : str(checkname)
                 }
                 output.append(tmp)
+                print(tmp)
             return output
 
         names = []
@@ -143,3 +170,4 @@ class PeoplePageScraper(GenericScraper):
         await self.collection.update_one({'id': item.get('id')}, {'$set': return_value}, upsert=True)
         self.results['total'] = self.results['total'] + 1
         self.results['items_added'].append(return_value['id'])
+

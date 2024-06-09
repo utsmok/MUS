@@ -17,22 +17,18 @@ from mus_wizard.models import (Abstract, Affiliation, Author, Authorship, Crossr
                                OrganizationTopic, Publisher, RepositoryData, Source, SourceTopic, Tag, Topic, Work)
 from mus_wizard.utils import parse_reversed_abstract
 
+timezone = pytz.utc
+motorclient: motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(MONGOURL).metadata_unification_system
 
 # TODO
-# refactor common operations
-# use same structure for each model
-# make generic function that includes results, details, etc etc for each type
 # do something with missing items
-# add bulk operations instead of single checks / n+1 adds, especially for sources and works
-# calculate stats for every call and store in class dict to see performance
-
+# implement links to cerif data and others
 
 class CreateSQL:
     def __init__(self, detailed_topics=False):
         self.INSTITUTE_GROUPS: dict[str, str] = get_flat_groups()
         self.motorclient: motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(
             MONGOURL).metadata_unification_system
-        self.timezone = pytz.utc
         self.topics_dict: dict[str:Topic] = None
         self.all_topics: list[Topic] = []
         self.missing_orgs: list[str] = []
@@ -55,95 +51,43 @@ class CreateSQL:
         we finish with works, grants, authorships, locations, and abstracts
         '''
 
-        # TODO:
-        # 1. process internal_repository_id & other repo info in all relevant models
-        # 2. Implement class-based importers for all the types
-        if False:
-            print('adding topics')
-            topics = self.ImportTopic(self.motorclient.topics_openalex)
-            topic_results = await topics.import_all()
-            print(topic_results)
-            await self.load_topics()
-            topic_siblings_results = await topics.add_siblings(self.all_topics, self.topics_dict)
-            print(topic_siblings_results)
-
+        print('adding topics')
+        topics = self.ImportTopic(self.motorclient.topics_openalex)
+        topic_results = await topics.import_all()
+        print(topic_results)
+        await self.load_topics()
+        topic_siblings_results = await topics.add_siblings(self.all_topics, self.topics_dict)
+        print(topic_siblings_results)
+        print('adding groups')
         groups = self.ImportGroup(self.motorclient.openaire_cris_orgs)
         group_results = await groups.import_all()
         print(group_results)
         group_part_of_results = await groups.add_part_of()
         print(group_part_of_results)
+        print('adding funders')
+        funders = self.ImportFunder(self.motorclient.funders_openalex)
+        funder_results = await funders.import_all()
+        print(funder_results)
+        print('adding sources')
+        sources = self.ImportSource(self.motorclient.sources_openalex, detailed_topics=False, topics_dict=self.topics_dict)
+        source_results = await sources.import_all()
+        print(source_results)
+        print('adding publishers')
+        publishers = self.ImportPublisher(self.motorclient.publishers_openalex)
+        publisher_results = await publishers.import_all()
+        print(publisher_results)
+        print('adding organizations')
+        organizations = self.ImportOrganization(self.motorclient.institutions_openalex, detailed_topics=False, topics_dict=self.topics_dict)
+        organization_results = await organizations.import_all()
+        print(organization_results)
+        print('rest of items not implemented yet')
         return None
 
         async with asyncio.TaskGroup() as tg:
-            funders = tg.create_task(self.add_all_itemtype(self.motorclient.funders_openalex, self.add_funder, Funder))
-            sources = tg.create_task(self.add_all_itemtype(self.motorclient.sources_openalex, self.add_source, Source))
-            publishers = tg.create_task(
-                self.add_all_itemtype(self.motorclient.publishers_openalex, self.add_publisher, Publisher))
-            organizations = tg.create_task(
-                self.add_all_itemtype(self.motorclient.institutions_openalex, self.add_organization, Organization))
-
-        async with asyncio.TaskGroup() as tg:
-            # linked = tg.create_task(self.add_org_links())
             authors = tg.create_task(self.add_all_authors())
-
-        if len(self.missing_orgs) > 0:
-            from mus_wizard.harvester.openalex import OpenAlexAPI
-            openalexresult = await OpenAlexAPI(openalex_requests={'institutions_openalex': self.missing_orgs}).run()
-            more_orgs = await self.add_all_itemtype(self.motorclient.institutions_openalex, self.add_organization,
-                                                    Organization)
 
         async with asyncio.TaskGroup() as tg:
             works = tg.create_task(self.add_all_itemtype(self.motorclient.works_openalex, self.add_work, Work))
-
-    async def add_all_itemtype(self, collection: motor.motor_asyncio.AsyncIOMotorCollection, add_function: callable,
-                               model: MusModel) -> list:
-        """
-        Add all items from a mongodb collection to the database
-        """
-        results = []
-        models_in_db = model.objects.all().values_list('openalex_id', flat=True)
-        models_in_db = {model async for model in models_in_db}
-        async for item in collection.find():
-            if item.get('id') not in models_in_db:
-                results.append(await add_function(item))
-        return results
-
-    async def add_all_authors(self) -> list:
-        results = []
-        # get all openalex authors
-        # get all pure/institute authors
-        # check matches, combine dicts if found
-        # send data to add_author
-        # also include topics
-
-        # get all authors from collection authors_pure that have a non-null 'id' field
-        pure_matches = self.motorclient.authors_pure.find({'id': {'$exists': True}})
-        pure_match_dict = {match['id']: match async for match in pure_matches}
-        # get all authors from collection employees
-        employee_data = self.motorclient.employees_peoplepage.find({})
-        employee_match_dict = {match['id']: match async for match in employee_data}
-        authoridlist = {author.openalex_id: '' async for author in Author.objects.all()}
-        amount = 0
-        async for openalex_author in self.motorclient.authors_openalex.find({}):
-            if openalex_author['id'] in authoridlist:
-                continue
-            final_dict = openalex_author
-            if openalex_author['id'] in pure_match_dict:
-                pure_match = pure_match_dict[openalex_author['id']]
-                final_dict = pure_match | final_dict
-            if openalex_author['id'] in employee_match_dict:
-                employee_match = employee_match_dict[openalex_author['id']]
-                final_dict = employee_match | final_dict
-            amount += 1
-            results.append(await self.add_author(final_dict))
-        return results
-
-    # these are not used standalone but as part of all other models
-    async def add_tag(self, tag_raw: dict, model: MusModel) -> Tag:
-        pass
-
-    async def add_mongodata(self, mongodata: dict, source_collection: str) -> MongoData:
-        pass
 
     class ImportTopic(GenericSQLImport):
         def __init__(self, collection: motor.motor_asyncio.AsyncIOMotorCollection) -> None:
@@ -243,42 +187,53 @@ class CreateSQL:
             return self.results
 
     class ImportFunder(GenericSQLImport):
-        async def add_funder(self, raw_funder: dict) -> Funder:
-            if await Funder.objects.filter(openalex_id=raw_funder.get('id')).aexists():
-                return await Funder.objects.aget(openalex_id=raw_funder.get('id'))
+
+        def __init__(self, collection: motor.motor_asyncio.AsyncIOMotorCollection) -> None:
+            super().__init__(collection, Funder)
+        
+        async def add_item(self, raw_item: dict) -> None:
+            if await Funder.objects.filter(internal_repository_id=raw_item.get('openalex_id')).aexists():
+                return True
+
+            if await Funder.objects.filter(openalex_id=raw_item.get('id')).aexists():
+                return await Funder.objects.aget(openalex_id=raw_item.get('id'))
             funder_dict = {
-                'openalex_id'          : raw_funder.get('id'),
-                'name'                 : raw_funder.get('display_name'),
-                'alternate_names'      : raw_funder.get('alternate_titles'),
-                'country_code'         : raw_funder.get('country_code'),
-                'counts_by_year'       : raw_funder.get('counts_by_year'),
-                'openalex_created_date': datetime.strptime(raw_funder.get('created_date'), '%Y-%m-%d'),
-                'openalex_updated_date': self.timezone.localize(
-                    datetime.strptime(raw_funder.get('updated_date'), '%Y-%m-%dT%H:%M:%S.%f')),
-                'grants_count'         : raw_funder.get('grants_count'),
-                'description'          : raw_funder.get('description'),
-                'homepage_url'         : raw_funder.get('homepage_url'),
-                'ror'                  : raw_funder.get('ids').get('ror'),
-                'wikidata'             : raw_funder.get('ids').get('wikidata'),
-                'crossref'             : raw_funder.get('ids').get('crossref'),
-                'doi'                  : raw_funder.get('ids').get('doi'),
-                'image_thumbnail_url'  : raw_funder.get('image_thumbnail_url'),
-                'image_url'            : raw_funder.get('image_url'),
-                'impact_factor'        : raw_funder.get('summary_stats').get('2yr_mean_citedness'),
-                'h_index'              : raw_funder.get('summary_stats').get('h_index'),
-                'i10_index'            : raw_funder.get('summary_stats').get('i10_index'),
-                'works_count'          : raw_funder.get('works_count'),
-                'cited_by_count'       : raw_funder.get('cited_by_count'),
+                'openalex_id'          : raw_item.get('id'),
+                'name'                 : raw_item.get('display_name'),
+                'alternate_names'      : raw_item.get('alternate_titles'),
+                'country_code'         : raw_item.get('country_code'),
+                'counts_by_year'       : raw_item.get('counts_by_year'),
+                'openalex_created_date': datetime.strptime(raw_item.get('created_date'), '%Y-%m-%d'),
+                'openalex_updated_date': timezone.localize(datetime.strptime(raw_item.get('updated_date'), '%Y-%m-%dT%H:%M:%S.%f')),
+                'grants_count'         : raw_item.get('grants_count'),
+                'description'          : raw_item.get('description'),
+                'homepage_url'         : raw_item.get('homepage_url'),
+                'ror'                  : raw_item.get('ids').get('ror'),
+                'wikidata'             : raw_item.get('ids').get('wikidata'),
+                'crossref'             : raw_item.get('ids').get('crossref'),
+                'doi'                  : raw_item.get('ids').get('doi'),
+                'image_thumbnail_url'  : raw_item.get('image_thumbnail_url'),
+                'image_url'            : raw_item.get('image_url'),
+                'impact_factor'        : raw_item.get('summary_stats').get('2yr_mean_citedness'),
+                'h_index'              : raw_item.get('summary_stats').get('h_index'),
+                'i10_index'            : raw_item.get('summary_stats').get('i10_index'),
+                'works_count'          : raw_item.get('works_count'),
+                'cited_by_count'       : raw_item.get('cited_by_count'),
             }
             funder = Funder(**funder_dict)
-            await funder.asave()
-            # await funder.raw_data.acreate(data=raw_funder, source_collection='funders_openalex')
+            self.raw_items.append(funder)
 
-            return funder
-
+        async def add_m2m_relations(self) -> None:
+            print('Funder m2m relation as_other_funders not implemented yet.')
+        
     class ImportSource(GenericSQLImport):
+        def __init__(self, collection: motor.motor_asyncio.AsyncIOMotorCollection, detailed_topics: bool = False, topics_dict: dict[str:Topic] = None) -> None:
+            super().__init__(collection, Source)
+            self.detailed_topics = detailed_topics
+            self.topics_dict: dict[str:Topic] = topics_dict
+
         async def add_dealdata(self, source: Source) -> DealData:
-            dealdata_raw = await self.motorclient.deals_journalbrowser.find_one({'id': source.openalex_id})
+            dealdata_raw = await motorclient.deals_journalbrowser.find_one({'id': source.openalex_id})
             if dealdata_raw:
                 if await DealData.objects.filter(openalex_id=dealdata_raw.get('id')).aexists():
                     return await DealData.objects.aget(openalex_id=dealdata_raw.get('id'))
@@ -327,18 +282,15 @@ class CreateSQL:
                         if key in dealdata.__dict__:
                             setattr(dealdata, key, value)
                     await dealdata.asave()
-
                 if related_source not in [source async for source in dealdata.related_sources.all()]:
                     await dealdata.related_sources.aadd(related_source)
-
-                # await dealdata.raw_data.acreate(data=dealdata_raw, source_collection='deals_journalbrowser')
                 return dealdata
 
-        async def add_source(self, source_raw: dict) -> Source:
-            if await Source.objects.filter(openalex_id=source_raw.get('id')).aexists():
-                return await Source.objects.aget(openalex_id=source_raw.get('id'))
+        async def add_item(self, raw_item: dict) -> None:
+            if await Source.objects.filter(openalex_id=raw_item.get('id')).aexists():
+                return await Source.objects.aget(openalex_id=raw_item.get('id'))
 
-            raw_type = source_raw.get('type')
+            raw_type = raw_item.get('type')
             match raw_type:
                 case 'journal':
                     source_type = Source.SourceType.JOURNAL
@@ -356,127 +308,157 @@ class CreateSQL:
                     source_type = Source.SourceType.UNKNOWN
 
             source_dict = {
-                'openalex_id'          : source_raw.get('id'),
-                'openalex_created_date': datetime.strptime(source_raw.get('created_date'), '%Y-%m-%d'),
-                'openalex_updated_date': self.timezone.localize(
-                    datetime.strptime(source_raw.get('updated_date'), '%Y-%m-%dT%H:%M:%S.%f')),
-                'is_in_doaj'           : source_raw.get('is_in_doaj'),
-                'is_oa'                : source_raw.get('is_oa'),
-                'country_code'         : source_raw.get('country_code'),
+                'openalex_id'          : raw_item.get('id'),
+                'openalex_created_date': datetime.strptime(raw_item.get('created_date'), '%Y-%m-%d'),
+                'openalex_updated_date': timezone.localize(datetime.strptime(raw_item.get('updated_date'), '%Y-%m-%dT%H:%M:%S.%f')),
+                'is_in_doaj'           : raw_item.get('is_in_doaj'),
+                'is_oa'                : raw_item.get('is_oa'),
+                'country_code'         : raw_item.get('country_code'),
                 'source_type'          : source_type,
-                'title'                : source_raw.get('display_name'),
-                'alternate_titles'     : source_raw.get('alternate_titles'),
-                'abbreviated_title'    : source_raw.get('abbreviated_title'),
-                'homepage_url'         : source_raw.get('homepage_url'),
-                'host_org_name'        : source_raw.get('host_organization_name'),
-                'issn_l'               : source_raw.get('issn_l'),
-                'issn'                 : source_raw.get('issn'),
-                'wikidata'             : source_raw.get('ids').get('wikidata') if source_raw.get('ids') else None,
-                'fatcat'               : source_raw.get('ids').get('fatcat') if source_raw.get('ids') else None,
-                'mag'                  : source_raw.get('ids').get('mag') if source_raw.get('ids') else None,
-                'cited_by_count'       : source_raw.get('cited_by_count'),
-                'counts_by_year'       : source_raw.get('counts_by_year'),
-                'works_api_url'        : source_raw.get('works_api_url'),
-                'works_count'          : source_raw.get('works_count'),
-                'impact_factor'        : source_raw.get('summary_stats').get('2yr_mean_citedness'),
-                'h_index'              : source_raw.get('summary_stats').get('h_index'),
-                'i10_index'            : source_raw.get('summary_stats').get('i10_index'),
-                'apc_prices'           : source_raw.get('apc_prices'),
-                'apc_usd'              : source_raw.get('apc_usd'),
+                'title'                : raw_item.get('display_name'),
+                'alternate_titles'     : raw_item.get('alternate_titles'),
+                'abbreviated_title'    : raw_item.get('abbreviated_title'),
+                'homepage_url'         : raw_item.get('homepage_url'),
+                'host_org_name'        : raw_item.get('host_organization_name'),
+                'issn_l'               : raw_item.get('issn_l'),
+                'issn'                 : raw_item.get('issn'),
+                'wikidata'             : raw_item.get('ids').get('wikidata') if raw_item.get('ids') else None,
+                'fatcat'               : raw_item.get('ids').get('fatcat') if raw_item.get('ids') else None,
+                'mag'                  : raw_item.get('ids').get('mag') if raw_item.get('ids') else None,
+                'cited_by_count'       : raw_item.get('cited_by_count'),
+                'counts_by_year'       : raw_item.get('counts_by_year'),
+                'works_api_url'        : raw_item.get('works_api_url'),
+                'works_count'          : raw_item.get('works_count'),
+                'impact_factor'        : raw_item.get('summary_stats').get('2yr_mean_citedness'),
+                'h_index'              : raw_item.get('summary_stats').get('h_index'),
+                'i10_index'            : raw_item.get('summary_stats').get('i10_index'),
+                'apc_prices'           : raw_item.get('apc_prices'),
+                'apc_usd'              : raw_item.get('apc_usd'),
             }
             source = Source(**source_dict)
-            await source.asave()
-
-            if self.detailed_topics:
-                if source_raw.get('topics'):
-                    for topic_raw in source_raw.get('topics'):
-                        topic = self.topics_dict.get(topic_raw.get('id'))
-                        if not topic:
-                            continue
-                        source_topic = SourceTopic(source=source, topic=topic, count=topic_raw.get('count'))
-                        await source_topic.asave()
-
-            await self.add_dealdata(source)
-            # await source.raw_data.acreate(data=source_raw, source_collection='sources_openalex')
-
+            self.raw_items.append(source)
             return source
 
+
+        async def add_m2m_relations(self) -> None:
+            print('Note: Lineage relation for source not implemented yet.')
+            for source in self.new_items:
+                try:
+                    self.performance.start_call(self.add_m2m_relations)
+                    if self.detailed_topics:
+                        source_raw = self.collection.find_one({'id': source.openalex_id})
+                        if source_raw.get('topics'):
+                            for topic_raw in source_raw.get('topics'):
+                                topic = self.topics_dict.get(topic_raw.get('id'))
+                                if not topic:
+                                    continue
+                                source_topic = SourceTopic(source=source, topic=topic, count=topic_raw.get('count'))
+                                self.results['added_m2m_relations'] += 1
+                                await source_topic.asave()
+                    await self.add_dealdata(source)
+                    self.results['added_m2m_relations'] += 1
+                    self.performance.end_call()
+
+                except Exception as e:
+                    self.results['errors'] += 1
+                    print(f'error {e} while adding m2m relations for {self.model.__name__}')
+                    self.performance.end_call()
+                    continue
+
     class ImportPublisher(GenericSQLImport):
-        async def add_publisher(self, publisher_raw: dict) -> Publisher:
-            if await Publisher.objects.filter(openalex_id=publisher_raw.get('id')).aexists():
-                return await Publisher.objects.aget(openalex_id=publisher_raw.get('id'))
+        def __init__(self, collection: motor.motor_asyncio.AsyncIOMotorCollection) -> None:
+            super().__init__(collection, Publisher)
+
+        async def add_item(self, raw_item: dict) -> None:
+            if await Publisher.objects.filter(openalex_id=raw_item.get('id')).aexists():
+                return await Publisher.objects.aget(openalex_id=raw_item.get('id'))
             publisher_dict = {
-                'openalex_id'          : publisher_raw.get('id'),
-                'openalex_created_date': datetime.strptime(publisher_raw.get('created_date'), '%Y-%m-%d'),
-                'openalex_updated_date': self.timezone.localize(
-                    datetime.strptime(publisher_raw.get('updated_date'), '%Y-%m-%dT%H:%M:%S.%f')),
-                'name'                 : publisher_raw.get('display_name'),
-                'alternate_names'      : publisher_raw.get('alternate_titles'),
-                'country_code'         : publisher_raw.get('country_code'),
-                'counts_by_year'       : publisher_raw.get('counts_by_year'),
-                'hierarchy_level'      : publisher_raw.get('hierarchy_level'),
-                'ror'                  : publisher_raw.get('ids').get('ror'),
-                'wikidata'             : publisher_raw.get('ids').get('wikidata'),
-                'image_url'            : publisher_raw.get('image_url'),
-                'image_thumbnail_url'  : publisher_raw.get('image_thumbnail_url'),
-                'sources_api_url'      : publisher_raw.get('sources_api_url'),
-                'impact_factor'        : publisher_raw.get('2yr_mean_citedness'),
-                'h_index'              : publisher_raw.get('h_index'),
-                'i10_index'            : publisher_raw.get('i10_index'),
-                'works_count'          : publisher_raw.get('works_count'),
+                'openalex_id'          : raw_item.get('id'),
+                'openalex_created_date': datetime.strptime(raw_item.get('created_date'), '%Y-%m-%d'),
+                'openalex_updated_date': timezone.localize(
+                    datetime.strptime(raw_item.get('updated_date'), '%Y-%m-%dT%H:%M:%S.%f')),
+                'name'                 : raw_item.get('display_name'),
+                'alternate_names'      : raw_item.get('alternate_titles'),
+                'country_code'         : raw_item.get('country_code'),
+                'counts_by_year'       : raw_item.get('counts_by_year'),
+                'hierarchy_level'      : raw_item.get('hierarchy_level'),
+                'ror'                  : raw_item.get('ids').get('ror'),
+                'wikidata'             : raw_item.get('ids').get('wikidata'),
+                'image_url'            : raw_item.get('image_url'),
+                'image_thumbnail_url'  : raw_item.get('image_thumbnail_url'),
+                'sources_api_url'      : raw_item.get('sources_api_url'),
+                'impact_factor'        : raw_item.get('2yr_mean_citedness'),
+                'h_index'              : raw_item.get('h_index'),
+                'i10_index'            : raw_item.get('i10_index'),
+                'works_count'          : raw_item.get('works_count'),
             }
 
             publisher = Publisher(**publisher_dict)
-            await publisher.asave()
-            # await publisher.raw_data.acreate(data=publisher_raw, source_collection='publishers_openalex')
-            return publisher
+            self.raw_items.append(publisher)
+            
+        async def add_m2m_relations(self) -> None:
+            print('lineage, as_funder, as_institution m2m relations for publisher not implemented yet.')
 
     class ImportOrganization(GenericSQLImport):
-        async def add_organization(self, organization_raw: dict) -> Organization:
-            if await Organization.objects.filter(openalex_id=organization_raw.get('id')).aexists():
-                return await Organization.objects.aget(openalex_id=organization_raw.get('id'))
+        def __init__(self, collection: motor.motor_asyncio.AsyncIOMotorCollection, detailed_topics: bool = False, topics_dict: dict[str:Topic] = None) -> None:
+            super().__init__(collection, Organization)
+            self.detailed_topics = detailed_topics
+            self.topics_dict: dict[str:Topic] = topics_dict
+
+        async def add_item(self, raw_item: dict) -> None:
+            if await Organization.objects.filter(openalex_id=raw_item.get('id')).aexists():
+                return await Organization.objects.aget(openalex_id=raw_item.get('id'))
             organization_dict = {
-                'name'                 : organization_raw.get('display_name'),
-                'name_acronyms'        : organization_raw.get('display_name_acronyms'),
-                'name_alternatives'    : organization_raw.get('display_name_alternatives'),
-                'ror'                  : organization_raw.get('ids').get('ror'),
-                'openalex_id'          : organization_raw.get('id'),
-                'wikipedia'            : organization_raw.get('ids').get('wikipedia'),
-                'wikidata'             : organization_raw.get('ids').get('wikidata'),
-                'openalex_created_date': datetime.strptime(organization_raw.get('created_date'), '%Y-%m-%d'),
-                'openalex_updated_date': self.timezone.localize(
-                    datetime.strptime(organization_raw.get('updated_date'), '%Y-%m-%dT%H:%M:%S.%f')),
-                'country_code'         : organization_raw.get('country_code'),
-                'works_count'          : organization_raw.get('works_count'),
-                'cited_by_count'       : organization_raw.get('cited_by_count'),
-                'impact_factor'        : organization_raw.get('2yr_mean_citedness'),
-                'h_index'              : organization_raw.get('h_index'),
-                'i10_index'            : organization_raw.get('i10_index'),
-                'image_thumbnail_url'  : organization_raw.get('image_thumbnail_url'),
-                'image_url'            : organization_raw.get('image_url'),
+                'name'                 : raw_item.get('display_name'),
+                'name_acronyms'        : raw_item.get('display_name_acronyms'),
+                'name_alternatives'    : raw_item.get('display_name_alternatives'),
+                'ror'                  : raw_item.get('ids').get('ror'),
+                'openalex_id'          : raw_item.get('id'),
+                'wikipedia'            : raw_item.get('ids').get('wikipedia'),
+                'wikidata'             : raw_item.get('ids').get('wikidata'),
+                'openalex_created_date': datetime.strptime(raw_item.get('created_date'), '%Y-%m-%d'),
+                'openalex_updated_date': timezone.localize(
+                    datetime.strptime(raw_item.get('updated_date'), '%Y-%m-%dT%H:%M:%S.%f')),
+                'country_code'         : raw_item.get('country_code'),
+                'works_count'          : raw_item.get('works_count'),
+                'cited_by_count'       : raw_item.get('cited_by_count'),
+                'impact_factor'        : raw_item.get('2yr_mean_citedness'),
+                'h_index'              : raw_item.get('h_index'),
+                'i10_index'            : raw_item.get('i10_index'),
+                'image_thumbnail_url'  : raw_item.get('image_thumbnail_url'),
+                'image_url'            : raw_item.get('image_url'),
             }
             organization = Organization(**organization_dict)
-            await organization.asave()
+            self.raw_items.append(organization)
 
-            if self.detailed_topics:
-                if organization_raw.get('topics'):
-                    for topic_raw in organization_raw.get('topics'):
-                        topic = self.topics_dict.get(topic_raw.get('id'))
-                        if not topic:
-                            continue
-                        organization_topic = OrganizationTopic(organization=organization, topic=topic,
-                                                               count=topic_raw.get('count'))
-                        await organization_topic.asave()
+        async def add_m2m_relations(self, ) -> None:
+            for organization in self.new_items:
+                try:
+                    self.performance.start_call(self.add_m2m_relations)
+                    organization_raw = self.collection.find({'id': organization.openalex_id}, projection={'_id': 0, 'id': 1, 'topics': 1})
+                    if self.detailed_topics:
+                        if organization_raw.get('topics'):
+                            for topic_raw in organization_raw.get('topics'):
+                                topic = self.topics_dict.get(topic_raw.get('id'))
+                                if not topic:
+                                    continue
+                                organization_topic = OrganizationTopic(organization=organization, topic=topic,
+                                                                    count=topic_raw.get('count'))
+                                await organization_topic.asave()
+                                self.results['added_m2m_relations'] += 1
 
-                if organization_raw.get('roles'):
-                    for role in organization_raw.get('roles'):
-                        if role.get('role'):
-                            tag = await Tag.objects.acreate(tag_type=Tag.TagTypes.ORG_TYPE, notes=role.get('role'),
-                                                            content_object=organization)
-
-            # await organization.raw_data.acreate(data=organization_raw, source_collection='institutions_openalex')
-
-            return organization
+                    if organization_raw.get('roles'):
+                        for role in organization_raw.get('roles'):
+                            if role.get('role'):
+                                tag = await Tag.objects.acreate(tag_type=Tag.TagTypes.ORG_TYPE, notes=role.get('role'),
+                                                                content_object=organization)
+                                self.results['added_m2m_relations'] += 1
+                    self.performance.end_call()
+                except Exception as e:
+                    self.results['errors'] += 1
+                    print(f'error {e} while adding m2m relations for {self.model.__name__}')
+                    self.performance.end_call()
+                    continue
 
         async def add_org_links(self) -> list[MusModel]:
             # for Publisher, Organization, Funder, Source: add links between them (most many-to-many fields)
@@ -503,6 +485,14 @@ class CreateSQL:
             return changed_itemlist
 
     class ImportAuthor(GenericSQLImport):
+
+        async def check_missing_orgs(self) -> None:
+            if len(self.missing_orgs) > 0:
+                from mus_wizard.harvester.openalex import OpenAlexAPI
+                openalexresult = await OpenAlexAPI(openalex_requests={'institutions_openalex': self.missing_orgs}).run()
+                more_orgs = await self.add_all_itemtype(self.motorclient.institutions_openalex, self.add_organization,
+                                                        Organization)
+
         async def add_author(self, author_raw: dict) -> Author:
             def get_names() -> tuple[HumanName, list[str]]:
                 # from openalex
@@ -558,8 +548,7 @@ class CreateSQL:
                 'name'                 : author_raw.get('display_name'),
                 'openalex_id'          : author_raw.get('id'),
                 'openalex_created_date': datetime.strptime(author_raw.get('created_date'), '%Y-%m-%d'),
-                'openalex_updated_date': self.timezone.localize(
-                    datetime.strptime(author_raw.get('updated_date'), '%Y-%m-%dT%H:%M:%S.%f')),
+                'openalex_updated_date': timezone.localize(datetime.strptime(author_raw.get('updated_date'), '%Y-%m-%dT%H:%M:%S.%f')),
                 'works_api_url'        : author_raw.get('works_api_url'),
                 'works_count'          : author_raw.get('works_count'),
                 'cited_by_count'       : author_raw.get('cited_by_count'),
@@ -572,9 +561,7 @@ class CreateSQL:
             pure_dict = {
                 'pure_uuid'         : author_raw.get('author_uuid'),
                 'pure_id'           : author_raw.get('author_pureid'),
-                'pure_last_modified': author_raw.get('last_modified')[0] if isinstance(author_raw.get('last_modified'),
-                                                                                       list) else author_raw.get(
-                    'last_modified'),
+                'pure_last_modified': author_raw.get('last_modified')[0] if isinstance(author_raw.get('last_modified'),list) else author_raw.get('last_modified'),
                 'author_links'      : author_raw.get('author_links'),
             }
             # 4th dict: institute people page data
@@ -663,7 +650,7 @@ class CreateSQL:
 
                 'openalex_id'             : work_raw.get('id'),
                 'openalex_created_date'   : datetime.strptime(work_raw.get('created_date'), '%Y-%m-%d'),
-                'openalex_updated_date'   : self.timezone.localize(
+                'openalex_updated_date'   : timezone.localize(
                     datetime.strptime(work_raw.get('updated_date'), '%Y-%m-%dT%H:%M:%S.%f')),
                 'ngrams_url'              : work_raw.get('ngrams_url'),
                 'cited_by_api_url'        : work_raw.get('cited_by_api_url'),
