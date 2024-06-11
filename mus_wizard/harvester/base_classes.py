@@ -30,7 +30,7 @@ class GenericScraper:
     scraperclient: httpx.AsyncClient = httpx.AsyncClient(timeout=30)
 
     def __init__(self, collection: str) -> None:
-        self.collection: motor.motor_asyncio.AsyncIOMotorCollection = self.motorclient.collection  # the collection to store results in
+        self.collection: motor.motor_asyncio.AsyncIOMotorCollection = self.motorclient[collection]  # the collection to store results in
         self.results: dict = {'items_added': [], 'total': 0, 'type': collection}
         self.itemlist: list = []
         self.scraper_settings: dict = {
@@ -112,7 +112,7 @@ class GenericAPI():
         self.motorclient: motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(
             MONGOURL).metadata_unification_system
         if collection:
-            self.collection: motor.motor_asyncio.AsyncIOMotorCollection = self.motorclient.collection  # the collection to store results in
+            self.collection: motor.motor_asyncio.AsyncIOMotorCollection = self.motorclient[collection] # the collection to store results in
             self.collectionname: str = collection
         else:
             self.collection = None

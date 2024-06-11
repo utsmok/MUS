@@ -54,7 +54,8 @@ class OpenAlexAPI():
         self.requested_topics = self.openalex_requests.get('topics_openalex')
         self.requested_publishers = self.openalex_requests.get('publishers_openalex')
         if not years:
-            self.years = [2015,2016,2017,2018,2019,2020,2021,2022, 2023, 2024, 2025]
+            #self.years = [2015,2016,2017,2018,2019,2020,2021,2022, 2023, 2024, 2025]
+            self.years = [2022, 2023, 2024, 2025]
         else:
             self.years = years
         self.mongoclient = MusMongoClient()
@@ -85,8 +86,9 @@ class OpenAlexAPI():
                                            self.requested_authors).run())
             if request == 'non_institution_authors_openalex':
                 cons.print('running OpenAlexQuery for non-institution authors')
-                tasks.append(OpenAlexQuery(self.mongoclient, self.mongoclient.non_instution_authors_openalex, 'authors',
-                                           self.requested_authors).run())
+                cons.print('currently disabled')
+                #tasks.append(OpenAlexQuery(self.mongoclient, self.mongoclient.non_institution_authors_openalex, 'authors',
+                #                           self.requested_authors).run())
             if request == 'sources_openalex':
                 cons.print('running OpenAlexQuery for sources')
                 tasks.append(OpenAlexQuery(self.mongoclient, self.mongoclient.sources_openalex, 'sources',
@@ -287,8 +289,8 @@ class OpenAlexQuery():
                 itemids = "|".join(batch)
                 if self.pyalextype == 'publishers':
                     self.querylist.append(self.pyalexmapping[self.pyalextype]().filter(ids={self.id_type: itemids}))
-                elif self.id_type == 'openalex':
-                    self.querylist.append(self.pyalexmapping[self.pyalextype]().filter(openalexid=itemids))
+                elif self.id_type == 'openalex' or 'openalexid' or 'openalex_id':
+                    self.querylist.append(self.pyalexmapping[self.pyalextype]().filter(openalex_id=itemids))
                 elif self.id_type == 'doi':
                     self.querylist.append(self.pyalexmapping[self.pyalextype]().filter(doi=itemids))
                 # add other id types here

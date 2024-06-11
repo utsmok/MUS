@@ -34,7 +34,7 @@ from mus_wizard.harvester.openaire import OpenAIREAPI
 from mus_wizard.harvester.openalex import OpenAlexAPI
 from mus_wizard.harvester.orcid import ORCIDAPI
 from mus_wizard.utwente.people_pages import PeoplePageScraper
-
+from pyinstrument import Profiler
 
 class Wizard:
     def __init__(self, years: list[int] = None, include: dict[str, bool] = None):
@@ -59,6 +59,9 @@ class Wizard:
         filename = 'mapping_export.json'
         with open(filename, 'w', encoding='utf-8') as f:
             json.dump(mapping,f)'''
+        profiler = Profiler(async_mode = 'enabled')
+        profiler.start()
+
 
         from rich import box
         from rich.console import Console
@@ -255,18 +258,22 @@ class Wizard:
 
         cons.print('Update Manager finished.')
 
+        profiler.stop()
+        profiler.print()
+        with open('profiler.html', 'w') as f:
+            f.write(profiler.output_html())
 
 def main():
-    include = {'all': True}
+    include = {'all': True, 'skip_one': True}
     
-    #asyncio.run(Wizard().run(include))
+    asyncio.run(Wizard().run(include))
 
     #results = asyncio.run(AuthorMatcher().run())
     #print(results)
     # asyncio.run(OAI_PMH().run())
 
-    results = asyncio.run(CreateSQL().add_all())
-    print(results)
+    #results = asyncio.run(CreateSQL().add_all())
+    #print(results)
 
 
 # ! MongoDB find calls:

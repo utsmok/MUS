@@ -62,22 +62,24 @@ INSTALLED_APPS = [
     "allauth.account",
     "accounts",
     'mus_backend.apps.MusBackendConfig',
-    'django_query_profiler',
     'corsheaders',
-    "data_browser",
     "django_extensions",
     "ajax_datatable",
     "slippers",
-    'explorer',
     'mus_wizard.apps.MUSWizard',
     'iommi'
 ]
+
+# can be added:
+#    "data_browser",
+#     'django_query_profiler',
+#     'explorer',
+
 
 MIDDLEWARE = [
     'iommi.live_edit.Middleware',
     'corsheaders.middleware.CorsMiddleware',
     "django.middleware.security.SecurityMiddleware",
-    'django_query_profiler.client.middleware.QueryProfilerMiddleware',
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -88,9 +90,8 @@ MIDDLEWARE = [
     'iommi.profiling.Middleware',
     "allauth.account.middleware.AccountMiddleware",
     'iommi.middleware',
-
-
 ]
+#     'django_query_profiler.client.middleware.QueryProfilerMiddleware',
 
 CORS_ALLOWED_ORIGINS = [
     "https://openalex.samuelmok.cc",

@@ -4,6 +4,7 @@ import django
 django.setup()
 
 from mus_wizard.wizard import main
+from pyinstrument import Profiler
 
 main()
 
