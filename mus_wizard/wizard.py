@@ -59,7 +59,7 @@ class Wizard:
         filename = 'mapping_export.json'
         with open(filename, 'w', encoding='utf-8') as f:
             json.dump(mapping,f)'''
-        profiler = Profiler(async_mode = 'enabled')
+        profiler = Profiler(async_mode = 'disabled')
         profiler.start()
 
 
@@ -142,36 +142,47 @@ class Wizard:
         apilists.add_column('item source')
         apilists.add_column('id type')
         apilists.add_column('number of items')
+        search_dois = {
+            'items_datacite':set(),
+            'items_openaire':set(),
+            'items_crossref':set()
+        }
         if 'skip_two' not in include:
             cons.print("APIs included: Crossref, DataCite, OpenAIRE, ORCID, Journal Browser, UT People Page")
-            datacitelist = []
-            openairelist = []
-            crossreflist = []
             orcidlist = []
             if any(['openaire' in include, 'datacite' in include, 'crossref' in include, 'all' in include]):
                 with Progress() as p:
+                    dois = {}
                     numpapers = await self.motorclient['works_openalex'].count_documents({})
                     task = p.add_task("Getting list of dois for Datacite/Crossref/OpenAIRE", total=numpapers)
 
                     async for paper in self.motorclient['works_openalex'].find({}, projection={'id': 1, 'doi': 1},
                                                                                sort=[('id', 1)]):
                         if paper.get('doi'):
-                            if not await self.motorclient['items_datacite'].find_one({'id': paper['id']},
-                                                                                     projection={'id': 1}):
-                                datacitelist.append(
-                                    {'doi': paper['doi'].replace('https://doi.org/', ''), 'id': paper['id']})
-                            if not await self.motorclient['items_openaire'].find_one({'id': paper['id']},
-                                                                                     projection={'id': 1}):
-                                openairelist.append(
-                                    {'doi': paper['doi'].replace('https://doi.org/', ''), 'id': paper['id']})
-                            if not await self.motorclient['items_crossref'].find_one({'id': paper['id']},
-                                                                                     projection={'id': 1}):
-                                crossreflist.append(
-                                    {'doi': paper['doi'].replace('https://doi.org/', ''), 'id': paper['id']})
+                            dois[paper['id']]=paper['doi']
                         p.update(task, advance=1)
-                apilists.add_row('DataCite', 'works openalex', 'doi', str(len(datacitelist)))
-                apilists.add_row('OpenAIRE', 'works openalex', 'doi', str(len(openairelist)))
-                apilists.add_row('Crossref', 'works openalex', 'doi', str(len(crossreflist)))
+
+
+                    found_items = {
+                        'items_datacite':set(),
+                        'items_openaire':set(),
+                        'items_crossref':set()
+                    }
+
+                    for col in ['items_datacite', 'items_openaire', 'items_crossref']:
+                        task = p.add_task(f"finding unmatched {col} items", total=await self.motorclient[col].estimated_document_count())
+
+                        async for i in self.motorclient[col].find({}, projection={'id': 1, '_id': 0}):
+                            if i.get('id'):
+                                found_items[col].add(dois[i.get('id')])
+                            p.update(task, advance=1)
+                        for doi in dois.values():
+                            if doi not in found_items[col]:
+                                search_dois[col].add(doi.replace('https://doi.org/',''))
+                        
+                apilists.add_row('DataCite', 'works openalex', 'doi', str(len(search_dois['items_datacite'])))
+                apilists.add_row('OpenAIRE', 'works openalex', 'doi', str(len(search_dois['items_openaire'])))
+                apilists.add_row('Crossref', 'works openalex', 'doi', str(len(search_dois['items_crossref'])))
             if 'orcid' in include or 'all' in include:
                 with Progress() as p:
 
@@ -197,15 +208,15 @@ class Wizard:
 
             async with asyncio.TaskGroup() as tg:
                 #if 'crossref' in include or 'all' in include:
-                #    crossref = tg.create_task(CrossrefAPI(itemlist=crossreflist).run())
+                #    crossref = tg.create_task(CrossrefAPI(itemlist=search_dois['items_crossref']).run())
                 #else:
                 #    crossref = 'crossref'
                 #if 'datacite' in include or 'all' in include:
-                #    datacite = tg.create_task(DataCiteAPI(itemlist=datacitelist).run())
+                #    datacite = tg.create_task(DataCiteAPI(itemlist=search_dois['items_datacite']).run())
                 #else:
                 #    datacite = 'datacite'
                 ##if 'openaire' in include or 'all' in include:
-                #    #openaire = tg.create_task(OpenAIREAPI(itemlist=openairelist).run())
+                #    #openaire = tg.create_task(OpenAIREAPI(itemlist=search_dois['items_openaire']).run())
                 ##else:
                 #    #openaire = 'openaire'
                 #if 'orcid' in include or 'all' in include:
@@ -215,7 +226,7 @@ class Wizard:
 
                 journalbrowser = tg.create_task(JournalBrowserScraper().run())
                 authormatcher = tg.create_task(AuthorMatcher().run())
-                #workmatcher = tg.create_task(WorkMatcher().run())
+                workmatcher = tg.create_task(WorkMatcher().run())
                 add_indexes = tg.create_task(musmongoclient.add_indexes())
 
             #tasks.append(crossref)
@@ -224,7 +235,7 @@ class Wizard:
             #tasks.append(orcid)
             tasks.append(journalbrowser)
             tasks.append(authormatcher)
-            #tasks.append(workmatcher)
+            tasks.append(workmatcher)
             tasks.append(add_indexes)
 
             for task in tasks:
@@ -260,7 +271,7 @@ class Wizard:
 
         profiler.stop()
         profiler.print()
-        with open('profiler.html', 'w') as f:
+        with open('profiler_mus_wizard.html', 'w') as f:
             f.write(profiler.output_html())
 
 def main():

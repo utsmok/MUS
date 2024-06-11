@@ -14,6 +14,7 @@ from typing import Self
 from rich.console import Console
 from rich.table import Table
 from dataclasses import dataclass
+from pyinstrument import Profiler
 
 console = Console()
 class AuthorMatcher():
@@ -155,11 +156,17 @@ class AuthorMatcher():
 
         print(f'{self.results["name_matches"]} names matched')
     async def run(self):
+        profiler = Profiler()
+        profiler.start()
         print('running author matcher')
         await self.get_authors()
     
         await self.match_pids()
         #await self.match_names()
+        profiler.stop()
+        profiler.print()
+        with open(f'profiler_authormatcher.html', 'w') as f:
+            f.write(profiler.output_html())
         return self.results
 
 @dataclass
@@ -340,10 +347,15 @@ class WorkMatcher():
         
 
     async def run(self):
+        profiler = Profiler()
+        profiler.start()
         await self.get_works()
         print(f'got {len(self.worklist.works_as_list)} openalex works ready to match')
         await self.match_dois()
-
+        profiler.stop()
+        profiler.print()
+        with open(f'profiler_workmatcher.html', 'w') as f:
+            f.write(profiler.output_html())
         return self.results
 
     async def get_works(self):
@@ -386,8 +398,8 @@ class WorkMatcher():
 
         print('unmatched_works contents after filtering out matches & non-doi works:')
         print(self.unmatched_works)
-        console.print(f'{len(self.unmatched_works.get_unmatched_works())} publications with DOIs in the repository currently unmatched with OpenAlex works.\n Retrieving missing DOIs from OpenAlex API.')
-        await self.get_missing_dois()
+        console.print(f'{len(self.unmatched_works.get_unmatched_works())} publications with DOIs in the repository currently unmatched with OpenAlex works.\n Disabled retrieving missing DOIs from OpenAlex API.')
+        #await self.get_missing_dois()
 
     async def get_missing_dois(self):
         dois = [work.doi for work in self.unmatched_works.get_unmatched_works()]

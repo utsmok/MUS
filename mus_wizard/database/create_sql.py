@@ -142,16 +142,17 @@ class CreateSQL:
             full_siblist = []
             self.performance.start_call(self.add_siblings)
             for topic in all_topics:
-                siblings = await self.collection.find_one({'id': topic.openalex_id},
-                                                          projection={'_id': 0, 'id': 1, 'siblings': 1})
-                siblist = []
-                full_siblist.extend([sibling.get('id') for sibling in siblings.get('siblings')])
-                for sibling in siblings.get('siblings'):
-                    if sibling.get('id') in topics_dict:
-                        siblist.append(topics_dict[sibling.get('id')])
-                        self.results['m2m_items'] += 1
-                if siblist:
-                    await topic.siblings.aset(siblist)
+                if not topic.siblings:
+                    siblings = await self.collection.find_one({'id': topic.openalex_id},
+                                                            projection={'_id': 0, 'id': 1, 'siblings': 1})
+                    siblist = []
+                    full_siblist.extend([sibling.get('id') for sibling in siblings.get('siblings')])
+                    for sibling in siblings.get('siblings'):
+                        if sibling.get('id') in topics_dict:
+                            siblist.append(topics_dict[sibling.get('id')])
+                            self.results['m2m_items'] += 1
+                    if siblist:
+                        await topic.siblings.aset(siblist)
             self.performance.end_call()
             self.results['elapsed_time_m2m'] = self.performance.elapsed_time()
             self.results['average_time_per_call_m2m'] = self.performance.time_per_call(self.add_siblings)

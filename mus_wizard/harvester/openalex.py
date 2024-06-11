@@ -175,7 +175,7 @@ class OpenAlexQuery():
         if not query:
             # first try making query using item_ids if provided
             if self.item_ids:
-                cons.print(f'{self.pyalextype} |> got item_ids, adding them to querylist')
+                cons.print(f'{self.pyalextype} |> got item_ids of type {self.id_type}, adding them to querylist')
                 self.add_query_by_ids(self.item_ids)
             else:
                 cons.print(f'{self.pyalextype} |> no item_ids, adding default query')
