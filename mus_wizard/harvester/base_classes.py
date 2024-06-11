@@ -324,7 +324,7 @@ class GenericSQLImport():
     '''
 
     def __init__(self, collection: motor.motor_asyncio.AsyncIOMotorCollection, model: MusModel,
-                 unique_id_field: str = 'openalex_id') -> None:
+                 unique_id_field: str = 'openalex_id', more_data: dict[str, motor.motor_asyncio.AsyncIOMotorCollection] = None) -> None:
         self.performance: Performance = Performance()
         self.collection: motor.motor_asyncio.AsyncIOMotorCollection = collection
         self.model: Type[MusModel] = model
@@ -342,11 +342,14 @@ class GenericSQLImport():
         self.raw_items: list = []
         self.batch_size: int = 50
         self.new_items: list = []
+        self.more_data: dict[str, dict] = more_data if more_data else {}
 
     async def import_all(self) -> dict:
         models_in_db = self.model.objects.all().values_list(self.unique_id_field, flat=True)
         models_in_db = {model async for model in models_in_db}
         async for item in self.collection.find({}):
+            if len(self.more_data) > 0:
+                item = await self.add_more_data(item)
             self.results['raw_items'] += 1
             if item.get('id') not in models_in_db:
                 self.performance.start_call(self.add_item)
@@ -378,6 +381,35 @@ class GenericSQLImport():
         self.results['average_time_per_call'] = self.performance.time_per_call()
         self.results['total_measured_duration'] = self.performance.total_measured_duration()
         return self.results
+
+    async def add_more_data(self, item: dict) -> None:
+        '''
+        Adds data from other collections to the item
+        self.more_data: dict set during __init__. Has collection names as keys, value has a dict with details for each collection:
+        'collection_name': {
+            'collection': motor.motor_asyncio.AsyncIOMotorCollection # the collection to get data from
+            'unique_id_field': str, # the unique id to find/match the item in the collection
+            'unique_id_value': str, # the value of the unique id in the original data to find/match the item in this collection
+            'projection': dict, # the projection to use for the collection
+        '''
+        
+        for collection_name, collection_details in self.more_data.items():
+            collection: motor.motor_asyncio.AsyncIOMotorCollection = collection_details.get('collection')
+            unique_id_field: str = collection_details.get('unique_id_field')
+            unique_id_value: str = collection_details.get('unique_id_value')
+            projection: dict = collection_details.get('projection')
+            
+            if any([collection is None, not unique_id_field,not unique_id_value]):
+                continue
+            if not projection:
+                projection = {}
+            more_data = await collection.find_one({unique_id_field: item.get(unique_id_value)}, projection=projection)
+            if more_data:
+                if isinstance(more_data, dict):
+                    item =  item | more_data
+
+        return item
+
 
     async def add_item(self, raw_item: dict):
         print(f'add_item is an abstract function and it needs to be overloaded in subclass for {self.model.__name__}')

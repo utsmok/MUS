@@ -75,7 +75,6 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'iommi.live_edit.Middleware',
-    "kolo.middleware.KoloMiddleware",
     'corsheaders.middleware.CorsMiddleware',
     "django.middleware.security.SecurityMiddleware",
     'django_query_profiler.client.middleware.QueryProfilerMiddleware',

@@ -140,10 +140,11 @@ class OpenAlexQuery():
     '''
 
     def __init__(self, mongoclient: MusMongoClient, mongocollection: motor.motor_asyncio.AsyncIOMotorCollection,
-                pyalextype: str, item_ids: Iterable[str] = None, years: list[int] = [2022, 2023, 2024, 2025]):
+                pyalextype: str, item_ids: Iterable[str] = None, id_type: str = 'openalex', years: list[int] = [2022, 2023, 2024, 2025]):
         self.mongoclient: MusMongoClient = mongoclient
         self.collection: motor.motor_asyncio.AsyncIOMotorCollection = mongocollection
         self.item_ids: Iterable[str] = item_ids
+        self.id_type: str = id_type
         self.non_institution_authors: Iterable[str] = []
         self.querylist: list[BaseOpenAlex] = []
         self.years = years
@@ -172,10 +173,13 @@ class OpenAlexQuery():
         if not query:
             # first try making query using item_ids if provided
             if self.item_ids:
+                cons.print(f'{self.pyalextype} |> got item_ids, adding them to querylist')
                 self.add_query_by_ids(self.item_ids)
             else:
+                cons.print(f'{self.pyalextype} |> no item_ids, adding default query')
                 # no item_ids, no query: make default query for itemtype
                 if self.pyalextype == 'works':
+                    cons.print(f'{self.pyalextype} |> adding default works query')
                     # works have a single default query
                     for year in self.years:
                         self.querylist.append(Works().filter(
@@ -193,6 +197,7 @@ class OpenAlexQuery():
                     # all other types: generate a list of ids extracted from available works
                     # then call add_query_by_ids to construct the batched queries
                     if self.pyalextype == 'authors':
+                        cons.print(f'{self.pyalextype} |> adding default authors query')
                         async for work in self.mongoclient.works_openalex.find({}, projection={'authorships': 1},
                                                                                sort=[('authorships', 1)]):
                             if 'authorships' in work:
@@ -209,6 +214,7 @@ class OpenAlexQuery():
                                                 authorlist.add(authorship['author']['id'])
                                                 break
                     if self.pyalextype == 'sources':
+                        cons.print(f'{self.pyalextype} |> adding default sources query')
                         async for work in self.mongoclient.works_openalex.find({}, projection={'locations': 1},
                                                                                sort=[('locations', 1)]):
                             if 'locations' in work:
@@ -220,12 +226,14 @@ class OpenAlexQuery():
                                     except AttributeError:
                                         pass
                     if self.pyalextype == 'funders':
+                        cons.print(f'{self.pyalextype} |> adding default funders query')
                         async for work in self.mongoclient.works_openalex.find({}, projection={'grants': 1},
                                                                                sort=[('grants', 1)]):
                             if 'grants' in work:
                                 for grant in work['grants']:
                                     funderlist.add(grant['funder'])
                     if self.pyalextype == 'institutions':
+                        cons.print(f'{self.pyalextype} |> adding default institutions query')
                         async for work in self.mongoclient.works_openalex.find({}, projection={'authorships': 1},
                                                                                sort=[('authorships', 1)]):
                             for authorship in work['authorships']:
@@ -233,12 +241,14 @@ class OpenAlexQuery():
                                     for institution in authorship['institutions']:
                                         institutionlist.add(institution['id'])
                     if self.pyalextype == 'topics':
+                        cons.print(f'{self.pyalextype} |> adding default topics query')
                         async for work in self.mongoclient.works_openalex.find({}, projection={'topics': 1},
                                                                                sort=[('topics', 1)]):
                             if 'topics' in work:
                                 for topic in work['topics']:
                                     topiclist.add(topic['id'])
                     if self.pyalextype == 'publishers':
+                        cons.print(f'{self.pyalextype} |> adding default publishers query')
                         async for work in self.mongoclient.sources_openalex.find({}, projection={
                             'host_organization_lineage': 1}, sort=[('host_organization_lineage', 1)]):
                             for item in work['host_organization_lineage']:
@@ -248,7 +258,7 @@ class OpenAlexQuery():
                     for l in [authorlist, sourcelist, funderlist, institutionlist, topiclist, publisherlist]:
                         l = list(l)
                         if l:
-                            cons.print(f'found {len(l)} {self.pyalextype} ids')
+                            cons.print(f'{self.pyalextype} |> found {len(l)} {self.pyalextype} ids')
                         for t in l:
                             if not await self.collection.find_one({'id': t}):
                                 self.item_ids.append(t)
@@ -258,6 +268,7 @@ class OpenAlexQuery():
                         self.add_query_by_ids(self.item_ids)
         else:
             # query is provided: just add to the list
+            print(f'{self.pyalextype} |> got query, adding it to querylist')
             if not isinstance(query, list):
                 self.querylist.append(query)
             else:
@@ -269,17 +280,21 @@ class OpenAlexQuery():
         '''
 
         batch = []
-        for id in item_ids:
+        cons.print(f'{self.pyalextype} |> adding {len(item_ids)} {self.id_type} ids to querylist')
+        for i, id in enumerate(item_ids):
             batch.append(id)
-            if len(batch) == 50:
+            if len(batch) == 50 or i == len(item_ids) - 1:
                 itemids = "|".join(batch)
-                if not self.pyalextype == 'publishers':
-                    self.querylist.append(self.pyalexmapping[self.pyalextype]().filter(openalex=itemids))
-                else:
-                    self.querylist.append(self.pyalexmapping[self.pyalextype]().filter(ids={'openalex': itemids}))
+                if self.pyalextype == 'publishers':
+                    self.querylist.append(self.pyalexmapping[self.pyalextype]().filter(ids={self.id_type: itemids}))
+                elif self.id_type == 'openalex':
+                    self.querylist.append(self.pyalexmapping[self.pyalextype]().filter(openalexid=itemids))
+                elif self.id_type == 'doi':
+                    self.querylist.append(self.pyalexmapping[self.pyalextype]().filter(doi=itemids))
+                # add other id types here
                 batch = []
-        itemids = "|".join(batch)
-        self.querylist.append(self.pyalexmapping[self.pyalextype]().filter(openalex=itemids))
+        
+        cons.print(f'{self.pyalextype} |> added {len(self.querylist)} queries')
 
     def add_query_by_orcid(self, orcids: list[str]) -> None:
         '''
@@ -288,6 +303,8 @@ class OpenAlexQuery():
         if not self.pyalextype == 'authors':
             raise Exception('add_query_by_orcid only works for authors')
         batch = []
+        cons.print(f'{self.pyalextype} |> adding {len(orcids)} orcids to querylist')
+
         for orcid in orcids:
             batch.append(orcid)
             if len(batch) == 50:
@@ -296,6 +313,7 @@ class OpenAlexQuery():
                 batch = []
         orcid_batch = "|".join(batch)
         self.querylist.append(self.pyalexmapping[self.pyalextype]().filter(orcid=orcid_batch))
+        cons.print(f'{self.pyalextype} |> added {len(self.querylist)} queries')
 
     async def run(self) -> list:
         cons.print(f'running {self.pyalextype}')
@@ -348,15 +366,15 @@ class OpenAlexQuery():
                                     self.results.append(item['id'])
         else:
             if not self.querylist:
-                cons.print(f'adding default queries for {self.pyalextype}')
+                cons.print(f'{self.pyalextype} |> adding default queries')
                 await self.add_to_querylist()
             if not self.querylist:
-                cons.print(f'no queries to run for {self.pyalextype}.')
+                cons.print(f'{self.pyalextype} |> no queries to run .')
                 return {'results': self.results, 'type': self.pyalextype}
-            cons.print(f'running queries for {self.pyalextype}')
+            cons.print(f'{self.pyalextype} |> running queries ')
             for i, query in enumerate(self.querylist):
                 querynum = i + 1
-                cons.print(f'running query {querynum} of {len(self.querylist)} of {self.pyalextype}')
+                cons.print(f'{self.pyalextype} |> running query {querynum} of {len(self.querylist)}')
                 try:
                     for item in chain(*query.paginate(per_page=100, n_max=None)):
                         updt = await self.collection.find_one_and_update({"id": item['id']}, {'$set': item},
@@ -364,8 +382,9 @@ class OpenAlexQuery():
                         if updt:
                             self.results.append(item['id'])
                 except Exception as e:
-                    cons.print(f'error {e} while retrieving {self.pyalextype}')
+                    cons.print(f'{self.pyalextype} |> error while retrieving results for query {querynum} of {len(self.querylist)}. Error: \n {e}. Query: \n {query.__dict__}')
+                    cons.input('press key to continue')
                     continue
-        cons.print(f'finished {self.pyalextype}, added/updated {len(self.results)} {self.pyalextype}')
+        cons.print(f'{self.pyalextype} |> finished -- added/updated {len(self.results)} items')
 
         return {'results': self.results, 'type': self.pyalextype}

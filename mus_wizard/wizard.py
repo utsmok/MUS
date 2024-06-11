@@ -259,12 +259,14 @@ class Wizard:
 def main():
     include = {'all': True}
     
-    asyncio.run(Wizard().run(include))
+    #asyncio.run(Wizard().run(include))
 
-    #asyncio.run(WorkMatcher().run())
+    #results = asyncio.run(AuthorMatcher().run())
+    #print(results)
     # asyncio.run(OAI_PMH().run())
 
-    #asyncio.run(CreateSQL().add_all())
+    results = asyncio.run(CreateSQL().add_all())
+    print(results)
 
 
 # ! MongoDB find calls:

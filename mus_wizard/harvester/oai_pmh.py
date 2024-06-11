@@ -793,7 +793,7 @@ class OAI_PMH(GenericAPI):
         itemset = item[1]
         url = f'{self.api_settings["url"]}?verb=ListRecords&metadataPrefix={scheme}&set={itemset}'
         collectionname = f'{itemset}'
-        collection: motor.motor_asyncio.AsyncIOMotorCollection = self.motorclient.collectionname
+        collection: motor.motor_asyncio.AsyncIOMotorCollection = self.motorclient[collectionname]
         cons.print(f'processing {type} records from {url}, storing in collection {itemset}')
         start_time = time.time()
         results = await self.get_results(type, url, collection)

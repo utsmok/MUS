@@ -1,11 +1,27 @@
 from datetime import date, datetime
 
 from rich.console import Console
-
 from mus_wizard.database.mongo_client import MusMongoClient
+import re
+import urllib.parse
 
 cons = Console()
 
+async def remove_invalid_dois(dois: list[str]) -> list[str]:
+    '''
+    removes invalid dois from a list of dois
+    '''
+
+    async def clean_doi(doi: str) -> str:
+        doi = urllib.parse.unquote(doi.lower()).strip(u'\u200b').strip('_').split(' ')[0]
+        if doi.endswith('.') or doi.endswith(',') or doi.endswith('-'):
+            doi = doi[:-1]
+        return doi
+    pattern = re.compile(r'^[A-Za-z0-9-._;():/]+$')
+    cleaned_dois = [await clean_doi(doi) for doi in dois]
+    valid_dois = [await normalize_doi(doi) for doi in cleaned_dois if pattern.match(doi)]
+    cons.print(f'found {len(valid_dois)} valid dois out of {len(dois)}')
+    return valid_dois
 
 async def normalize_doi(doi) -> str | None:
     '''

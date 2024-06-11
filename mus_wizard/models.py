@@ -448,7 +448,7 @@ class Author(MusModel):
     i10_index = models.IntegerField(null=True)
 
     # from repo/ris/pure of institute
-    pure_uuid = models.UUIDField(default=None, null=True, unique=True)
+    pure_uuid = models.UUIDField(default=None, null=True)
     pure_id = models.IntegerField(null=True)
     pure_last_modified = models.DateTimeField(null=True)
     author_links = models.JSONField(encoder=DjangoJSONEncoder, null=True)
