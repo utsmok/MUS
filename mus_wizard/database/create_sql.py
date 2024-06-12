@@ -50,58 +50,62 @@ class CreateSQL:
         then we add authors and affiliations
         we finish with works, grants, authorships, locations, and abstracts
         '''
-
-        print('adding topics')
-        topics = self.ImportTopic(self.motorclient.topics_openalex)
-        topic_results = await topics.import_all()
-        print(topic_results)
-        await self.load_topics()
-        topic_siblings_results = await topics.add_siblings(self.all_topics, self.topics_dict)
-        print(topic_siblings_results)
-        print('adding groups')
-        groups = self.ImportGroup(self.motorclient.openaire_cris_orgs)
-        group_results = await groups.import_all()
-        print(group_results)
-        group_part_of_results = await groups.add_part_of()
-        print(group_part_of_results)
-        print('adding funders')
-        funders = self.ImportFunder(self.motorclient.funders_openalex)
-        funder_results = await funders.import_all()
-        print(funder_results)
-        print('adding sources')
-        sources = self.ImportSource(self.motorclient.sources_openalex, detailed_topics=False, topics_dict=self.topics_dict)
-        source_results = await sources.import_all()
-        print(source_results)
-        print('adding publishers')
-        publishers = self.ImportPublisher(self.motorclient.publishers_openalex)
-        publisher_results = await publishers.import_all()
-        print(publisher_results)
-        print('adding organizations')
-        organizations = self.ImportOrganization(self.motorclient.institutions_openalex, detailed_topics=False, topics_dict=self.topics_dict)
-        organization_results = await organizations.import_all()
-        print(organization_results)
-        print('adding authors')
-        more_author_data = {
-            'repo_data':{
-                'collection': self.motorclient.openaire_cris_persons,
-                'unique_id_field': 'id',
-                'unique_id_value': 'id',
-                'projection': {}
-            },
-            'pure_data':{
-                'collection': self.motorclient.authors_pure,
-                'unique_id_field': 'id',
-                'unique_id_value': 'id',
-                'projection': {}
+        if False:
+            print('adding topics')
+            topics = self.ImportTopic(self.motorclient.topics_openalex)
+            topic_results = await topics.import_all()
+            print(topic_results)
+            topic_siblings_results = await topics.add_siblings(self.all_topics, self.topics_dict)
+            print(topic_siblings_results)
+            print('adding groups')
+            groups = self.ImportGroup(self.motorclient.openaire_cris_orgs)
+            group_results = await groups.import_all()
+            print(group_results)
+            group_part_of_results = await groups.add_part_of()
+            print(group_part_of_results)
+            print('adding funders')
+            funders = self.ImportFunder(self.motorclient.funders_openalex)
+            funder_results = await funders.import_all()
+            print(funder_results)
+            print('adding sources')
+            sources = self.ImportSource(self.motorclient.sources_openalex, detailed_topics=False, topics_dict=self.topics_dict)
+            source_results = await sources.import_all()
+            print(source_results)
+            print('adding publishers')
+            publishers = self.ImportPublisher(self.motorclient.publishers_openalex)
+            publisher_results = await publishers.import_all()
+            print(publisher_results)
+            print('adding organizations')
+            organizations = self.ImportOrganization(self.motorclient.institutions_openalex, detailed_topics=False, topics_dict=self.topics_dict)
+            organization_results = await organizations.import_all()
+            print(organization_results)
+            print('adding authors')
+            more_author_data = {
+                'repo_data':{
+                    'collection': self.motorclient.openaire_cris_persons,
+                    'unique_id_field': 'id',
+                    'unique_id_value': 'id',
+                    'projection': {}
+                },
+                'pure_data':{
+                    'collection': self.motorclient.authors_pure,
+                    'unique_id_field': 'id',
+                    'unique_id_value': 'id',
+                    'projection': {}
+                }
             }
-        }
-        authors = self.ImportAuthor(self.motorclient.authors_openalex, topics_dict=self.topics_dict, more_data=more_author_data)
-        author_results = await authors.import_all()
-        print(author_results)
-        #print('adding works')
-        #works = self.ImportWork(self.motorclient.works_openalex, topics_dict=self.topics_dict)
-        #work_results = await works.import_all()
-        #print(work_results)
+            authors = self.ImportAuthor(self.motorclient.authors_openalex, topics_dict=self.topics_dict, more_data=more_author_data)
+            author_results = await authors.import_all()
+            print(author_results)
+        else:
+            print('adding works')
+            await self.load_topics()
+
+            works = self.ImportWork(self.motorclient.works_openalex, topics_dict=self.topics_dict)
+            #work_results = await works.import_all()
+            #print(work_results)
+            print('adding works m2m relations')
+            await works.add_m2m_relations([w async for w in Work.objects.all()])
 
 
     class ImportTopic(GenericSQLImport):
@@ -685,7 +689,10 @@ class CreateSQL:
         def __init__(self, collection: motor.motor_asyncio.AsyncIOMotorCollection, topics_dict: dict[str:Topic] = None) -> None:
             super().__init__(collection, Work)
             self.topics_dict: dict[str:Topic] = topics_dict
-
+            self.missing_orgs: list[str] = []
+            self.missing_funders: list[str] = []
+            self.missing_authors: list[str] = []
+            self.missing_sources: list[str] = []
         async def add_item(self, raw_item: dict) -> None:
             # TODO: itemtype classification
             # NOTE: Openalex: 'We added four new work types, reclassifying existing works: “preprint” (5.7M), “libguides” (1.8M), “review” (820k), and “supplementary-materials” (50k).'
@@ -772,50 +779,71 @@ class CreateSQL:
                 work_dict['found_in_institute_repo'] = True
             '''
             work = Work(**work_dict)
+
             self.raw_items.append(work)
 
-        async def add_m2m_relations(self) -> None:
-            for work in self.new_items:
+        async def add_m2m_relations(self, works: list[Work]) -> None:
+            if not works:
+                works = self.new_items
+
+            self.results['added_topics'] = 0
+            self.results['added_primary_topics'] = 0
+            self.results['added_m2m_relations'] = 0
+            self.results['added_authorships'] = 0
+            self.results['added_grants'] = 0
+            self.results['added_locations'] = 0
+            self.results['added_abstracts'] = 0
+            print(f'adding m2m relations for {len(works)} works')
+            for work in works:
                 self.performance.start_call(self.add_m2m_relations)
-                raw_item = self.collection.find({'id': work.openalex_id})
+                raw_item = await self.collection.find_one({'id': work.openalex_id})
+                if not raw_item:
+                    continue
 
-        
+                if raw_item.get('abstract_inverted_index'):
+                    self.results['added_abstracts'] += 1
+                    abstract = await self.add_abstract(raw_item.get('abstract'))
+                    if abstract:
+                        work.abstract = abstract
+                        self.results['added_m2m_relations'] += 1
+                        await work.asave()
 
-            if raw_item.get('abstract_inverted_index'):
-                abstract = await self.add_abstract(raw_item.get('abstract'))
-                if abstract:
-                    work.abstract = abstract
-                    self.results['added_m2m_relations'] += 1
-                    await work.asave()
+                if raw_item.get('topics'):
+                    self.results['added_topics'] += 1
+                    topiclist = []
+                    for topic_raw in raw_item.get('topics'):
+                        topic = self.topics_dict.get(topic_raw.get('id'))
+                        if not topic:
+                            continue
+                        topiclist.append(topic)
+                        self.results['added_m2m_relations'] += 1
 
-            if raw_item.get('topics'):
-                topiclist = []
-                for topic_raw in raw_item.get('topics'):
-                    topic = self.topics_dict.get(topic_raw.get('id'))
-                    if not topic:
-                        continue
-                    topiclist.append(topic)
-                    self.results['added_m2m_relations'] += 1
+                    await work.topics.aset(topiclist)
 
-                await work.topics.aset(topiclist)
+                if raw_item.get('primary_topic'):
+                    self.results['added_primary_topics'] += 1
+                    topic = self.topics_dict.get(raw_item.get('primary_topic').get('id'))
+                    if topic:
+                        work.primary_topic = topic
+                        self.results['added_m2m_relations'] += 1
+                        await work.asave()
 
-            if raw_item.get('primary_topic'):
-                topic = self.topics_dict.get(raw_item.get('primary_topic').get('id'))
-                if topic:
-                    work.primary_topic = topic
-                    self.results['added_m2m_relations'] += 1
-                    await work.asave()
+                await self.add_authorships(raw_item.get('authorships'), work)
 
-            await self.add_authorships(raw_item.get('authorships'), work)
+                if raw_item.get('grants'):
+                    await self.add_grants(raw_item.get('grants'), work)
+                    self.results['added_grants'] += 1
+                if raw_item.get('locations'):
+                    best_oa_location = raw_item.get('best_oa_location')
+                    primary_location = raw_item.get('primary_location')
+                    work = await self.add_locations(raw_item.get('locations'), work, best_oa_location, primary_location)
 
-            if raw_item.get('grants'):
-                await self.add_grants(raw_item.get('grants'), work)
-            if raw_item.get('locations'):
-                best_oa_location = raw_item.get('best_oa_location')
-                primary_location = raw_item.get('primary_location')
-                work = await self.add_locations(raw_item.get('locations'), work, best_oa_location, primary_location)
+                self.performance.end_call()
+            self.results['elapsed_time'] = self.performance.elapsed_time()
+            self.results['average_time_per_call'] = self.performance.time_per_call()
+            self.results['total_measured_duration'] = self.performance.total_measured_duration()
 
-            self.performance.end_call()
+            print(self.results)
 
 
         async def add_locations(self, locations_raw: dict, work: Work, best_oa_location: dict | None,
@@ -853,6 +881,7 @@ class CreateSQL:
                         location_dict['is_primary'] = True
 
                 location = Location(**location_dict)
+                self.results['added_locations'] += 1
                 await location.asave()
                 return location
 
@@ -909,7 +938,7 @@ class CreateSQL:
                         institution = await Organization.objects.filter(openalex_id=inst.get('id')).afirst()
                         if institution:
                             await authorship.affiliations.aadd(institution)
-
+                self.results['added_authorships'] += 1
                 authorships.append(authorship)
             return authorships
 

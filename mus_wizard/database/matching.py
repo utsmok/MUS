@@ -14,7 +14,6 @@ from typing import Self
 from rich.console import Console
 from rich.table import Table
 from dataclasses import dataclass
-from pyinstrument import Profiler
 
 console = Console()
 class AuthorMatcher():
@@ -79,8 +78,9 @@ class AuthorMatcher():
 
     async def match_pids(self):
         await self.match_orcids()
-        await self.match_scopusids()
-        await self.match_isnis()
+        print('skipping scopusid & isni matching')
+        #await self.match_scopusids()
+        #await self.match_isnis()
         
     async def match_orcids(self):
         if not self.orcids:
@@ -156,17 +156,11 @@ class AuthorMatcher():
 
         print(f'{self.results["name_matches"]} names matched')
     async def run(self):
-        profiler = Profiler()
-        profiler.start()
         print('running author matcher')
         await self.get_authors()
     
         await self.match_pids()
         #await self.match_names()
-        profiler.stop()
-        profiler.print()
-        with open(f'profiler_authormatcher.html', 'w') as f:
-            f.write(profiler.output_html())
         return self.results
 
 @dataclass
@@ -347,38 +341,50 @@ class WorkMatcher():
         
 
     async def run(self):
-        profiler = Profiler()
-        profiler.start()
         await self.get_works()
         print(f'got {len(self.worklist.works_as_list)} openalex works ready to match')
         await self.match_dois()
-        profiler.stop()
-        profiler.print()
-        with open(f'profiler_workmatcher.html', 'w') as f:
-            f.write(profiler.output_html())
         return self.results
 
     async def get_works(self):
-        async for work in self.motorclient.works_openalex.find({}, projection={'id': 1, 'doi': 1}):
-            try:
-                doi = await normalize_doi(work.get('doi')) if work.get('doi') else None
-            except ValueError as e:
-                print(f'{work.get("id")} has invalid DOI: {work.get("doi")} - got error: {e}')
+        async def process_works(data):
+            for work in data:
+                try:
+                    doi = await normalize_doi(work.get('doi')) if work.get('doi') else None
+                except ValueError as e:
+                    print(f'{work.get("id")} has invalid DOI: {work.get("doi")} - got error: {e}')
+                    doi = None
+                work = Work(id=work.get('id'), doi=doi)
+                self.worklist.add_work(work)
+        async def process_unmatched_works(data):
+            for pure_item in data:
                 doi = None
-            work = Work(id=work.get('id'), doi=doi)
-            self.worklist.add_work(work)
+                if pure_item.get('doi'):
+                    doi = await normalize_doi(pure_item['doi'])
+                work = Work(id=pure_item.get('id'), doi=doi, internal_repo_id=pure_item.get('internal_repository_id'))
+                self.unmatched_works.add_work(work)
+
+        data = []
+        batchlen = 1000
+        async for work in self.motorclient.works_openalex.find({}, projection={'id': 1, 'doi': 1}):
+            data.append(work)
+            if len(data) == batchlen:
+                await process_works(data)
+                data = []
+        await process_works(data)
+        data = []
+        async for pure_item in self.motorclient['openaire_cris_publications'].find({}, projection={'id': 1, 'doi': 1, 'internal_repository_id': 1}):
+            data.append(pure_item)
+            if len(data) == batchlen:
+                await process_unmatched_works(data)
+                data = []
+        await process_unmatched_works(data)
 
     async def match_dois(self):
-        num_total = await self.motorclient.openaire_cris_publications.estimated_document_count()
 
-        print(f'matching {num_total} pure items to {len(self.worklist.get_all())} openalex works.')
-        async for pure_item in self.motorclient['openaire_cris_publications'].find():
-            doi = None
-            if pure_item.get('doi'):
-                doi = await normalize_doi(pure_item['doi'])
-            work = Work(id=pure_item.get('id'), doi=doi, internal_repo_id=pure_item.get('internal_repository_id'))
-            self.unmatched_works.add_work(work)
 
+            
+            
         console.print(f'OpenAlex works: {len(self.worklist.get_all('doi').keys())} with dois | {len(self.worklist.get_all('id').keys())} with ids')
         console.print(f'Repository works: {len(self.unmatched_works.get_all('doi').keys())} with dois | {len(self.unmatched_works.get_all('id').keys())} with ids')
         self.matches = self.unmatched_works.match_multiple(self.worklist.get_all())

@@ -10,7 +10,6 @@ from rich import print
 
 from mus_wizard.constants import MONGOURL
 from mus_wizard.models import MusModel
-from pyinstrument import Profiler
 
 class GenericScraper:
     '''
@@ -53,14 +52,8 @@ class GenericScraper:
             self.scraper_settings[key] = value
 
     async def run(self) -> dict:
-        profiler = Profiler()
-        profiler.start()
         await self.make_itemlist()
         await self.get_item_results()
-        profiler.stop()
-        profiler.print()
-        with open(f'profiler_scraper_{self.collection.__name__}.html', 'w') as f:
-            f.write(profiler.output_html())
         return self.results
 
     async def make_itemlist(self) -> None:
@@ -152,18 +145,12 @@ class GenericAPI():
         convience method that runs the standard query and puts the results in the mongodb collection
         returns the 'self.results' dict
         '''
-        profiler = Profiler(async_mode='enabled')
-        profiler.start()
         # try:
         if not self.itemlist:
             await self.make_itemlist()
         await self.get_item_results()
         # except Exception as e:
         #    print(f'Error while getting items for {self.collectionname}: {e}')
-        profiler.stop()
-        profiler.print()
-        with open(f'profiler_harvester_{self.collectionname}.html', 'w') as f:
-            f.write(profiler.output_html())
         return self.results
 
     async def make_itemlist(self) -> None:
@@ -357,8 +344,6 @@ class GenericSQLImport():
         self.more_data: dict[str, dict] = more_data if more_data else {}
 
     async def import_all(self) -> dict:
-        profiler = Profiler()
-        profiler.start()
         
         models_in_db = self.model.objects.all().values_list(self.unique_id_field, flat=True)
         models_in_db = {model async for model in models_in_db}
@@ -385,7 +370,7 @@ class GenericSQLImport():
                 self.raw_items = []
 
         if self.raw_items:
-            self.new_items.append(await self.model.objects.abulk_create(self.raw_items))
+            self.new_items.extend(await self.model.objects.abulk_create(self.raw_items))
             self.raw_items = []
 
         print(len(self.new_items), self.model.__name__, "added to sql.")
@@ -395,10 +380,6 @@ class GenericSQLImport():
         self.results['elapsed_time'] = self.performance.elapsed_time()
         self.results['average_time_per_call'] = self.performance.time_per_call()
         self.results['total_measured_duration'] = self.performance.total_measured_duration()
-        profiler.stop()
-        profiler.print()
-        with open(f'profiler_sql_import_{self.model.__name__}.html', 'w') as f:
-            f.write(profiler.output_html())
         return self.results
 
     async def add_more_data(self, item: dict) -> None:

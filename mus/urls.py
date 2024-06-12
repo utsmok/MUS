@@ -24,9 +24,6 @@ urlpatterns = [
     path("", include("PureOpenAlex.urls")),
     path("admin/", admin.site.urls),
     path("accounts/", include("allauth.urls")),
-    path("data-browser/", include("data_browser.urls")),
     path("api/", api.urls),
-    path('explorer/', include('explorer.urls')),
-    path('django_query_profiler/', include('django_query_profiler.client.urls')),
     path('iommi/', include('mus_wizard.frontend.iommi_views')),
 ]

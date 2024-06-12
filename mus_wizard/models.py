@@ -635,9 +635,9 @@ class Work(MusModel):
     referenced_works_count = models.IntegerField(null=True)
 
     doi = models.CharField(null=True)
-    title = models.CharField()
-    publication_year = models.IntegerField()
-    publication_date = models.DateField()
+    title = models.CharField(null=True)
+    publication_year = models.IntegerField(default=None, null=True)
+    publication_date = models.DateField(default=None, null=True)
     pmid = models.CharField(null=True)
     pmcid = models.CharField(null=True)
     isbn = models.CharField(null=True)
