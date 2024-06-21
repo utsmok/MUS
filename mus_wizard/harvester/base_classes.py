@@ -96,7 +96,7 @@ class GenericAPI():
 
     httpxclient: httpx.AsyncClient = httpx.AsyncClient()
 
-    def __init__(self, collection: str, item_id_type: str, itemlist: list | None) -> None:
+    def __init__(self, collection: str, item_id_type: str, itemlist: list | None, motorclient = None) -> None:
         '''
         collection: the name of the mongodb collection to store results in
         item_id_type: the type of unique id this item uses (e.g. 'orcid' 'doi' 'pmid')
@@ -108,8 +108,11 @@ class GenericAPI():
         else:
             self.itemlist: list = []
         self.NAMESPACES: dict = {}
-        self.motorclient: motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(
-            MONGOURL).metadata_unification_system
+        if not motorclient:
+            self.motorclient: motor.motor_asyncio.AsyncIOMotorDatabase = motor.motor_asyncio.AsyncIOMotorClient(
+                MONGOURL).metadata_unification_system
+        else:
+            self.motorclient = motorclient
         if collection:
             self.collection: motor.motor_asyncio.AsyncIOMotorCollection = self.motorclient[collection] # the collection to store results in
             self.collectionname: str = collection
@@ -257,7 +260,7 @@ class Performance:
         perf.total_counted_duration()
         perf.elapsed_time()
         perf.time_per_call()
-    
+
     '''
 
     calls: list[FunctionCallsStats]
@@ -344,7 +347,7 @@ class GenericSQLImport():
         self.more_data: dict[str, dict] = more_data if more_data else {}
 
     async def import_all(self) -> dict:
-        
+
         models_in_db = self.model.objects.all().values_list(self.unique_id_field, flat=True)
         models_in_db = {model async for model in models_in_db}
         async for item in self.collection.find({}):
@@ -392,13 +395,13 @@ class GenericSQLImport():
             'unique_id_value': str, # the value of the unique id in the original data to find/match the item in this collection
             'projection': dict, # the projection to use for the collection
         '''
-        
+
         for collection_name, collection_details in self.more_data.items():
             collection: motor.motor_asyncio.AsyncIOMotorCollection = collection_details.get('collection')
             unique_id_field: str = collection_details.get('unique_id_field')
             unique_id_value: str = collection_details.get('unique_id_value')
             projection: dict = collection_details.get('projection')
-            
+
             if any([collection is None, not unique_id_field,not unique_id_value]):
                 continue
             if not projection:

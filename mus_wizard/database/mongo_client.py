@@ -11,10 +11,9 @@ class MusMongoClient:
     wraps search and update functions
     '''
 
-    def __init__(self):
+    def __init__(self, database='metadata_unification_system'):
         self.mongoclient: motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(
-            MONGOURL).metadata_unification_system
-
+            MONGOURL)[database]
         self.works_openalex: motor.motor_asyncio.AsyncIOMotorCollection = self.mongoclient['works_openalex']
         self.authors_openalex: motor.motor_asyncio.AsyncIOMotorCollection = self.mongoclient['authors_openalex']
         self.sources_openalex: motor.motor_asyncio.AsyncIOMotorCollection = self.mongoclient['sources_openalex']
@@ -27,7 +26,7 @@ class MusMongoClient:
             'non_instution_authors_openalex']
 
         self.authors_pure: motor.motor_asyncio.AsyncIOMotorCollection = self.mongoclient['authors_pure']
-        self.openaire_cris_orgs: motor.motor_asyncio.AsyncIOMotorCollection = self.mongoclient['openaire_cris_orgs']
+        self.openaire_cris_orgunits: motor.motor_asyncio.AsyncIOMotorCollection = self.mongoclient['openaire_cris_orgunits']
         self.openaire_cris_persons: motor.motor_asyncio.AsyncIOMotorCollection = self.mongoclient[
             'openaire_cris_persons']
         self.openaire_cris_publications: motor.motor_asyncio.AsyncIOMotorCollection = self.mongoclient[
@@ -45,6 +44,7 @@ class MusMongoClient:
 
         self.deals_journalbrowser: motor.motor_asyncio.AsyncIOMotorCollection = self.mongoclient['deals_journalbrowser']
         self.employees_peoplepage: motor.motor_asyncio.AsyncIOMotorCollection = self.mongoclient['employees_peoplepage']
+
 
     async def add_indexes(self):
         # works_openalex:

@@ -133,11 +133,11 @@ class OAI_PMH(GenericAPI):
         'identify': 'Identify',
     }
 
-    def __init__(self, baseurl: str = None) -> None:
+    def __init__(self, baseurl: str = None, motorclient = None) -> None:
         collection = ''
         item_id_type = 'internal_repository_id'
         itemlist = None
-        super().__init__(collection, item_id_type, itemlist)
+        super().__init__(collection, item_id_type, itemlist, motorclient)
         if not baseurl:
             baseurl = 'https://ris.utwente.nl/ws/oai'
 
@@ -770,12 +770,12 @@ class OAI_PMH(GenericAPI):
     async def get_item_results(self):
         all_itemsets = {
             'datasets': 'datasets:all',
-            'products':'openaire_cris_products', 
-            'patents':'openaire_cris_patents', 
-            'projects':'openaire_cris_projects', 
+            'products':'openaire_cris_products',
+            'patents':'openaire_cris_patents',
+            'projects':'openaire_cris_projects',
             'funding':'openaire_cris_funding',
-            #'works': 'openaire_cris_publications', 
-            'persons': 'openaire_cris_persons', 
+            'works': 'openaire_cris_publications',
+            'persons': 'openaire_cris_persons',
             'orgs' : 'openaire_cris_orgunits',
             }
 
@@ -793,7 +793,10 @@ class OAI_PMH(GenericAPI):
         itemset = item[1]
         url = f'{self.api_settings["url"]}?verb=ListRecords&metadataPrefix={scheme}&set={itemset}'
         collectionname = f'{itemset}'
-        collection: motor.motor_asyncio.AsyncIOMotorCollection = self.motorclient[collectionname]
+        try:
+            collection: motor.motor_asyncio.AsyncIOMotorCollection = self.motorclient[collectionname]
+        except Exception as e:
+            collection: motor.motor_asyncio.AsyncIOMotorCollection = self.motorclient.mongoclient[collectionname]
         cons.print(f'processing {type} records from {url}, storing in collection {itemset}')
         start_time = time.time()
         results = await self.get_results(type, url, collection)

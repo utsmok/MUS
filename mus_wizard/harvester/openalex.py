@@ -32,7 +32,7 @@ class OpenAlexAPI():
 
     '''
 
-    def __init__(self, years: list[int] = None, openalex_requests: dict = None, ):
+    def __init__(self, years: list[int] = None, openalex_requests: dict = None, mongoclient = None):
         if openalex_requests:
             self.openalex_requests = openalex_requests
         else:
@@ -58,7 +58,10 @@ class OpenAlexAPI():
             self.years = [2022, 2023, 2024, 2025]
         else:
             self.years = years
-        self.mongoclient = MusMongoClient()
+        if not mongoclient:
+            self.mongoclient = MusMongoClient()
+        else:
+            self.mongoclient = mongoclient
         self.init_pyalex()
 
     def init_pyalex(self):
@@ -295,10 +298,10 @@ class OpenAlexQuery():
                     self.querylist.append(self.pyalexmapping[self.pyalextype]().filter(doi=itemids))
                 # add other id types here
                 batch = []
-        
+
         cons.print(f'{self.pyalextype} |> added {len(self.querylist)} queries')
 
-    def add_query_by_orcid(self, orcids: list[str]) -> None:
+    def add_query_by_orcid(self, orcids: list[str], single=False) -> None:
         '''
         from a list of orcids, create queries for this instance of OpenAlexQuery
         '''
@@ -306,15 +309,18 @@ class OpenAlexQuery():
             raise Exception('add_query_by_orcid only works for authors')
         batch = []
         cons.print(f'{self.pyalextype} |> adding {len(orcids)} orcids to querylist')
-
-        for orcid in orcids:
-            batch.append(orcid)
-            if len(batch) == 50:
-                orcid_batch = "|".join(batch)
-                self.querylist.append(self.pyalexmapping[self.pyalextype]().filter(orcid=orcid_batch))
-                batch = []
-        orcid_batch = "|".join(batch)
-        self.querylist.append(self.pyalexmapping[self.pyalextype]().filter(orcid=orcid_batch))
+        if single:
+            for orcid in orcids:
+                self.querylist.append(self.pyalexmapping[self.pyalextype]().filter(orcid=orcid))
+        else:
+            for orcid in orcids:
+                batch.append(orcid)
+                if len(batch) == 50:
+                    orcid_batch = "|".join(batch)
+                    self.querylist.append(self.pyalexmapping[self.pyalextype]().filter(orcid=orcid_batch))
+                    batch = []
+            orcid_batch = "|".join(batch)
+            self.querylist.append(self.pyalexmapping[self.pyalextype]().filter(orcid=orcid_batch))
         cons.print(f'{self.pyalextype} |> added {len(self.querylist)} queries')
 
     async def run(self) -> list:
