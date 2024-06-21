@@ -30,6 +30,8 @@ class MusMongoClient:
         self.openaire_cris_orgs: motor.motor_asyncio.AsyncIOMotorCollection = self.mongoclient['openaire_cris_orgs']
         self.openaire_cris_persons: motor.motor_asyncio.AsyncIOMotorCollection = self.mongoclient[
             'openaire_cris_persons']
+        self.openaire_cris_publications: motor.motor_asyncio.AsyncIOMotorCollection = self.mongoclient[
+            'openaire_cris_publications']
         self.items_pure_oaipmh: motor.motor_asyncio.AsyncIOMotorCollection = self.mongoclient['items_pure_oaipmh']
         self.items_pure_reports: motor.motor_asyncio.AsyncIOMotorCollection = self.mongoclient['items_pure_reports']
         self.items_datacite: motor.motor_asyncio.AsyncIOMotorCollection = self.mongoclient['items_datacite']

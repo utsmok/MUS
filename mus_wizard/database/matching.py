@@ -81,7 +81,7 @@ class AuthorMatcher():
         print('skipping scopusid & isni matching')
         #await self.match_scopusids()
         #await self.match_isnis()
-        
+
     async def match_orcids(self):
         if not self.orcids:
             print('no orcids to match')
@@ -126,12 +126,12 @@ class AuthorMatcher():
             print('no isnis to match')
             return None
         print('openalex does not have isnis to match.')
-        
+
     async def match_names(self):
         if not self.names:
             print('no names to match')
             return None
-        
+
         print(f'matching {len(self.names)} names')
         reverse_names_dict = {v:k for k,v in self.names.items()}
         to_list = [a['display_name'] async for a in
@@ -158,7 +158,7 @@ class AuthorMatcher():
     async def run(self):
         print('running author matcher')
         await self.get_authors()
-    
+
         await self.match_pids()
         #await self.match_names()
         return self.results
@@ -166,7 +166,7 @@ class AuthorMatcher():
 @dataclass
 class Work:
     '''
-    A class to store a Work object for matching works 
+    A class to store a Work object for matching works
     -- not to be confused with the django MUS model Work.
 
     Will return an equality if any of the id, doi, or isbn fields are equal.
@@ -193,7 +193,7 @@ class Work:
             if self.internal_repo_id == value.internal_repo_id:
                 return True
         return False
-    
+
     def is_match(self) -> Self:
         self.has_match = True
         return self
@@ -220,7 +220,7 @@ class WorkList:
     def __str__(self) -> str:
         self.update()
         return f'WorkList with:\n {len(self.works_by_id)} works by id\n {len(self.works_by_doi)} works by doi\n {len(self.works_as_list)} works as list\n {len(self.unmatched_works)} unmatched works\n {len(self.works_by_internal_repo_id)} works by internal repo id\n {len(self.matched_works)} matched works'
-    
+
     def get_all(self, param: str | None = None) -> list[Work] | dict[str, Work]:
         '''
         Returns a list of all works in the list.
@@ -238,14 +238,14 @@ class WorkList:
             if param == 'matched':
                 return self.matched_works
         return self.works_as_list
-    
+
     def add_work(self, work: Work) -> None:
         '''
         Parameters:
             work (Work): A Work object to add to this WorkList.
         '''
         self.works_as_list.append(work)
-    
+
     def add_works(self, works: list[Work]) -> None:
         '''
         Parameters:
@@ -271,7 +271,7 @@ class WorkList:
         self.works_by_id = {work.id: work for work in self.works_as_list if work.id}
         self.works_by_doi = {work.doi: work for work in self.works_as_list if work.doi}
         self.works_by_internal_repo_id = {work.internal_repo_id: work for work in self.works_as_list if work.internal_repo_id}
-        
+
     def get_unmatched_works(self) -> list[Work]:
         '''
         Returns a list of all works in the list that have not been matched yet.
@@ -306,7 +306,7 @@ class WorkList:
             return val, param
         else:
             return val
-        
+
     def match_multiple(self, works: list[Work]) -> dict[str, dict[str,Work]] | dict:
         '''
         Parameters:
@@ -329,8 +329,8 @@ class WorkMatcher():
     # OpenAlex works are already linked to the other sources (datacite, crossref, openaire)
     # start with matching DOIs and ISBNs
     # then maybe by using other data if much is missing
-    
-    motorclient: motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(
+
+    motorclient: motor.motor_asyncio.AsyncIOMotorDatabase = motor.motor_asyncio.AsyncIOMotorClient(
         MONGOURL).metadata_unification_system
 
     def __init__(self):
@@ -338,7 +338,7 @@ class WorkMatcher():
         self.missing_dois : WorkList | None = None
         self.worklist : WorkList = WorkList()
         self.unmatched_works : WorkList= WorkList()
-        
+
 
     async def run(self):
         await self.get_works()
@@ -382,21 +382,18 @@ class WorkMatcher():
 
     async def match_dois(self):
 
-
-            
-            
         console.print(f'OpenAlex works: {len(self.worklist.get_all('doi').keys())} with dois | {len(self.worklist.get_all('id').keys())} with ids')
         console.print(f'Repository works: {len(self.unmatched_works.get_all('doi').keys())} with dois | {len(self.unmatched_works.get_all('id').keys())} with ids')
         self.matches = self.unmatched_works.match_multiple(self.worklist.get_all())
         print(f'found {len(self.matches.keys())} matches.')
-        '''for pid, work_dict in self.matches.items():
+        for pid, work_dict in self.matches.items():
             try:
                 found_work = work_dict['found_work']
                 search_work = work_dict['search_param']
-                await self.motorclient.openaire_cris_publications.update_one({'internal_repository_id': search_work.internal_repo_id}, {'$set': {'id': found_work.id}})
+                result = await self.motorclient.openaire_cris_publications.update_one({'internal_repository_id': found_work.internal_repo_id}, {'$set': {'id': search_work.id}})
             except Exception as e:
                 print(f'Error adding match:\n     repo item {search_work} <|> found work {found_work}:\n        {e}')
-        '''
+
         print('unmatched_works contents before filtering out matches & non-doi works:')
         print(self.unmatched_works)
         self.unmatched_works.remove_works_without_doi()
@@ -419,7 +416,7 @@ class WorkMatcher():
             console.print(f'full results: {results}')
             if len(results["results"])>0:
                 console.print('Advice: re-run WorkMatcher().match_dois() for possible new matches.')
-                
+
         else:
             console.print('no missing dois!')
 

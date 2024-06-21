@@ -102,7 +102,7 @@ class Wizard:
                     openalex = None
                 if 'pure' in include or 'all' in include:
                     cerif = tg.create_task(OAI_PMH().run())
-                
+
                 add_indexes = tg.create_task(musmongoclient.add_indexes())
 
             if openalex:
@@ -110,9 +110,9 @@ class Wizard:
                     full_results[result['type']] = len(result['results'])
             else:
                 full_results['openalex'] = 0
-            
+
             full_results['cerif'] = cerif.result()['total']
-            
+
 
             stats = Table(title='Retrieved items', title_style='dark_violet', show_header=True)
             stats.add_column('Source', style='cyan')
@@ -175,7 +175,7 @@ class Wizard:
                         for doi in dois.values():
                             if doi not in found_items[col]:
                                 search_dois[col].add(doi.replace('https://doi.org/',''))
-                        
+
                 apilists.add_row('DataCite', 'works openalex', 'doi', str(len(search_dois['items_datacite'])))
                 apilists.add_row('OpenAIRE', 'works openalex', 'doi', str(len(search_dois['items_openaire'])))
                 apilists.add_row('Crossref', 'works openalex', 'doi', str(len(search_dois['items_crossref'])))
@@ -267,14 +267,14 @@ class Wizard:
 
 def main():
     include = {'all': True, 'skip_one': True}
-    
+
     #asyncio.run(Wizard().run(include))
 
-    #results = asyncio.run(AuthorMatcher().run())
+    results = asyncio.run(WorkMatcher().run())
     #print(results)
     # asyncio.run(OAI_PMH().run())
 
-    results = asyncio.run(CreateSQL().add_all())
+    #results = asyncio.run(CreateSQL().add_all())
     print(results)
 
 
