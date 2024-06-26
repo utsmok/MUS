@@ -325,6 +325,9 @@ class OpenAlexQuery():
 
     async def run(self) -> list:
         cons.print(f'running {self.pyalextype}')
+        ids = []
+        noneresults = 0
+
         if self.pyalextype == 'works' and not self.querylist:
             cons.print(f'Getting works for {self.years}')
             for year in self.years:
@@ -367,11 +370,14 @@ class OpenAlexQuery():
                             break
                     if json_r.get('results'):
                         for item in json_r['results']:
+                            ids.append(item['id'])
                             updt = await self.collection.find_one_and_update({"id": item['id']}, {'$set': item},
                                                                              upsert=True)
                             if updt:
                                 if updt['updated_date'] != item['updated_date']:
                                     self.results.append(item['id'])
+                            if not updt: 
+                                res = await self.collection.insert_one(item)
         else:
             if not self.querylist:
                 cons.print(f'{self.pyalextype} |> adding default queries')
@@ -385,14 +391,18 @@ class OpenAlexQuery():
                 cons.print(f'{self.pyalextype} |> running query {querynum} of {len(self.querylist)}')
                 try:
                     for item in chain(*query.paginate(per_page=100, n_max=None)):
+                        ids.append(item['id'])
                         updt = await self.collection.find_one_and_update({"id": item['id']}, {'$set': item},
                                                                          upsert=True)
                         if updt:
                             self.results.append(item['id'])
+                        if not updt: 
+                            res = await self.collection.insert_one(item)
+                            
                 except Exception as e:
                     cons.print(f'{self.pyalextype} |> error while retrieving results for query {querynum} of {len(self.querylist)}. Error: \n {e}. Query: \n {query.__dict__}')
                     cons.input('press key to continue')
                     continue
-        cons.print(f'{self.pyalextype} |> finished -- added/updated {len(self.results)} items')
+        cons.print(f'{self.pyalextype} |> finished -- retrieved {len(ids)} items -- added/updated {len(self.results)} items -- got {noneresults} none-results')
 
         return {'results': self.results, 'type': self.pyalextype}
