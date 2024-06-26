@@ -168,3 +168,32 @@ class MusMongoClient:
             IndexModel('identifier'),
             IndexModel('identifier.type'),
         ])
+
+
+        await self.openaire_cris_orgunits.create_indexes([
+            IndexModel('internal_repository_id'),
+            IndexModel('id'),
+            IndexModel('name'),
+            IndexModel('acronym'),
+            IndexModel('type'),
+        ])
+
+        await self.openaire_cris_persons.create_indexes([
+            IndexModel('internal_repository_id'),
+            IndexModel('id'),
+            IndexModel('first_names'),
+            IndexModel('family_names'),
+            IndexModel('orcid'),
+            IndexModel('scopus_id'),
+            IndexModel('affiliations'),
+        ])
+
+        await self.openaire_cris_publications.create_indexes([
+            IndexModel('internal_repository_id'),
+            IndexModel('id'),
+            IndexModel('doi'),
+            IndexModel('title'),
+            IndexModel('publication_date'),
+            IndexModel('authors'),
+        ])
+

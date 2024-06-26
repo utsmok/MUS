@@ -6,6 +6,9 @@ static/author_avatars
 
 # specific:
 compose.yaml
+
+.streamlit/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
