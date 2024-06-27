@@ -9,6 +9,7 @@ from mus_wizard.ut_publish_read import HarvestData
 from mus_wizard.utwente.pure_report_import import PureReport
 import asyncio
 
-PureReport().run()
+asyncio.run(HarvestData().run())
+#PureReport().run()
 
 

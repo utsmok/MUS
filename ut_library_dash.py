@@ -9,7 +9,7 @@ import xlsxwriter
 from datetime import datetime
 from collections import defaultdict
 
-MONGOURL = 'mongodb://smops:bazending@192.168.2.153:27017/'
+MONGOURL = 'mongodb://smops:bazending@localhost:27017/'
 
 st.set_page_config(page_title='UT Publish & Read overview',
                     page_icon=':books:',
@@ -71,7 +71,10 @@ def get_stats(collectionname: str, selected_itemtypes = ['journal-article'], sel
     itemtypes = ['journal-article', 'book-chapter', 'book', 'conference-proceedings', 'other']
     oa_types = ['gold', 'hybrid', 'bronze', 'green', 'closed']
 
-    excel_columns = [attribute, 'total_count', 'oa_count', 'oa_percentage']
+    excel_columns = [attribute] 
+    if attribute == 'journal':
+        excel_columns.extend(['issns'])
+    excel_columns.extend(['total_count', 'oa_count', 'oa_percentage'])
     for year in years:
         excel_columns.append(str(year))
     for oa_type in oa_types:
@@ -115,6 +118,7 @@ def get_stats(collectionname: str, selected_itemtypes = ['journal-article'], sel
             "publisher": 1,
             "journal": 1,
             "type": 1,
+            'issn': 1,
             "faculties": {
                 "$setUnion": [
                     {"$cond": [{"$eq": ["$EEMCS", True]}, ["EEMCS"], []]},
@@ -141,6 +145,20 @@ def get_stats(collectionname: str, selected_itemtypes = ['journal-article'], sel
                 "count": {"$sum": 1}
             }}
         ])
+    elif attribute == 'journal':
+        pipeline.append({
+            "$group": {
+                "_id": {
+                    f"{attribute}": f"${attribute}",
+                    "issn": "$issn",
+                    "year": "$year",
+                    "is_oa": "$is_oa",
+                    "open_access_type": "$open_access_type",
+                    "type": "$type"
+                },
+                "count": {"$sum": 1}
+            }}
+    )
     else:
         pipeline.append(
             {"$group": {
@@ -154,8 +172,55 @@ def get_stats(collectionname: str, selected_itemtypes = ['journal-article'], sel
                 "count": {"$sum": 1}
             }}
         )
-
-    pipeline.extend([
+    
+    if attribute == 'journal':
+        pipeline.extend([
+        {"$group": {
+            "_id": f"$_id.{attribute}",
+            "total_count": {"$sum": "$count"},
+            "oa_count": {"$sum": {"$cond": [{"$eq": ["$_id.is_oa", True]}, "$count", 0]}},
+            "counts_by_year": {
+                "$push": {
+                    "year": "$_id.year",
+                    "count": "$count"
+                }
+            },
+            "oa_types": {
+                "$push": {
+                    "type": "$_id.open_access_type",
+                    "count": "$count",
+                    "year": "$_id.year",
+                }
+            },
+            "types": {
+                "$push": {
+                    "type": "$_id.type",
+                    "count": "$count",
+                    "year": "$_id.year",
+                }
+            },
+            "issns": {"$addToSet": "$_id.issn"}
+        }},
+        {"$project": {
+            attribute: "$_id",
+            "total_count": 1,
+            "oa_count": 1,
+            "counts_by_year": 1,
+            "oa_types": 1,
+            "types": 1,
+            "issns": {
+                "$cond": {
+                    "if": {"$isArray": "$issns"},
+                    "then": {"$setDifference": ["$issns", [None]]},  # Remove any null values
+                    "else": {"$cond": [{"$eq": ["$issns", None]}, [], ["$issns"]]}  # Handle non-array cases
+                }
+            },            
+            "_id": 0,
+        }},
+        {"$sort": {"total_count": -1}}
+        ])
+    else:
+        pipeline.extend([
         {"$group": {
             "_id": "$_id.faculty" if attribute == 'faculty' else f"$_id.{attribute}",
             "total_count": {"$sum": "$count"},
@@ -191,20 +256,23 @@ def get_stats(collectionname: str, selected_itemtypes = ['journal-article'], sel
             "_id": 0,
         }},
         {"$sort": {"total_count": -1}}
-    ])
+        ])
 
-
+    
     result = list(collection.aggregate(pipeline))
     if not result:
         print(f'No result for request: {attribute=}, {collectionname=}, {selected_faculty=}, {selected_publisher=}')
         return pd.DataFrame()
     raw_df = pd.DataFrame(result)
+    if attribute == 'journal':
+        raw_df['issns'] = raw_df['issns'].apply(lambda x: x[0] if len (x)>0 else x)
+        raw_df['issns'] = raw_df['issns'].apply(lambda x: [i for i in x if i])
+ 
     df = raw_df.copy()
     # Create a column with counts for itemtypes, oa_types, and totals for each year and overall
     df = create_split_columns(df)
     df['oa_count'] = df[['oa_gold', 'oa_hybrid', 'oa_bronze', 'oa_green']].sum(axis=1)
     df['oa_percentage'] = (df['oa_count'] / df['total_count'] * 100).round(2)
-
     #export the data
     export_data(collectionname, df, excel_columns, excel_columns2, sheetname, selected_faculty=selected_faculty, selected_publisher=selected_publisher)
     #fix up the df for display
@@ -264,8 +332,12 @@ def export_data(collectionname: str, df: pd.DataFrame, excel_columns: list, exce
         except KeyError:
             df[excel_columns2].to_excel(writer, sheet_name=sheetname, index=False)
 def select_data_for_table(df, raw_df, attribute, parameters=None):
+    baselist = [attribute]
+    if attribute == 'journal' and 'issns' in raw_df.columns:
+        baselist.extend(['issns'])
+    baselist.extend(['total_count', 'oa_count', 'oa_percentage', 'counts_by_year', 'normalized_counts', 'oa_gold', 'oa_hybrid', 'oa_bronze', 'oa_green', 'oa_closed'])
     if parameters == default_parameters or not parameters:
-        return df[[attribute, 'total_count', 'oa_count', 'oa_percentage', 'counts_by_year', 'normalized_counts', 'oa_gold', 'oa_hybrid', 'oa_bronze', 'oa_green', 'oa_closed']]
+        return df[baselist]
     else:
         print(parameters)
         years:list[int] = parameters.get('years')
@@ -283,7 +355,7 @@ def select_data_for_table(df, raw_df, attribute, parameters=None):
         df=df.dropna(subset=[attribute])
         df=df.dropna(subset=['total_count'])
 
-        return df[[attribute, 'total_count', 'oa_count', 'oa_percentage', 'counts_by_year', 'normalized_counts', 'oa_gold', 'oa_hybrid', 'oa_bronze', 'oa_green', 'oa_closed']]
+        return df[baselist]
                 
 
 
@@ -387,10 +459,13 @@ All tables are interactive:
 
         with col2:
             dataframe2 = select_data_for_table(journals_pub, jp_raw, attribute='journal', parameters=parameters)
+            print(dataframe2['issns'].head())
             st.dataframe(
                 dataframe2,
+                
                 column_config={
                     "journal": st.column_config.TextColumn("Journal"),
+                    'issns': st.column_config.ListColumn("ISSNs"),
                     'total_count': st.column_config.NumberColumn("Total Count"),
                     "oa_count": st.column_config.NumberColumn("OA Count"),
                     "oa_percentage": st.column_config.NumberColumn("OA %", format="%.2f%%"),

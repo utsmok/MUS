@@ -21,7 +21,10 @@ import pyalex
 from itertools import chain
 from bson import SON
 import os
-
+from bookops_worldcat import WorldcatAccessToken, MetadataSession
+import aiometer
+import functools
+        
 # import module to create excel files
 import xlsxwriter
 
@@ -208,7 +211,7 @@ class HarvestData:
     publishers_flat: list[Publisher] = field(default_factory=list)
     missing_issns: list = field(default_factory=list)
     reference_data: dict[str, dict] = field(default_factory=dict)
-    async def run(self, period = None):
+    async def run(self, period = None, key=None, secret=None):
         if period:
             self.period = period
         else:
@@ -216,7 +219,10 @@ class HarvestData:
 
         ut = Faculty(name='University of Twente', pure_id='491145c6-1c9b-4338-aedd-98315c166d7e')
         self.faculties[ut.pure_id] = ut
-
+        self.key: str = key if key else os.environ.get('WORLDCAT_KEY')
+        self.secret: str = secret if secret else os.environ.get('WORLDCAT_SECRET')
+        self.token: WorldcatAccessToken | None = None
+        self.refresh_token()
         #async with asyncio.TaskGroup() as tg:
             #indexes = tg.create_task(self.mongoclient.add_indexes())
             #pure_harvest = tg.create_task(self.harvest_pure())
@@ -227,10 +233,12 @@ class HarvestData:
         #await self.make_dataframe()
         #await self.group_data()
         #await self.clean_publisher_names()
-        grouplist = await self.get_grouplist()
-        for group in grouplist:
-            await self.export_csvs(group)
+        #grouplist = await self.get_grouplist()
+        #for group in grouplist:
+            #await self.export_csvs(group)
 
+        #await self.add_issn_data()
+        await self.add_oclc_data()
     async def harvest_pure(self):
         harvester = OAI_PMH(motorclient=self.mongoclient)
         await harvester.get_item_results()
@@ -1282,3 +1290,205 @@ class HarvestData:
             publishers_pub.to_excel(writer, sheet_name='Publishers (published)', index=False)
             publishers_ref.to_excel(writer, sheet_name='Publishers (referenced)', index=False)
             writer.close()
+
+    def refresh_token(self, details=False) -> WorldcatAccessToken | None:
+        new = False
+        if self.token:
+            if self.token.is_expired():
+                new = True
+        if not self.token or new:
+            try:
+                self.token: WorldcatAccessToken = WorldcatAccessToken(
+                    key=self.key,
+                    secret=self.secret,
+                    scopes="WorldCatDiscoveryAPI",
+
+                )
+
+            except Exception as e:
+                print(f"Error refreshing token: {e}")
+                print(e.__traceback__)
+                return None
+        
+        
+        if details:
+            detailtable = Table(title="Worldcat Access Token Details", show_lines=True, style="yellow")
+            detailtable.add_column("Parameter", justify="left", no_wrap=True, style="bright_magenta")
+            detailtable.add_column("Value", justify="left", no_wrap=True, overflow="ellipsis", style="bright_cyan")
+            for key, value in self.token.server_response.json().items():
+                detailtable.add_row(str(key), str(value))
+            co.print(detailtable)
+            co.print(self.token.server_response.json())
+
+        return self.token
+
+    async def add_oclc_data(self):
+        # use the worldcat api to get oclc data for each item in the mongodb collection
+        # for each item in the data_rich collection: get the openalex id
+        # then for each openalex id:
+        #  - get data from openalex api
+        #  - get the journal issn(s) from the data
+        #  - make dict with openalexid as key, list of journal issns as values
+        #  - add this dict to the data_rich collection
+        # then search worldcat ut holdings for the issn
+        #  each will return a list of results (?) -- see how to determine if journal is in collection or not
+        # put true/false in the 'in_collection' column of the mongodb item if the journal is in the UT holding
+        # also put the oclc number in the 'oclc' column
+
+        self.token = self.refresh_token(details=True)
+
+        with MetadataSession(authorization=self.token) as session:
+            insertlist = {}
+
+            async def get_worldcat_data(item):
+                oclcs = []
+                if not isinstance(item, list):
+                    item = [item]
+                for i in item:
+                    querystr=f'in:{i}'
+                    print(f'query: {querystr}')
+                    print(session.authorization.scopes)
+                    print(session.authorization.server_response)
+                    try:
+                        record = session.brief_bibs_search(q=querystr)
+                    except Exception as e:
+                        print(f"Error retrieving record: {e}")
+                        return
+                    print(record.content)
+                    # add oclc number to list
+                    # retrieve utwente holding info for oclc number
+                    # add result to item
+                    # add item to insertlist
+                    input('continue?')
+            retrieveitems = {}
+            issns = {}
+            for collectionname in ['data_export_rich']:
+                async for item in self.mongoclient.mongoclient[collectionname].find({'issn':{'$ne':None}}, projection={'_id':1, 'openalex_id':1, 'pure_id':1, 'issn':1}):
+                    if item.get('openalex_id'):
+                        if item.get('openalex_id') in retrieveitems:
+                            continue
+                    elif item.get('pure_id'):
+                        if item.get('pure_id') in retrieveitems:
+                            continue
+                    if item.get('issn'):
+                        issn_list = item.get('issn')
+                        issns = []
+                        if not isinstance(issn_list, list):
+                            if issn_list:
+                                issn_list = [issn_list]
+                        for issn in issn_list:
+                            if issn:
+                                if issn in issns:
+                                    continue
+                                issns.append(issn)
+                        
+                            
+                        if item.get('openalex_id'):
+                            retrieveitems[item.get('openalex_id')] = {'issn':issns}
+                        elif item.get('pure_id'):
+                            retrieveitems[item.get('pure_id')] = {'issn':issns}
+            co.print(f'Found {len(retrieveitems)} items to be retrieved from worldcat')
+
+        async with aiometer.amap(functools.partial(get_worldcat_data), issns, max_at_once=100, max_per_second=20) as responses:
+            async for response in responses:
+                ...
+
+    async def add_issn_data(self):
+        for collectionname in ['data_export_rich', 'data_export_refs']:
+            # for all items in the dataset without issn data, add that data from openalex works or oai pmh publications
+            openalexids = {}
+            pureids = {}
+            async for item in self.mongoclient.mongoclient[collectionname].find({'issn':{'$exists':False}}, projection={'_id':1, 'pure_id':1,'openalex_id':1, 'doi':1}):
+                if item.get('openalex_id'):
+                    openalexids[item.get('openalex_id')]={'pure_id':item.get('pure_id')}
+                if item.get('pure_id'):
+                    pureids[item.get('pure_id')]={'openalex_id':item.get('openalex_id')}
+
+            
+            async for item in self.mongoclient.works_openalex.find({'id':{'$in':list(openalexids.keys())}}, projection={'primary_location':1, '_id':0, 'id':1}):
+                if item.get('primary_location'):
+                    if item['primary_location'].get('source'):
+                        if item['primary_location']['source'].get('issn_l'):
+                            openalexids[item.get('id')]['issn_l']=item['primary_location']['source']['issn_l']
+                        if item['primary_location']['source'].get('issn'):
+                            issn = item['primary_location']['source'].get('issn')
+                            if isinstance(issn, list):
+                                for i in issn:
+                                    if i:
+                                        if openalexids[item.get('id')].get('issn'):
+                                            if isinstance(openalexids[item.get('id')]['issn'], list):
+                                                openalexids[item.get('id')]['issn'].append(i)
+                                            else:
+                                                openalexids[item.get('id')]['issn'] = [i]
+                                        else:
+                                            openalexids[item.get('id')]['issn'] = [i]
+                            elif issn:
+                                if isinstance(openalexids[item.get('id')]['issn'], list):
+                                    openalexids[item.get('id')]['issn'].append(issn)
+                                else:
+                                    openalexids[item.get('id')]['issn'] = [issn]
+
+            for item, values in openalexids.items():
+                if 'pure_id' in values:
+                    if 'issn_l' in values or 'issn' in values:
+                        del pureids[values.get('pure_id')]
+
+
+            async for item in self.mongoclient.openaire_cris_publications.find({'internal_repository_id':{'$in':list(pureids.keys())}}, projection={'issn':1, 'id':1, 'internal_repository_id':1, '_id':0}):
+                if item.get('issn'):
+                    issn = item.get('issn')
+                    if isinstance(issn, list):
+                        pureids[item.get('internal_repository_id')]['issn']=item['issn']
+                    else:
+                        pureids[item.get('internal_repository_id')]['issn']=[item['issn']]
+                if item.get('id'):
+                    if not pureids[item.get('internal_repository_id')].get('openalex_id'):
+                        pureids[item.get('internal_repository_id')]['openalex_id']=item.get('id')
+
+            openalexids = {k:v for k,v in openalexids.items() if (v.get('issn') or v.get('issn_l'))}
+            pureids = {k:v for k,v in pureids.items() if (v.get('issn') or v.get('issn_l'))}
+
+            co.print(f'Found {len(openalexids)} openalex items to be updated with issn or issn_l')
+            co.print(f'Found {len(pureids)} pure items to be updated with issn or issn_l')
+
+            if len(openalexids) > 0:
+                async for item in self.mongoclient.mongoclient[collectionname].find({'openalex_id':{'$in':list(openalexids.keys())}}, projection={'_id':1, 'issn':1, 'openalex_id':1}):
+                    item['issn'] = set(openalexids[item.get('openalex_id')].get('issn'))
+                    item['issn'].add(item.get('issn_l'))
+                    item['issn'] = list(item['issn'])
+                    await self.mongoclient.mongoclient[collectionname].update_one({'_id':item.get('_id')}, {'$set':{'issn':item['issn']}})
+
+            if len(pureids) > 0:
+                async for item in self.mongoclient.mongoclient[collectionname].find({'pure_id':{'$in':list(pureids.keys())}}, projection={'_id':1, 'issn':1, 'pure_id':1}):
+                    issnlist = []
+                    try:
+                        issndict = (pureids[item.get('pure_id')].get('issn'))[0]
+                        issnlist = [v for v in issndict.values()]
+                        item['issn'] = list(set(issnlist))
+                    except Exception as e:
+                        co.print(f'Error: {e}')
+                        co.print(pureids[item.get('pure_id')])
+                        co.print(issnlist)
+                        continue
+                    await self.mongoclient.mongoclient[collectionname].update_one({'_id':item.get('_id')}, {'$set':{'issn':item['issn']}})
+
+            i = 0
+            j = 0
+            async for item in self.mongoclient.mongoclient[collectionname].find({'issn':{'$exists':True}}, projection={'_id':1, 'issn':1}):
+                if item.get('issn'):
+                    i += 1
+                    newlist = []
+                    if isinstance(item.get('issn'), list):
+                        for issn in item.get('issn'):
+                            if issn:
+                                newlist.append(issn)
+                        if len(newlist) < len(item.get('issn')):
+                            j += 1
+                        item['issn'] = newlist
+                        await self.mongoclient.mongoclient[collectionname].update_one({'_id':item.get('_id')}, {'$set':{'issn':item['issn']}})
+            co.print(f'Checked {i} items with issn list')
+            co.print(f'Removed empty issns from {j} items')
+
+
+            
+
