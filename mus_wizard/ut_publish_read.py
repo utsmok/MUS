@@ -1,3 +1,4 @@
+import httpx
 
 from mus_wizard.database.mongo_client import MusMongoClient
 from mus_wizard.harvester.crossref import CrossrefAPI
@@ -24,10 +25,11 @@ import os
 from bookops_worldcat import WorldcatAccessToken, MetadataSession
 import aiometer
 import functools
-        
+from collections import defaultdict
+from pymongo import UpdateOne, UpdateMany
 # import module to create excel files
 import xlsxwriter
-
+from itertools import batched
 pyalex.config.email = APIEMAIL
 pyalex.config.max_retries = 5
 pyalex.config.retry_backoff_factor = 0.2
@@ -163,7 +165,7 @@ class Work:
             if publisher:
                 publishers.append(publisher.name)
         return publishers
-    
+
     def get_non_lists(self) -> dict[str, str]:
         non_lists = {}
         if self.openalex_id:
@@ -177,7 +179,7 @@ class Work:
         if self.title:
             non_lists['title'] = self.title
         if self.year:
-            non_lists['year'] = self.year  
+            non_lists['year'] = self.year
         if self.type:
             if self.type == WorkType.JOURNAL_ARTICLE:
                 non_lists['type'] = 'journal-article'
@@ -221,8 +223,6 @@ class HarvestData:
         self.faculties[ut.pure_id] = ut
         self.key: str = key if key else os.environ.get('WORLDCAT_KEY')
         self.secret: str = secret if secret else os.environ.get('WORLDCAT_SECRET')
-        self.token: WorldcatAccessToken | None = None
-        self.refresh_token()
         #async with asyncio.TaskGroup() as tg:
             #indexes = tg.create_task(self.mongoclient.add_indexes())
             #pure_harvest = tg.create_task(self.harvest_pure())
@@ -294,7 +294,7 @@ class HarvestData:
         queryc = OpenAlexQuery(self.mongoclient, self.mongoclient.authors_openalex, 'authors', years=self.period)
         queryc.add_query_by_orcid(orcids, single=False)
         await queryc.run()'''
-        
+
         resulttable = Table(title='Author results')
         resulttable.add_column('value', justify='right')
         resulttable.add_column('count', justify='right')
@@ -309,9 +309,9 @@ class HarvestData:
         resulttable.add_row('ORCIDS', str(len([a for a in self.flat_authors if a.orcid])))
         resulttable.add_row('Scopus IDs', str(len([a for a in self.flat_authors if a.scopus])))
         resulttable.add_row('Unmatched', str(len([a for a in self.flat_authors if not (a.openalex_id and a.pure_id)])))
-        
+
         co.print(resulttable)
-        
+
     async def new_openalex_author(self, data):
         scopus = None
         if data.get('ids').get('scopus'):
@@ -462,7 +462,7 @@ class HarvestData:
                 work_type = WorkType.BOOK_CHAPTER
             case _:
                 work_type = WorkType.OTHER
-        
+
         authors = []
         for authorsh in data.get('authorships'):
             author = authorsh.get('author')
@@ -499,15 +499,15 @@ class HarvestData:
 
         if not existing_work:
             work = Work(data_sources=[DataSource.OPENALEX],
-                        openalex_id=data.get('id'), 
-                        authors=authors, 
-                        doi=await normalize_doi(data.get('doi')), 
-                        title=data.get('title'), 
-                        year=data.get('publication_year'), 
+                        openalex_id=data.get('id'),
+                        authors=authors,
+                        doi=await normalize_doi(data.get('doi')),
+                        title=data.get('title'),
+                        year=data.get('publication_year'),
                         type=work_type,
                         journals=[journal],
                         publishers=[publisher],)
-            
+
         else:
             work = existing_work
             work.data_sources.append(DataSource.OPENALEX)
@@ -531,7 +531,7 @@ class HarvestData:
                 work.year = data.get('publication_year')
             if not work.type:
                 work.type = work_type
-            
+
                 journal = None
                 publisher = None
                 if data.get('primary_location'):
@@ -572,7 +572,7 @@ class HarvestData:
     async def add_pure_work(self, data: dict, existing_work: Work | None = None):
         if data.get('internal_repository_id') in self.works:
             return
-        
+
         authors = []
         if data.get('authors'):
             for auth in data.get('authors'):
@@ -580,8 +580,8 @@ class HarvestData:
                     auth = self.authors[auth.get('internal_repository_id')]
                     if len(auth.groups) > 0:
                         authors.append(auth)
-                    
-                
+
+
         journals = []
         publishers = []
 
@@ -614,7 +614,7 @@ class HarvestData:
                         publishers=publishers,
                     )
         else:
-            
+
             work = existing_work
             work.data_sources.append(DataSource.PURE)
             work.pure_id = data.get('internal_repository_id')
@@ -661,7 +661,7 @@ class HarvestData:
             self.publishers[publisher.name] = publisher
             self.publishers_flat.append(publisher)
             return publisher
-    
+
     async def add_or_get_journal(self, data: dict) -> Journal:
         journal = None
         if data.get('openalex_id') and data.get('openalex_id') in self.journals:
@@ -676,7 +676,7 @@ class HarvestData:
                     break
         elif data.get('name') and data.get('name') in self.journals:
             journal = self.journals[data.get('name')]
-        
+
         if not journal:
             journal = Journal(name=data.get('name'), openalex_id=data.get('openalex_id'), publisher=data.get('publisher'), issns = data.get('issns'), issn_l=data.get('issn_l'))
             if journal.openalex_id:
@@ -688,7 +688,7 @@ class HarvestData:
                 for issn in journal.issns:
                     self.journals[issn] = journal
             self.journals_flat.append(journal)
-        
+
         if not journal.openalex_id and data.get('openalex_id'):
             journal.openalex_id = data.get('openalex_id')
             self.journals[journal.openalex_id] = journal
@@ -696,7 +696,7 @@ class HarvestData:
             journal.issn_l = data.get('issn_l')
             self.journals[journal.issn_l] = journal
         return journal
-    
+
 
     async def add_works_by_author(self):
         # from the authorlist, grab all works by those people
@@ -757,7 +757,7 @@ class HarvestData:
                 final_data.append(self.reference_data[id])
             else:
                 batch.append(id)
-            
+
             if len(batch) == 50 or i == len(referenced_works) - 1:
                 itemids = "|".join(batch)
                 querylist.append(Works().filter(openalex_id=itemids))
@@ -790,9 +790,9 @@ class HarvestData:
         -> num. authors
         -> 1 journal
         -> 1 publisher
-        
+
         then, add a bool column for each faculty and each group and mark true if any of the authors linked to the work are in that faculty or group
-        
+
         '''
         async def make_dataframe_inner(entry):
             no_more_check = True
@@ -875,7 +875,7 @@ class HarvestData:
                     publist.remove(k)
                 for k in newlist:
                     publist.add(k)
-                
+
                 publist = list(publist)
 
                 manual = False
@@ -911,7 +911,7 @@ class HarvestData:
                         ddict['publisher'] = publist[int(choice)]
                     co.print(f'Using publisher: {ddict["publisher"]}')
                     co.print(f'{num_items-itemnum} items remaining...')
-            
+
             if entry.get('journals'):
                 if len(entry['journals']) == 0:
                     ddict['journal'] = None
@@ -940,7 +940,7 @@ class HarvestData:
                 for faculty in entry['faculties']:
                     if faculty:
                         ddict[faculty] = True
-            
+
             all_refdicts = []
             if referenced_works_data:
                 for ref in referenced_works_data:
@@ -948,12 +948,12 @@ class HarvestData:
                     refdict['journal'] = ref.get('journal').name
                     refdict['publisher'] = ref.get('publisher').name
                     all_refdicts.append(refdict)
-            
+
             if all_refdicts:
                 return ddict, all_refdicts
             else:
                 return ddict, None
-            
+
         grouplist = set()
         facultylist = set()
         num_items = await self.mongoclient.mongoclient.data_export.estimated_document_count()
@@ -974,18 +974,18 @@ class HarvestData:
         co.print(f'{len(facultylist)} faculties')
         full_data = []
         full_ref_data = []
-        self.mainlist = ['Optica Publishing Group', 
-            'Elsevier', 
-            'Taylor & Francis', 
-            'Nature Publishing Group', 
-            'Springer', 
-            'Wiley', 
-            'de Gruyter', 
-            'IEEE', 
-            'MDPI', 
-            'F1000', 
-            'Sage', 
-            'Frontiers', 
+        self.mainlist = ['Optica Publishing Group',
+            'Elsevier',
+            'Taylor & Francis',
+            'Nature Publishing Group',
+            'Springer',
+            'Wiley',
+            'de Gruyter',
+            'IEEE',
+            'MDPI',
+            'F1000',
+            'Sage',
+            'Frontiers',
             'IOP'
             'Emerald Publishing Limited',
             'ACM',
@@ -1039,7 +1039,7 @@ class HarvestData:
         result = {}
         for col in df.columns[9:]:
             result[col] = df[df[col]].iloc[:, :9]
-        
+
     async def group_data(self):
         data_by_group = {}
         data_by_journal = {}
@@ -1101,7 +1101,7 @@ class HarvestData:
                                             data_by_publisher[publisher][itemtype][k] += v
                                         else:
                                             data_by_publisher[publisher][itemtype][k] = v
-                                
+
             if i['journals']:
                 for journal in i['journals']:
                     if journal:
@@ -1178,17 +1178,17 @@ class HarvestData:
         import re
         async def update_publisher_names(collection_name):
             collection = self.mongoclient.mongoclient[collection_name]
-            
+
             for pattern, replacement in publishers_to_update.items():
                 # Create a case-insensitive regex pattern
                 regex = re.compile(pattern, re.IGNORECASE)
-                
+
                 # Update documents where 'publisher' matches the regex
                 result = await collection.update_many(
                     {'publisher': regex},
                     {'$set': {'publisher': replacement}}
                 )
-                
+
                 co.print(f"Updated {result.modified_count} documents in {collection_name} for {replacement}")
 
         collections = ['data_export_rich', 'data_export_refs']
@@ -1232,9 +1232,9 @@ class HarvestData:
         Optional filters using parameters:
         itemtype [str]: journal-article, book-chapter, book, conference-proceeding, other
         year [list[int]]: list of years to filter by
-        is_oa [str]: Return only oa works or only non-oa works. If empty, returns all works. Use a 'True' or 'False' string -- not a true/false bool! 
+        is_oa [str]: Return only oa works or only non-oa works. If empty, returns all works. Use a 'True' or 'False' string -- not a true/false bool!
         group [str]: Use TNW, EEMCS, BMS, ET, ITC to get data for faculties, or the full name of a department. If empty, all data is returned.
-        
+
         '''
         itemtype = ['journal-article', 'conference-proceeding']
         pipeline = []
@@ -1276,7 +1276,7 @@ class HarvestData:
             journalsrefpath = os.path.join(os.getcwd(), 'library_csv_output', f'{group}_journals_ref.csv')
             publisherspubpath = os.path.join(os.getcwd(), 'library_csv_output', f'{group}_publishers_pub.csv')
             publishersrefpath = os.path.join(os.getcwd(), 'library_csv_output', f'{group}_publishers_ref.csv')
-            
+
             journals_pub.to_csv(journalspubpath, index=False)
             journals_ref.to_csv(journalsrefpath, index=False)
             publishers_pub.to_csv(publisherspubpath, index=False)
@@ -1291,36 +1291,7 @@ class HarvestData:
             publishers_ref.to_excel(writer, sheet_name='Publishers (referenced)', index=False)
             writer.close()
 
-    def refresh_token(self, details=False) -> WorldcatAccessToken | None:
-        new = False
-        if self.token:
-            if self.token.is_expired():
-                new = True
-        if not self.token or new:
-            try:
-                self.token: WorldcatAccessToken = WorldcatAccessToken(
-                    key=self.key,
-                    secret=self.secret,
-                    scopes="WorldCatDiscoveryAPI",
 
-                )
-
-            except Exception as e:
-                print(f"Error refreshing token: {e}")
-                print(e.__traceback__)
-                return None
-        
-        
-        if details:
-            detailtable = Table(title="Worldcat Access Token Details", show_lines=True, style="yellow")
-            detailtable.add_column("Parameter", justify="left", no_wrap=True, style="bright_magenta")
-            detailtable.add_column("Value", justify="left", no_wrap=True, overflow="ellipsis", style="bright_cyan")
-            for key, value in self.token.server_response.json().items():
-                detailtable.add_row(str(key), str(value))
-            co.print(detailtable)
-            co.print(self.token.server_response.json())
-
-        return self.token
 
     async def add_oclc_data(self):
         # use the worldcat api to get oclc data for each item in the mongodb collection
@@ -1335,160 +1306,232 @@ class HarvestData:
         # put true/false in the 'in_collection' column of the mongodb item if the journal is in the UT holding
         # also put the oclc number in the 'oclc' column
 
-        self.token = self.refresh_token(details=True)
+        async def get_oclc_token():
+            client = httpx.AsyncClient()
+            url = 'https://oauth.oclc.org/token'
+            payload = {'grant_type': 'client_credentials',
+                        'scope':'wcapi:view_holdings wcapi:view_bib wcapi:view_brief_bib wcapi:view_retained_holdings wcapi:view_summary_holdings wcapi:view_my_holdings wcapi:view_institution_holdings'
 
-        with MetadataSession(authorization=self.token) as session:
-            insertlist = {}
 
-            async def get_worldcat_data(item):
-                oclcs = []
-                if not isinstance(item, list):
-                    item = [item]
-                for i in item:
-                    querystr=f'in:{i}'
-                    print(f'query: {querystr}')
-                    print(session.authorization.scopes)
-                    print(session.authorization.server_response)
-                    try:
-                        record = session.brief_bibs_search(q=querystr)
-                    except Exception as e:
-                        print(f"Error retrieving record: {e}")
-                        return
-                    print(record.content)
-                    # add oclc number to list
-                    # retrieve utwente holding info for oclc number
-                    # add result to item
-                    # add item to insertlist
-                    input('continue?')
-            retrieveitems = {}
-            issns = {}
-            for collectionname in ['data_export_rich']:
-                async for item in self.mongoclient.mongoclient[collectionname].find({'issn':{'$ne':None}}, projection={'_id':1, 'openalex_id':1, 'pure_id':1, 'issn':1}):
-                    if item.get('openalex_id'):
-                        if item.get('openalex_id') in retrieveitems:
-                            continue
-                    elif item.get('pure_id'):
-                        if item.get('pure_id') in retrieveitems:
-                            continue
-                    if item.get('issn'):
-                        issn_list = item.get('issn')
-                        issns = []
-                        if not isinstance(issn_list, list):
-                            if issn_list:
-                                issn_list = [issn_list]
-                        for issn in issn_list:
-                            if issn:
-                                if issn in issns:
-                                    continue
-                                issns.append(issn)
-                        
-                            
-                        if item.get('openalex_id'):
-                            retrieveitems[item.get('openalex_id')] = {'issn':issns}
-                        elif item.get('pure_id'):
-                            retrieveitems[item.get('pure_id')] = {'issn':issns}
-            co.print(f'Found {len(retrieveitems)} items to be retrieved from worldcat')
+            }
+            headers = {
+                "Accept": "application/json"
+            }
+            auth = (self.key, self.secret)
 
-        async with aiometer.amap(functools.partial(get_worldcat_data), issns, max_at_once=100, max_per_second=20) as responses:
-            async for response in responses:
-                ...
+            response = await client.post(url, data=payload, auth=auth, headers=headers)
+            print(response.json())
+            return response.json()['access_token']
 
-    async def add_issn_data(self):
+        insertlist = {}
+
+        token = await get_oclc_token()
+        headers = {'Authorization': f'Bearer {token}',
+                'accept': 'application/json'}
+
+
+        async def get_worldcat_data(client: httpx.AsyncClient, issns):
+
+
+            if not isinstance(issns, list):
+                issns = [issns]
+            for i in issns:
+                q=f'in:{i}'
+                url = f'https://americas.discovery.api.oclc.org/worldcat/search/v2/bibs?q={q}&heldBySymbol=QHU&showHoldingsIndicators=true'
+                holdings_url = f'https://americas.discovery.api.oclc.org/worldcat/search/v2/bibs-holdings?issn={q}&heldBySymbol=QHU'
+                try:
+                    result = await client.get(holdings_url, headers=headers)
+                except Exception as e:
+                    co.print(f"Error retrieving record: {e}")
+                    return
+                data = result.json()
+                itemdict = {}
+                itemdict['in_collection'] = False
+                stop = False
+                if data.get('numberOfRecords'):
+                    if data.get('numberOfRecords') > 0:
+                        found_item = data.get('briefRecords')[0]
+                        itemdict['oclc_title'] = found_item.get('title')
+                        itemdict['oclc_creator']= found_item.get('creator')
+                        itemdict['oclc_number'] = found_item.get('oclcNumber')
+                        itemdict['oclc_publisher'] = found_item.get('publisher')
+                        itemdict['oclc_issns'] = found_item.get('issns')
+                        itemdict['oclc_merged_numbers'] = found_item.get('mergedOclcNumbers')
+                        itemdict['in_collection'] = False
+                        if found_item.get('institutionHolding'):
+                            if found_item.get('institutionHolding').get('totalHoldingCount') >= 1:
+                                for holding in found_item.get('institutionHolding').get('briefHoldings'):
+                                    if holding.get('oclcSymbol') == 'QHU':
+                                        itemdict['in_collection'] = True
+                    if data.get('numberOfRecords') > 1:
+                        for found_item in data.get('briefRecords'):
+                            if stop:
+                                break
+                            if found_item.get('institutionHolding'):
+                                if found_item.get('institutionHolding').get('totalHoldingCount') >= 1:
+                                    for holding in found_item.get('institutionHolding').get('briefHoldings'):
+                                        if holding.get('oclcSymbol') == 'QHU':
+                                            itemdict['in_collection'] = True
+                                            itemdict['oclc_title'] = found_item.get('title')
+                                            itemdict['oclc_creator']= found_item.get('creator')
+                                            itemdict['oclc_number'] = found_item.get('oclcNumber')
+                                            itemdict['oclc_publisher'] = found_item.get('publisher')
+                                            itemdict['oclc_issns'] = found_item.get('issns')
+                                            itemdict['oclc_merged_numbers'] = found_item.get('mergedOclcNumbers')
+                                            stop = True
+                                            break
+
+            insertlist[i] = itemdict
+            return (i, itemdict)
+
+        retrieveitems = {}
+        issns = set()
+        issn_to_ids = defaultdict(dict)
         for collectionname in ['data_export_rich', 'data_export_refs']:
-            # for all items in the dataset without issn data, add that data from openalex works or oai pmh publications
-            openalexids = {}
-            pureids = {}
-            async for item in self.mongoclient.mongoclient[collectionname].find({'issn':{'$exists':False}}, projection={'_id':1, 'pure_id':1,'openalex_id':1, 'doi':1}):
-                if item.get('openalex_id'):
-                    openalexids[item.get('openalex_id')]={'pure_id':item.get('pure_id')}
-                if item.get('pure_id'):
-                    pureids[item.get('pure_id')]={'openalex_id':item.get('openalex_id')}
+            if collectionname == 'data_export_refs' and False:
+                updates = []
+                issns = set()
+                columns = ['in_collection', 'oclc_number', 'oclc_title', 'oclc_creator', 'oclc_publisher', 'oclc_issns', 'oclc_merged_numbers']
+                async for item in self.mongoclient.mongoclient['data_export_rich'].find({'issn':{'$exists':True}, 'in_collection':{'$exists':True}}):
+                    issn_list = item.get('issn')
+                    tmp_issns = set()
+                    new=False
+                    if not isinstance(issn_list, list):
+                        if issn_list:
+                            issn_list = [issn_list]
+                    for issn in issn_list:
+                        if issn:
+                            if issn in issns:
+                                continue
+                            tmp_issns.add(issn)
+                            issns.add(issn)
 
-            
-            async for item in self.mongoclient.works_openalex.find({'id':{'$in':list(openalexids.keys())}}, projection={'primary_location':1, '_id':0, 'id':1}):
+
+                    if tmp_issns:
+                        for issn in tmp_issns:
+                            data = {k:v for k,v in item.items() if k in columns}
+                            updates.append(UpdateMany({'issn':issn}, {'$set':data}))
+
+                co.print(f'Updating {len(updates)} mongodb items.')
+                result = await self.mongoclient.mongoclient['data_export_refs'].bulk_write(updates)
+                co.print(f'Result: {result.bulk_api_result}')
+                issns = set()
+
+            async for item in self.mongoclient.mongoclient[collectionname].find({'issn':{'$exists':True}}, projection={'_id':1, 'openalex_id':1, 'pure_id':1, 'issn':1}):
+                if item.get('openalex_id'):
+                    if item.get('openalex_id') in retrieveitems:
+                        continue
+                elif item.get('pure_id'):
+                    if item.get('pure_id') in retrieveitems:
+                        continue
+                if item.get('issn'):
+                    tmp_issns = set()
+                    issn_list = item.get('issn')
+                    if not isinstance(issn_list, list):
+                        if issn_list:
+                            issn_list = [issn_list]
+                    for issn in issn_list:
+
+                        if issn:
+                            tmp_issns.add(issn)
+
+                            if item.get('openalex_id'):
+                                if issn_to_ids[issn].get('openalex_id'):
+                                    issn_to_ids[issn]['openalex_id'].append(item.get('openalex_id'))
+                                else:
+                                    issn_to_ids[issn]['openalex_id'] = [item.get('openalex_id')]
+                            elif item.get('pure_id'):
+                                if issn_to_ids[issn].get('pure_id'):
+                                    issn_to_ids[issn]['pure_id'].append(item.get('pure_id'))
+                                else:
+                                    issn_to_ids[issn]['pure_id'] = [item.get('pure_id')]
+                            if issn in issns:
+                                continue
+                            issns.add(issn)
+
+                    if item.get('openalex_id'):
+                        retrieveitems[item.get('openalex_id')] = {'issn':tmp_issns}
+                    elif item.get('pure_id'):
+                        retrieveitems[item.get('pure_id')] = {'issn':tmp_issns}
+
+
+        co.print(f'Retrieving {len(issns)} issns from worldcat in batches of 100')
+        async with httpx.AsyncClient() as client:
+            for batch in batched(issns, 100):
+                jobs = [functools.partial(get_worldcat_data, client, issn) for issn in batch]
+                results = await aiometer.run_all(jobs, max_at_once=50, max_per_second=10)
+                co.print(f'Inserting data for {len(results)} issns into mongodb')
+                updates = []
+                for result in results:
+                    if not result:
+                        continue
+                    issn, data = result
+                    if issn_to_ids[issn].get('openalex_id'):
+                        for openalex_id in issn_to_ids[issn].get('openalex_id'):
+                            updates.append(UpdateMany({'openalex_id':openalex_id}, {'$set':data}))
+
+                    elif issn_to_ids[issn].get('pure_id'):
+                        for pure_id in issn_to_ids[issn].get('pure_id'):
+                            updates.append(UpdateMany({'pure_id':pure_id}, {'$set':data}))
+
+                co.print(f'Updating {len(updates)} mongodb items.')
+                writeresult = await self.mongoclient.mongoclient[collectionname].bulk_write(updates)
+                co.print(f'Updated {writeresult.bulk_api_result} mongodb items.')
+
+                co.print(f'Batch done. Starting new one.')
+    async def add_issn_data(self):
+
+        async def get_issn_data(client: httpx.AsyncClient, id:str):
+            queryids = []
+            for i in id:
+                if i.startswith('https://openalex.org/'):
+                    queryids.append(i.split('https://openalex.org/')[1])
+            queryid = '|'.join(queryids)
+            url=f'https://api.openalex.org/works?filter=openalex_id:{queryid}&select=id,primary_location&per-page=50'
+            headers= {'From':'s.mok@utwente.nl'}
+            response = await client.get(url, headers=headers)
+            data = response.json()
+            for item in data.get('results'):
                 if item.get('primary_location'):
                     if item['primary_location'].get('source'):
                         if item['primary_location']['source'].get('issn_l'):
-                            openalexids[item.get('id')]['issn_l']=item['primary_location']['source']['issn_l']
+                            openalexids[item.get('id')].append(item['primary_location']['source']['issn_l'])
                         if item['primary_location']['source'].get('issn'):
                             issn = item['primary_location']['source'].get('issn')
                             if isinstance(issn, list):
                                 for i in issn:
                                     if i:
-                                        if openalexids[item.get('id')].get('issn'):
-                                            if isinstance(openalexids[item.get('id')]['issn'], list):
-                                                openalexids[item.get('id')]['issn'].append(i)
-                                            else:
-                                                openalexids[item.get('id')]['issn'] = [i]
-                                        else:
-                                            openalexids[item.get('id')]['issn'] = [i]
+                                        if i not in openalexids[item.get('id')]:
+                                            openalexids[item.get('id')].append(i)
                             elif issn:
-                                if isinstance(openalexids[item.get('id')]['issn'], list):
-                                    openalexids[item.get('id')]['issn'].append(issn)
-                                else:
-                                    openalexids[item.get('id')]['issn'] = [issn]
+                                if issn not in openalexids[item.get('id')]:
+                                    openalexids[item.get('id')].append(issn)
+                return [(id,openalexids[id]) for id in id]
 
-            for item, values in openalexids.items():
-                if 'pure_id' in values:
-                    if 'issn_l' in values or 'issn' in values:
-                        del pureids[values.get('pure_id')]
+        for collectionname in ['data_export_rich', 'data_export_refs']:
+            openalexids = {}
+            co.print(f'Getting issn data for {collectionname}')
+            co.print(await self.mongoclient.mongoclient[collectionname].estimated_document_count())
+            distinct_ids = await self.mongoclient.mongoclient[collectionname].distinct('openalex_id', {'openalex_id': {'$exists': True, '$ne': None}})
+            for id in distinct_ids:
+                openalexids[id]=[]
 
+            co.print(f'got {len(openalexids)} items to process. Processing in batches of 100')
+            client = httpx.AsyncClient()
+            for batch in batched(openalexids.keys(), 100):
+                jobs = [functools.partial(get_issn_data, client, id) for id in batched(batch,50)]
+                results = await aiometer.run_all(jobs, max_at_once=5, max_per_second=5)
+                updates = []
+                for result in results:
+                    if result:
+                        for item in result:
+                            if item:
+                                id = item[0]
+                                issns =item[1]
+                                if issns:
+                                    updates.append(UpdateMany({'openalex_id':id}, {'$set':{'issn':issns}}))
+                co.print(f'Updating issns for {len(updates)} openalexids.')
+                result = await self.mongoclient.mongoclient[collectionname].bulk_write(updates)
+                co.print(f'Updated {result.bulk_api_result} mongodb items. Moving to next batch.')
 
-            async for item in self.mongoclient.openaire_cris_publications.find({'internal_repository_id':{'$in':list(pureids.keys())}}, projection={'issn':1, 'id':1, 'internal_repository_id':1, '_id':0}):
-                if item.get('issn'):
-                    issn = item.get('issn')
-                    if isinstance(issn, list):
-                        pureids[item.get('internal_repository_id')]['issn']=item['issn']
-                    else:
-                        pureids[item.get('internal_repository_id')]['issn']=[item['issn']]
-                if item.get('id'):
-                    if not pureids[item.get('internal_repository_id')].get('openalex_id'):
-                        pureids[item.get('internal_repository_id')]['openalex_id']=item.get('id')
-
-            openalexids = {k:v for k,v in openalexids.items() if (v.get('issn') or v.get('issn_l'))}
-            pureids = {k:v for k,v in pureids.items() if (v.get('issn') or v.get('issn_l'))}
-
-            co.print(f'Found {len(openalexids)} openalex items to be updated with issn or issn_l')
-            co.print(f'Found {len(pureids)} pure items to be updated with issn or issn_l')
-
-            if len(openalexids) > 0:
-                async for item in self.mongoclient.mongoclient[collectionname].find({'openalex_id':{'$in':list(openalexids.keys())}}, projection={'_id':1, 'issn':1, 'openalex_id':1}):
-                    item['issn'] = set(openalexids[item.get('openalex_id')].get('issn'))
-                    item['issn'].add(item.get('issn_l'))
-                    item['issn'] = list(item['issn'])
-                    await self.mongoclient.mongoclient[collectionname].update_one({'_id':item.get('_id')}, {'$set':{'issn':item['issn']}})
-
-            if len(pureids) > 0:
-                async for item in self.mongoclient.mongoclient[collectionname].find({'pure_id':{'$in':list(pureids.keys())}}, projection={'_id':1, 'issn':1, 'pure_id':1}):
-                    issnlist = []
-                    try:
-                        issndict = (pureids[item.get('pure_id')].get('issn'))[0]
-                        issnlist = [v for v in issndict.values()]
-                        item['issn'] = list(set(issnlist))
-                    except Exception as e:
-                        co.print(f'Error: {e}')
-                        co.print(pureids[item.get('pure_id')])
-                        co.print(issnlist)
-                        continue
-                    await self.mongoclient.mongoclient[collectionname].update_one({'_id':item.get('_id')}, {'$set':{'issn':item['issn']}})
-
-            i = 0
-            j = 0
-            async for item in self.mongoclient.mongoclient[collectionname].find({'issn':{'$exists':True}}, projection={'_id':1, 'issn':1}):
-                if item.get('issn'):
-                    i += 1
-                    newlist = []
-                    if isinstance(item.get('issn'), list):
-                        for issn in item.get('issn'):
-                            if issn:
-                                newlist.append(issn)
-                        if len(newlist) < len(item.get('issn')):
-                            j += 1
-                        item['issn'] = newlist
-                        await self.mongoclient.mongoclient[collectionname].update_one({'_id':item.get('_id')}, {'$set':{'issn':item['issn']}})
-            co.print(f'Checked {i} items with issn list')
-            co.print(f'Removed empty issns from {j} items')
-
-
-            
 

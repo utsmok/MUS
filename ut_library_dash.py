@@ -9,7 +9,7 @@ import xlsxwriter
 from datetime import datetime
 from collections import defaultdict
 
-MONGOURL = 'mongodb://smops:bazending@localhost:27017/'
+MONGOURL = 'mongodb://smops:bazending@192.168.2.153:27017/'
 
 st.set_page_config(page_title='UT Publish & Read overview',
                     page_icon=':books:',
@@ -37,7 +37,7 @@ def get_publisherlist():
         {"$project": {"publisher": "$_id", "count": 1, "_id": 0}}
     ]
 
-    published = list(collection_pub.aggregate(pipeline))    
+    published = list(collection_pub.aggregate(pipeline))
     refs = list(collection_ref.aggregate(pipeline))
     merged_results = [
     {"publisher": value, "count": count}
@@ -60,18 +60,18 @@ def normalize_list(lst):
 @st.cache_data(ttl=60*60*24)
 def get_stats(collectionname: str, selected_itemtypes = ['journal-article'], selected_faculty=None, selected_publisher=None, attribute='publisher'):
     print(f'[{datetime.now().strftime("%m-%d %H:%M:%S")}] getting stats for: {collectionname=}, {selected_faculty=}, {selected_publisher=}, {attribute=}')
-    
+
     sheetname = f'{attribute}'
     if 'data_export_rich' in collectionname:
         sheetname = sheetname + ' (published)'
     else:
         sheetname = sheetname + ' (referenced)'
-    
+
     years = range(2020,2025)
     itemtypes = ['journal-article', 'book-chapter', 'book', 'conference-proceedings', 'other']
     oa_types = ['gold', 'hybrid', 'bronze', 'green', 'closed']
 
-    excel_columns = [attribute] 
+    excel_columns = [attribute]
     if attribute == 'journal':
         excel_columns.extend(['issns'])
     excel_columns.extend(['total_count', 'oa_count', 'oa_percentage'])
@@ -119,6 +119,7 @@ def get_stats(collectionname: str, selected_itemtypes = ['journal-article'], sel
             "journal": 1,
             "type": 1,
             'issn': 1,
+            'in_collection':1,
             "faculties": {
                 "$setUnion": [
                     {"$cond": [{"$eq": ["$EEMCS", True]}, ["EEMCS"], []]},
@@ -151,6 +152,7 @@ def get_stats(collectionname: str, selected_itemtypes = ['journal-article'], sel
                 "_id": {
                     f"{attribute}": f"${attribute}",
                     "issn": "$issn",
+                    'in_collection':'$in_collection',
                     "year": "$year",
                     "is_oa": "$is_oa",
                     "open_access_type": "$open_access_type",
@@ -172,7 +174,7 @@ def get_stats(collectionname: str, selected_itemtypes = ['journal-article'], sel
                 "count": {"$sum": 1}
             }}
         )
-    
+
     if attribute == 'journal':
         pipeline.extend([
         {"$group": {
@@ -199,7 +201,8 @@ def get_stats(collectionname: str, selected_itemtypes = ['journal-article'], sel
                     "year": "$_id.year",
                 }
             },
-            "issns": {"$addToSet": "$_id.issn"}
+            "issns": {"$addToSet": "$_id.issn"},
+            'in_collection': {'$addToSet': '$_id.in_collection'}
         }},
         {"$project": {
             attribute: "$_id",
@@ -214,7 +217,8 @@ def get_stats(collectionname: str, selected_itemtypes = ['journal-article'], sel
                     "then": {"$setDifference": ["$issns", [None]]},  # Remove any null values
                     "else": {"$cond": [{"$eq": ["$issns", None]}, [], ["$issns"]]}  # Handle non-array cases
                 }
-            },            
+            },
+            'in_collection': 1,
             "_id": 0,
         }},
         {"$sort": {"total_count": -1}}
@@ -258,7 +262,7 @@ def get_stats(collectionname: str, selected_itemtypes = ['journal-article'], sel
         {"$sort": {"total_count": -1}}
         ])
 
-    
+
     result = list(collection.aggregate(pipeline))
     if not result:
         print(f'No result for request: {attribute=}, {collectionname=}, {selected_faculty=}, {selected_publisher=}')
@@ -267,7 +271,8 @@ def get_stats(collectionname: str, selected_itemtypes = ['journal-article'], sel
     if attribute == 'journal':
         raw_df['issns'] = raw_df['issns'].apply(lambda x: x[0] if len (x)>0 else x)
         raw_df['issns'] = raw_df['issns'].apply(lambda x: [i for i in x if i])
- 
+        raw_df['in_collection'] = raw_df['in_collection'].apply(lambda x: str(x[0]) if len (x)>0 else None)
+        raw_df['in_collection'] = raw_df['in_collection'].apply(lambda x: x.replace('True', '✅').replace('False', '❌') if x else '❔')
     df = raw_df.copy()
     # Create a column with counts for itemtypes, oa_types, and totals for each year and overall
     df = create_split_columns(df)
@@ -279,9 +284,10 @@ def get_stats(collectionname: str, selected_itemtypes = ['journal-article'], sel
     df['counts_by_year'] = df.apply(lambda row: [row[str(year)] for year in range(2020, 2024)], axis=1)
     df['total_count'] = df['total_count'].astype(int)
     df['normalized_counts'] = df['counts_by_year'].apply(lambda x: normalize_list(x))
-    
+
     df=df.dropna(subset=[attribute])
     df=df.dropna(subset=['total_count'])
+
     return df, raw_df
 
 def create_split_columns(df: pd.DataFrame, years: list = None, oa_types: list = None, itemtypes: list = None):
@@ -301,7 +307,7 @@ def create_split_columns(df: pd.DataFrame, years: list = None, oa_types: list = 
             df[f'oa_{oa_type}'] = df['oa_types'].apply(
                 lambda x: sum(item['count'] for item in x if item['type'] == oa_type)
             )
-            
+
             # Count for each OA type per year
             for year in years:
                 df[f'oa_{oa_type}_{year}'] = df['oa_types'].apply(
@@ -334,7 +340,7 @@ def export_data(collectionname: str, df: pd.DataFrame, excel_columns: list, exce
 def select_data_for_table(df, raw_df, attribute, parameters=None):
     baselist = [attribute]
     if attribute == 'journal' and 'issns' in raw_df.columns:
-        baselist.extend(['issns'])
+        baselist.extend(['in_collection','issns'])
     baselist.extend(['total_count', 'oa_count', 'oa_percentage', 'counts_by_year', 'normalized_counts', 'oa_gold', 'oa_hybrid', 'oa_bronze', 'oa_green', 'oa_closed'])
     if parameters == default_parameters or not parameters:
         return df[baselist]
@@ -356,7 +362,7 @@ def select_data_for_table(df, raw_df, attribute, parameters=None):
         df=df.dropna(subset=['total_count'])
 
         return df[baselist]
-                
+
 
 
 grouptab, publishertab = st.tabs(['By faculty', 'By publisher'])
@@ -368,23 +374,23 @@ with grouptab:
     group = st.selectbox('Select a faculty:', ['EEMCS', 'BMS', 'ET', 'ITC', 'TNW'])
     itemtypes = st.multiselect('Item type', ['journal-article', 'book-chapter', 'book', 'conference-proceedings', 'other'], default='journal-article')
     filepath = os.path.join(os.getcwd(), 'library_xlsx_output', f'{group}.xlsx')
-    writer = pd.ExcelWriter(filepath, engine="xlsxwriter")   
+    writer = pd.ExcelWriter(filepath, engine="xlsxwriter")
 
     with st.spinner('Retrieving data & building the dataset...'):
         publishers_pub, pp_raw= get_stats(collectionname='data_export_rich', selected_faculty=group, selected_itemtypes=itemtypes, attribute='publisher')
         journals_pub, jp_raw = get_stats(collectionname='data_export_rich', selected_faculty=group, selected_itemtypes=itemtypes, attribute='journal')
         publishers_ref, pr_raw = get_stats(collectionname='data_export_refs', selected_faculty=group, selected_itemtypes=itemtypes, attribute='publisher')
         journals_ref, jr_raw = get_stats(collectionname='data_export_refs', selected_faculty=group, selected_itemtypes=itemtypes, attribute='journal')
-    
+
     writer.close()
     if any([publishers_pub.empty, journals_pub.empty, publishers_ref.empty, journals_ref.empty]):
         st.toast(f'Unable to show data for {group}. Possible cause: No results for selected filters. Select different filters and try again.', icon='❌')
     else:
         st.toast(f'Data for {group} retrieved!', icon="✅")
-    
+
         filepath = os.path.join(os.getcwd(), 'library_xlsx_output', f'{group}.xlsx')
 
-        
+
 
         st.header(f'Top journals and publishers for {group}')
         with open(filepath, "rb") as f:
@@ -398,7 +404,7 @@ with grouptab:
         with st.sidebar:
             st.subheader('Show data for year(s):')
             years = st.select_slider('Years', options=[2020, 2021, 2022, 2023, 2024], value=[2020, 2024])
-            
+
             if len(years) == 2:
                 years = range(years[0], years[1] + 1)
 
@@ -410,7 +416,7 @@ with grouptab:
 The trend of this number over the years is visualized as two line charts: one using the absolute values, and one normalized to better see the trend.
 The visualizations do not include the current year, as it's still ongoing.
 
-All tables are interactive:  
+All tables are interactive:
 - Click on column headers to **sort** by that column
 - Change column width by moving the border lines
 - Select multiple columns/rows and press ctrl-c to copy them
@@ -420,9 +426,9 @@ All tables are interactive:
     - **Download** the table as a CSV (remember that you can also download the detailed data as an excel, see the button above)
     - **Search** the table for any text you want
     ''')
-            
 
-        
+
+
 
         st.subheader(f'For works published by {group}')
         col1, col2 = st.columns(2)
@@ -462,9 +468,10 @@ All tables are interactive:
             print(dataframe2['issns'].head())
             st.dataframe(
                 dataframe2,
-                
+
                 column_config={
                     "journal": st.column_config.TextColumn("Journal"),
+                    'in_collection': st.column_config.TextColumn("In collection"),
                     'issns': st.column_config.ListColumn("ISSNs"),
                     'total_count': st.column_config.NumberColumn("Total Count"),
                     "oa_count": st.column_config.NumberColumn("OA Count"),
@@ -488,9 +495,9 @@ All tables are interactive:
                     "oa_closed": st.column_config.NumberColumn("Closed"),
                 },
                 hide_index=True
-            )    
-        
-        
+            )
+
+
         st.subheader(f'For works referenced by {group}')
 
         col1, col2 = st.columns(2)
@@ -522,13 +529,15 @@ All tables are interactive:
                     "oa_closed": st.column_config.NumberColumn("Closed"),
                 },
                 hide_index=True
-            )    
+            )
         with col2:
             dataframe4 = select_data_for_table(journals_ref, jr_raw, attribute='journal', parameters=parameters)
             st.dataframe(
                 dataframe4,
                 column_config={
                     "journal": st.column_config.TextColumn("Journal"),
+                    'in_collection': st.column_config.TextColumn("In collection"),
+                    'issns': st.column_config.ListColumn("ISSNs"),
                     'total_count': st.column_config.NumberColumn("Total Count"),
                     "oa_count": st.column_config.NumberColumn("OA Count"),
                     "oa_percentage": st.column_config.NumberColumn("OA %", format="%.2f%%"),
@@ -552,7 +561,7 @@ All tables are interactive:
 
                 },
                 hide_index=True
-            )       
+            )
 with publishertab:
     with st.form('Publisher Filter'):
         publishers=get_publisherlist()
@@ -564,12 +573,12 @@ with publishertab:
 
     if submit and publisher:
         filepath = os.path.join(os.getcwd(), 'library_xlsx_output', f'{publisher}.xlsx')
-        writer = pd.ExcelWriter(filepath, engine="xlsxwriter")   
+        writer = pd.ExcelWriter(filepath, engine="xlsxwriter")
 
         with st.spinner('Retrieving data & creating Excel files...'):
             stats_pub = get_stats('data_export_rich', selected_publisher=publisher, item_type=itemtype, attribute='group')
             stats_ref = get_stats('data_export_refs', selected_publisher=publisher, item_type=itemtype, attribute='group')
-        
+
         writer.close()
         st.toast(f'Data for {publisher} retrieved! Itemtypes included: {itemtype if itemtype else "All items"}', icon="✅")
         st.header(f'Faculty statistics for {publisher}')
@@ -585,7 +594,7 @@ with publishertab:
 The trend of this number over the years is visualized as two line charts: one using the absolute values, and one normalized to better see the trend.
 The visualizations do not include the current year, as it's still ongoing.
 
-All tables are interactive:  
+All tables are interactive:
 - Click on column headers to **sort** by that column
 - Hover over the graphs to see the values for each point
 - Hover over the top right of the table to find a small menu to:

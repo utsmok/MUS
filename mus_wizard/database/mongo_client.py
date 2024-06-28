@@ -12,7 +12,7 @@ class MusMongoClient:
     '''
 
     def __init__(self, database='metadata_unification_system'):
-        self.mongoclient: motor.motor_asyncio.AsyncIOMotorClient = motor.motor_asyncio.AsyncIOMotorClient(
+        self.mongoclient: motor.motor_asyncio.AsyncIOMotorDatabase = motor.motor_asyncio.AsyncIOMotorClient(
             MONGOURL)[database]
         self.works_openalex: motor.motor_asyncio.AsyncIOMotorCollection = self.mongoclient['works_openalex']
         self.authors_openalex: motor.motor_asyncio.AsyncIOMotorCollection = self.mongoclient['authors_openalex']
