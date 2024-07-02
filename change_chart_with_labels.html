@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    #vis.vega-embed {
+      width: 100%;
+      display: flex;
+    }
+
+    #vis.vega-embed details,
+    #vis.vega-embed details summary {
+      position: relative;
+    }
+  </style>
+  <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+  <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/vega-lite@5.17.0"></script>
+  <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+</head>
+<body>
+  <div id="vis"></div>
+  <script>
+    (function(vegaEmbed) {
+      var spec = {"config": {"view": {"continuousWidth": 300, "continuousHeight": 300}}, "layer": [{"mark": {"type": "bar"}, "encoding": {"color": {"field": "type", "type": "nominal"}, "tooltip": [{"field": "year", "type": "quantitative"}, {"field": "type", "type": "nominal"}, {"field": "change", "type": "quantitative"}, {"field": "pct_change", "format": ".2f", "type": "quantitative"}], "x": {"field": "year", "type": "ordinal"}, "y": {"field": "change", "type": "quantitative"}}, "title": "Yearly Change in Articles and Conference Proceedings"}, {"mark": {"type": "text", "align": "center", "baseline": "bottom", "dy": -5}, "encoding": {"color": {"field": "type", "type": "nominal"}, "text": {"field": "pct_change", "format": "+.1f%", "type": "quantitative"}, "tooltip": [{"field": "year", "type": "quantitative"}, {"field": "type", "type": "nominal"}, {"field": "change", "type": "quantitative"}, {"field": "pct_change", "format": ".2f", "type": "quantitative"}], "x": {"field": "year", "type": "ordinal"}, "y": {"field": "change", "type": "quantitative"}}, "title": "Yearly Change in Articles and Conference Proceedings"}], "data": {"name": "data-d03f4e26490cd3cb881d921083d7f4fe"}, "height": 200, "width": 600, "$schema": "https://vega.github.io/schema/vega-lite/v5.17.0.json", "datasets": {"data-d03f4e26490cd3cb881d921083d7f4fe": [{"year": 2019, "type": "article", "count": 65, "change": null, "pct_change": null}, {"year": 2019, "type": "conference-proceeding", "count": 105, "change": null, "pct_change": null}, {"year": 2020, "type": "conference-proceeding", "count": 142, "change": 37.0, "pct_change": 35.23809523809525}, {"year": 2020, "type": "article", "count": 86, "change": 21.0, "pct_change": 32.30769230769231}, {"year": 2021, "type": "article", "count": 139, "change": 53.0, "pct_change": 61.627906976744185}, {"year": 2021, "type": "conference-proceeding", "count": 174, "change": 32.0, "pct_change": 22.535211267605625}, {"year": 2022, "type": "conference-proceeding", "count": 156, "change": -18.0, "pct_change": -10.344827586206895}, {"year": 2022, "type": "article", "count": 124, "change": -15.0, "pct_change": -10.79136690647482}, {"year": 2023, "type": "article", "count": 143, "change": 19.0, "pct_change": 15.322580645161299}, {"year": 2023, "type": "conference-proceeding", "count": 204, "change": 48.0, "pct_change": 30.76923076923077}, {"year": 2024, "type": "conference-proceeding", "count": 255, "change": 51.0, "pct_change": 25.0}, {"year": 2024, "type": "article", "count": 264, "change": 121.0, "pct_change": 84.61538461538463}]}};
+      var embedOpt = {"mode": "vega-lite"};
+
+      function showError(el, error){
+          el.innerHTML = ('<div style="color:red;">'
+                          + '<p>JavaScript Error: ' + error.message + '</p>'
+                          + "<p>This usually means there's a typo in your chart specification. "
+                          + "See the javascript console for the full traceback.</p>"
+                          + '</div>');
+          throw error;
+      }
+      const el = document.getElementById('vis');
+      vegaEmbed("#vis", spec, embedOpt)
+        .catch(error => showError(el, error));
+    })(vegaEmbed);
+
+  </script>
+</body>
+</html>

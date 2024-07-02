@@ -96,7 +96,7 @@ class GenericAPI():
 
     httpxclient: httpx.AsyncClient = httpx.AsyncClient()
 
-    def __init__(self, collection: str, item_id_type: str, itemlist: list | None, motorclient = None) -> None:
+    def __init__(self, collection: str, item_id_type: str, itemlist: list, motorclient = None) -> None:
         '''
         collection: the name of the mongodb collection to store results in
         item_id_type: the type of unique id this item uses (e.g. 'orcid' 'doi' 'pmid')
@@ -220,7 +220,7 @@ class FunctionCallsStats:
     '''
     duration: float
     start: datetime
-    end: datetime | None
+    end: datetime 
     method: callable
 
     def __init__(self, method: callable):

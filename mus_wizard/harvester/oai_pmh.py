@@ -761,7 +761,7 @@ class OAI_PMH(GenericAPI):
                 print(f'error inserting {type} records: {e}')
             if response.get('resumptionToken'):
                 print(
-                    f'{response.get('resumptionToken').get('@cursor')}/{response.get("resumptionToken").get("@completeListSize")}')
+                    f'{response.get("resumptionToken").get("@cursor")}/{response.get("resumptionToken").get("@completeListSize")}')
                 resumetoken = response.get('resumptionToken').get('#text')
                 url = f"{resume_url}&resumptionToken={resumetoken}"
             else:
@@ -802,7 +802,7 @@ class OAI_PMH(GenericAPI):
         results = await self.get_results(type, url, collection)
         end_time = time.time()
         self.results['total']+=len(results['processed'])
-        return f'Inserted {len(results['processed'])} {type} records into {collectionname} in {int(end_time - start_time)} seconds. Possible missing keys: {results["missing_keys"]}'
+        return f'Inserted {len(results["processed"])} {type} records into {collectionname} in {int(end_time - start_time)} seconds. Possible missing keys: {results["missing_keys"]}'
 
     # mus internal type name : cerif type name
     CERIF_ITEM_MAPPING = {

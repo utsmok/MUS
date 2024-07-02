@@ -6,10 +6,17 @@ from collections import Counter
 from itertools import chain
 from rich import print
 import xlsxwriter
+import asyncio
 from datetime import datetime
 from collections import defaultdict
+import httpx
+MONGOURL = 'mongodb://smops:bazending@localhost:27017/'
+import os
+import django
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "mus.settings")
+django.setup()
 
-MONGOURL = 'mongodb://smops:bazending@192.168.2.153:27017/'
+from mus_wizard.ut_publish_read import HarvestData
 
 st.set_page_config(page_title='UT Publish & Read overview',
                     page_icon=':books:',
@@ -20,6 +27,25 @@ last_saves = defaultdict(dict)
 itemtypes = ['journal-article', 'book-chapter', 'book', 'conference-proceedings', 'other']
 oa_types = ['gold', 'hybrid', 'bronze', 'green', 'closed']
 default_parameters = {'years': [2020, 2024], 'itemtypes': ['journal-article'], 'oa_types':  ['gold', 'hybrid', 'bronze', 'green', 'closed']}
+
+
+async def get_oclc_data(issns, raw=False):
+    harvestdata=HarvestData()
+    token = await harvestdata.get_oclc_token()
+    results = []
+    async with httpx.AsyncClient() as client:
+        responses = await harvestdata.get_worldcat_data(client, issns, token, raw)
+        if raw:
+            return responses
+        else:
+            for response in responses:
+                if not response:
+                    continue
+                issn, data = response
+                data['search_issn'] = issn
+                results.append(data)
+    return pd.DataFrame(results)
+
 @st.cache_data(ttl=60*60*24*7)
 def get_grouplist():
     db = client.library_overview
@@ -30,7 +56,7 @@ def get_grouplist():
 @st.cache_data(ttl=60*60*24)
 def get_publisherlist():
     collection_pub = client.library_overview.data_export_rich
-    collection_ref = client.library_overview.data_export_refs
+    collection_ref = client.library_overview.data_refs
     pipeline = [
         {"$group": {"_id": "$publisher", "count": {"$sum": 1}}},
         {"$sort": {"count": -1}},
@@ -108,18 +134,22 @@ def get_stats(collectionname: str, selected_itemtypes = ['journal-article'], sel
     elif selected_publisher:
         match_condition["publisher"] = selected_publisher
         attribute = 'faculty'
-
+    if attribute == 'publisher':
+        attribute = 'main_publisher'
     pipeline = [
         {"$match": match_condition},
         {"$project": {
             "year": 1,
             "is_oa": 1,
             "open_access_type": 1,
-            "publisher": 1,
+            "main_publisher": 1,
             "journal": 1,
             "type": 1,
+            'issns': 1,
             'issn': 1,
+            'oclc_number': 1,
             'in_collection':1,
+            'in_doaj':1,
             "faculties": {
                 "$setUnion": [
                     {"$cond": [{"$eq": ["$EEMCS", True]}, ["EEMCS"], []]},
@@ -151,12 +181,15 @@ def get_stats(collectionname: str, selected_itemtypes = ['journal-article'], sel
             "$group": {
                 "_id": {
                     f"{attribute}": f"${attribute}",
-                    "issn": "$issn",
+                    "issns": "$issns",
+                    'issn': '$issn',
                     'in_collection':'$in_collection',
                     "year": "$year",
                     "is_oa": "$is_oa",
                     "open_access_type": "$open_access_type",
-                    "type": "$type"
+                    "type": "$type",
+                    'oclc_number': '$oclc_number',
+                    'in_doaj':'$in_doaj',
                 },
                 "count": {"$sum": 1}
             }}
@@ -201,8 +234,11 @@ def get_stats(collectionname: str, selected_itemtypes = ['journal-article'], sel
                     "year": "$_id.year",
                 }
             },
-            "issns": {"$addToSet": "$_id.issn"},
-            'in_collection': {'$addToSet': '$_id.in_collection'}
+            "issns": {"$addToSet": "$_id.issns"},
+            'issn': {'$addToSet': '$_id.issn'},
+            'in_collection': {'$addToSet': '$_id.in_collection'},
+            'oclc_number': {'$addToSet': '$_id.oclc_number'},
+            'in_doaj': {'$addToSet': '$_id.in_doaj'},
         }},
         {"$project": {
             attribute: "$_id",
@@ -218,7 +254,16 @@ def get_stats(collectionname: str, selected_itemtypes = ['journal-article'], sel
                     "else": {"$cond": [{"$eq": ["$issns", None]}, [], ["$issns"]]}  # Handle non-array cases
                 }
             },
+            'issn': {
+                "$cond": {
+                    "if": {"$isArray": "$issn"},
+                    "then": {"$setDifference": ["$issn", [None]]},  # Remove any null values
+                    "else": {"$cond": [{"$eq": ["$issn", None]}, [], ["$issn"]]}  # Handle non-array cases
+                }
+            },
             'in_collection': 1,
+            'oclc_number': 1,
+            'in_doaj':1,
             "_id": 0,
         }},
         {"$sort": {"total_count": -1}}
@@ -249,6 +294,7 @@ def get_stats(collectionname: str, selected_itemtypes = ['journal-article'], sel
                     "year": "$_id.year",
                 }
             },
+            
         }},
         {"$project": {
             attribute: "$_id",
@@ -264,15 +310,48 @@ def get_stats(collectionname: str, selected_itemtypes = ['journal-article'], sel
 
 
     result = list(collection.aggregate(pipeline))
+    
     if not result:
         print(f'No result for request: {attribute=}, {collectionname=}, {selected_faculty=}, {selected_publisher=}')
+        print(pipeline)
+        print(collection.find_one())
         return pd.DataFrame()
     raw_df = pd.DataFrame(result)
+    if attribute == 'main_publisher':
+        print(raw_df.head())
     if attribute == 'journal':
-        raw_df['issns'] = raw_df['issns'].apply(lambda x: x[0] if len (x)>0 else x)
-        raw_df['issns'] = raw_df['issns'].apply(lambda x: [i for i in x if i])
+        print(raw_df.info(verbose=True, memory_usage='deep', show_counts=True))
+        print(raw_df['issns'].head())
+        print(raw_df['issn'].head())
+        if (raw_df['issns'] == '[]').all():
+            raw_df = raw_df.drop('issns', axis=1)
+        if (raw_df['issn'] == '[]').all():
+            raw_df = raw_df.drop('issn', axis=1)
+        if 'issn' in raw_df.columns:
+            print('issn in column')
+            if 'issns' not in raw_df.columns:
+                print('issns not in column, moving issn to issns')
+                raw_df['issns'] = raw_df['issn']
+            raw_df = raw_df.drop('issn', axis=1)
+        if 'issns' in raw_df.columns:
+            print('issns in column, making lists from set and deleting single items')
+            raw_df['issns'] = raw_df['issns'].apply(lambda x: x[0] if len (x)>0 else x)
+            raw_df['issns'] = raw_df['issns'].apply(lambda x: [i for i in x if i])
+        
+        
+        print(raw_df['issns'].head())
+        print(raw_df.info(verbose=True, memory_usage='deep', show_counts=True))
         raw_df['in_collection'] = raw_df['in_collection'].apply(lambda x: str(x[0]) if len (x)>0 else None)
         raw_df['in_collection'] = raw_df['in_collection'].apply(lambda x: x.replace('True', '✅').replace('False', '❌') if x else '❔')
+        raw_df['oclc_number'] = raw_df['oclc_number'].apply(lambda x: str(x[0]) if len (x)==1 else None) 
+        raw_df['oclc_number'] = raw_df['oclc_number'].apply(lambda x: 'https://ut.on.worldcat.org/oclc/'+x if x else None)
+        print(raw_df['issns'].head())
+        raw_df['in_doaj'] = raw_df['in_doaj'].apply(lambda x: str(x[0]) if len (x)==1 else None)
+        raw_df['in_doaj'] = raw_df['in_doaj'].apply(lambda x: x.replace('True', '✅').replace('False', '❌') if x else '➖')
+        
+    if 'main_publisher' in raw_df.columns:
+        raw_df.rename(columns={'main_publisher': 'publisher'}, inplace=True)
+        attribute = 'publisher'
     df = raw_df.copy()
     # Create a column with counts for itemtypes, oa_types, and totals for each year and overall
     df = create_split_columns(df)
@@ -284,7 +363,8 @@ def get_stats(collectionname: str, selected_itemtypes = ['journal-article'], sel
     df['counts_by_year'] = df.apply(lambda row: [row[str(year)] for year in range(2020, 2024)], axis=1)
     df['total_count'] = df['total_count'].astype(int)
     df['normalized_counts'] = df['counts_by_year'].apply(lambda x: normalize_list(x))
-
+    if attribute == 'publisher':
+        print(df.head())
     df=df.dropna(subset=[attribute])
     df=df.dropna(subset=['total_count'])
 
@@ -314,7 +394,6 @@ def create_split_columns(df: pd.DataFrame, years: list = None, oa_types: list = 
                     lambda x: sum(item['count'] for item in x if item['type'] == oa_type and item['year'] == year)
                 )
 
-
         for itemtype in itemtypes:
             try:
                 # Total count for each itemtype
@@ -340,29 +419,34 @@ def export_data(collectionname: str, df: pd.DataFrame, excel_columns: list, exce
 def select_data_for_table(df, raw_df, attribute, parameters=None):
     baselist = [attribute]
     if attribute == 'journal' and 'issns' in raw_df.columns:
-        baselist.extend(['in_collection','issns'])
+        baselist.extend(['in_collection','in_doaj','issns'])
+        if 'oclc_number' in raw_df.columns:
+            baselist.extend(['oclc_number'])
     baselist.extend(['total_count', 'oa_count', 'oa_percentage', 'counts_by_year', 'normalized_counts', 'oa_gold', 'oa_hybrid', 'oa_bronze', 'oa_green', 'oa_closed'])
     if parameters == default_parameters or not parameters:
-        return df[baselist]
+        df = df[baselist]
+        df.sort_values(by=['total_count'], ascending=False, inplace=True)
+        return df
     else:
         print(parameters)
-        years:list[int] = parameters.get('years')
-        print(years)
-        df = create_split_columns(raw_df, years=years)
-        df['total_count'] = df.apply(lambda row: sum(row[str(year)] for year in years), axis=1)
-        if 2024 in years and len(years) > 1:
-            years = list(years)
-            years.remove(2024)
+        if 'years' in parameters:
+            years:list[int] = parameters.get('years')
+            print(list(years))
+            df = create_split_columns(raw_df, years=years)
+            df['total_count'] = df.apply(lambda row: sum(row[str(year)] for year in years), axis=1)
+            if 2024 in years and len(years) > 1:
+                years = list(years)
+                years.remove(2024)
 
-        df['counts_by_year'] = df.apply(lambda row: [row[str(year)] for year in years], axis=1)
-        df['normalized_counts'] = df['counts_by_year'].apply(lambda x: normalize_list(x))
-        df['oa_count'] = df[['oa_gold', 'oa_hybrid', 'oa_bronze', 'oa_green']].sum(axis=1)
-        df['oa_percentage'] = (df['oa_count'] / df['total_count'] * 100).round(2)
+            df['counts_by_year'] = df.apply(lambda row: [row[str(year)] for year in years], axis=1)
+            df['normalized_counts'] = df['counts_by_year'].apply(lambda x: normalize_list(x))
+            df['oa_count'] = df[['oa_gold', 'oa_hybrid', 'oa_bronze', 'oa_green']].sum(axis=1)
+            df['oa_percentage'] = (df['oa_count'] / df['total_count'] * 100).round(2)
+        
         df=df.dropna(subset=[attribute])
         df=df.dropna(subset=['total_count'])
-
+        df.sort_values(by=['total_count'], ascending=False, inplace=True)
         return df[baselist]
-
 
 
 grouptab, publishertab = st.tabs(['By faculty', 'By publisher'])
@@ -370,7 +454,7 @@ global writer
 instructions = None
 
 with grouptab:
-    parameters = {'years': list(range(2020,2024)), 'itemtypes': ['journal-article'], 'oa_types':  ['gold', 'hybrid', 'bronze', 'green', 'closed']}
+    parameters = {'years': [2020,2021,2022,2023,2024], 'itemtypes': ['journal-article'], 'oa_types':  ['gold', 'hybrid', 'bronze', 'green', 'closed']}
     group = st.selectbox('Select a faculty:', ['EEMCS', 'BMS', 'ET', 'ITC', 'TNW'])
     itemtypes = st.multiselect('Item type', ['journal-article', 'book-chapter', 'book', 'conference-proceedings', 'other'], default='journal-article')
     filepath = os.path.join(os.getcwd(), 'library_xlsx_output', f'{group}.xlsx')
@@ -379,8 +463,8 @@ with grouptab:
     with st.spinner('Retrieving data & building the dataset...'):
         publishers_pub, pp_raw= get_stats(collectionname='data_export_rich', selected_faculty=group, selected_itemtypes=itemtypes, attribute='publisher')
         journals_pub, jp_raw = get_stats(collectionname='data_export_rich', selected_faculty=group, selected_itemtypes=itemtypes, attribute='journal')
-        publishers_ref, pr_raw = get_stats(collectionname='data_export_refs', selected_faculty=group, selected_itemtypes=itemtypes, attribute='publisher')
-        journals_ref, jr_raw = get_stats(collectionname='data_export_refs', selected_faculty=group, selected_itemtypes=itemtypes, attribute='journal')
+        publishers_ref, pr_raw = get_stats(collectionname='data_refs', selected_faculty=group, selected_itemtypes=itemtypes, attribute='publisher')
+        journals_ref, jr_raw = get_stats(collectionname='data_refs', selected_faculty=group, selected_itemtypes=itemtypes, attribute='journal')
 
     writer.close()
     if any([publishers_pub.empty, journals_pub.empty, publishers_ref.empty, journals_ref.empty]):
@@ -431,137 +515,185 @@ All tables are interactive:
 
 
         st.subheader(f'For works published by {group}')
-        col1, col2 = st.columns(2)
 
-        with col1:
-            dataframe = select_data_for_table(publishers_pub, pp_raw, attribute='publisher', parameters=parameters)
-            st.dataframe(
-                dataframe,
-                column_config={
-                    "publisher": st.column_config.TextColumn("Publisher"),
-                    'total_count': st.column_config.NumberColumn("Total Count"),
-                    "oa_count": st.column_config.NumberColumn("OA Count"),
-                    "oa_percentage": st.column_config.NumberColumn("OA %", format="%.2f%%"),
-                    "counts_by_year": st.column_config.AreaChartColumn(
-                        "Count/year",
-                        width="medium",
-                        y_min=0,
-                        y_max=int(publishers_pub['counts_by_year'].apply(max).max())
-                    ),
-                    "normalized_counts": st.column_config.AreaChartColumn(
-                    "Normalized Trend",
+        dataframe = select_data_for_table(publishers_pub, pp_raw, attribute='publisher', parameters=parameters)
+        published_pub_frame = st.dataframe(
+            dataframe,
+            column_config={
+                "publisher": st.column_config.TextColumn("Publisher"),
+                'total_count': st.column_config.NumberColumn("Total Count"),
+                "oa_count": st.column_config.NumberColumn("OA Count"),
+                "oa_percentage": st.column_config.NumberColumn("OA %", format="%.2f%%"),
+                "counts_by_year": st.column_config.AreaChartColumn(
+                    "Count/year",
                     width="medium",
                     y_min=0,
-                    y_max=1
-                    ),
-                    "oa_gold": st.column_config.NumberColumn("Gold OA"),
-                    "oa_hybrid": st.column_config.NumberColumn("Hybrid OA"),
-                    "oa_bronze": st.column_config.NumberColumn("Bronze OA"),
-                    "oa_green": st.column_config.NumberColumn("Green OA"),
-                    "oa_closed": st.column_config.NumberColumn("Closed"),
-                },
-                hide_index=True
-            )
-
-        with col2:
-            dataframe2 = select_data_for_table(journals_pub, jp_raw, attribute='journal', parameters=parameters)
-            print(dataframe2['issns'].head())
-            st.dataframe(
-                dataframe2,
-
-                column_config={
-                    "journal": st.column_config.TextColumn("Journal"),
-                    'in_collection': st.column_config.TextColumn("In collection"),
-                    'issns': st.column_config.ListColumn("ISSNs"),
-                    'total_count': st.column_config.NumberColumn("Total Count"),
-                    "oa_count": st.column_config.NumberColumn("OA Count"),
-                    "oa_percentage": st.column_config.NumberColumn("OA %", format="%.2f%%"),
-                    "counts_by_year": st.column_config.AreaChartColumn(
-                        "Count/year",
-                        width="medium",
-                        y_min=0,
-                        y_max=int(journals_pub['counts_by_year'].apply(max).max())
-                    ),
-                    "normalized_counts": st.column_config.AreaChartColumn(
-                    "Normalized Trend",
+                    y_max=int(publishers_pub['counts_by_year'].apply(max).max())
+                ),
+                "normalized_counts": st.column_config.AreaChartColumn(
+                "Normalized Trend",
+                width="medium",
+                y_min=0,
+                y_max=1
+                ),
+                "oa_gold": st.column_config.NumberColumn("Gold OA"),
+                "oa_hybrid": st.column_config.NumberColumn("Hybrid OA"),
+                "oa_bronze": st.column_config.NumberColumn("Bronze OA"),
+                "oa_green": st.column_config.NumberColumn("Green OA"),
+                "oa_closed": st.column_config.NumberColumn("Closed"),
+            },
+            hide_index=True
+        )
+        st.warning('The OCLC API does not always return the correct data. Please double-check the "In collection column" by either clicking on FindUT link in the row, or by selecting the rows you want to check and clicking on the "View OCLC API responses for selected items" button at the bottom of the page.')
+        dataframe2 = select_data_for_table(journals_pub, jp_raw, attribute='journal', parameters=parameters)
+        print(dataframe2['oclc_number'].head())
+        published_jour_frame =st.dataframe(
+            dataframe2,
+            on_select='rerun',
+            selection_mode="multi-row",
+            hide_index=True,
+            column_config={
+                "journal": st.column_config.TextColumn("Journal"),
+                'in_collection': st.column_config.TextColumn("In collection"),
+                'in_doaj': st.column_config.TextColumn("In DOAJ"),
+                'issns': st.column_config.ListColumn("ISSNs"),
+                'oclc_number': st.column_config.LinkColumn("FindUT link"),
+                'total_count': st.column_config.NumberColumn("Total Count"),
+                "oa_count": st.column_config.NumberColumn("OA Count"),
+                "oa_percentage": st.column_config.NumberColumn("OA %", format="%.2f%%"),
+                "counts_by_year": st.column_config.AreaChartColumn(
+                    "Count/year",
                     width="medium",
                     y_min=0,
-                    y_max=1
-                    ),
-                    "oa_gold": st.column_config.NumberColumn("Gold OA"),
-                    "oa_hybrid": st.column_config.NumberColumn("Hybrid OA"),
-                    "oa_bronze": st.column_config.NumberColumn("Bronze OA"),
-                    "oa_green": st.column_config.NumberColumn("Green OA"),
-                    "oa_closed": st.column_config.NumberColumn("Closed"),
-                },
-                hide_index=True
-            )
+                    y_max=int(journals_pub['counts_by_year'].apply(max).max())
+                ),
+                "normalized_counts": st.column_config.AreaChartColumn(
+                "Normalized Trend",
+                width="medium",
+                y_min=0,
+                y_max=1
+                ),
+                "oa_gold": st.column_config.NumberColumn("Gold OA"),
+                "oa_hybrid": st.column_config.NumberColumn("Hybrid OA"),
+                "oa_bronze": st.column_config.NumberColumn("Bronze OA"),
+                "oa_green": st.column_config.NumberColumn("Green OA"),
+                "oa_closed": st.column_config.NumberColumn("Closed"),
+            },
+        )
 
 
         st.subheader(f'For works referenced by {group}')
+        params_noyears = parameters.copy()
+        params_noyears.pop('years')
 
-        col1, col2 = st.columns(2)
-        with col1:
-            dataframe3 = select_data_for_table(publishers_ref, pr_raw, attribute='publisher', parameters=parameters)
-            st.dataframe(
-                dataframe3,
-                column_config={
-                    "publisher": st.column_config.TextColumn("Publisher"),
-                    'total_count': st.column_config.NumberColumn("Total Count"),
-                    "oa_count": st.column_config.NumberColumn("OA Count"),
-                    "oa_percentage": st.column_config.NumberColumn("OA %", format="%.2f%%"),
-                    "counts_by_year": st.column_config.AreaChartColumn(
-                        "Count/year",
-                        width="medium",
-                        y_min=0,
-                        y_max=int(publishers_ref['counts_by_year'].apply(max).max())
-                    ),
-                    "normalized_counts": st.column_config.AreaChartColumn(
-                    "Normalized Trend",
+        dataframe3 = select_data_for_table(publishers_ref, pr_raw, attribute='publisher', parameters=params_noyears)
+        referenced_pub_frame = st.dataframe(
+            dataframe3,
+            column_config={
+                "publisher": st.column_config.TextColumn("Publisher"),
+                'total_count': st.column_config.NumberColumn("Total Count"),
+                "oa_count": st.column_config.NumberColumn("OA Count"),
+                "oa_percentage": st.column_config.NumberColumn("OA %", format="%.2f%%"),
+                "counts_by_year": st.column_config.AreaChartColumn(
+                    "Count/year",
                     width="medium",
                     y_min=0,
-                    y_max=1
-                    ),
-                    "oa_gold": st.column_config.NumberColumn("Gold OA"),
-                    "oa_hybrid": st.column_config.NumberColumn("Hybrid OA"),
-                    "oa_bronze": st.column_config.NumberColumn("Bronze OA"),
-                    "oa_green": st.column_config.NumberColumn("Green OA"),
-                    "oa_closed": st.column_config.NumberColumn("Closed"),
-                },
-                hide_index=True
-            )
-        with col2:
-            dataframe4 = select_data_for_table(journals_ref, jr_raw, attribute='journal', parameters=parameters)
-            st.dataframe(
-                dataframe4,
-                column_config={
-                    "journal": st.column_config.TextColumn("Journal"),
-                    'in_collection': st.column_config.TextColumn("In collection"),
-                    'issns': st.column_config.ListColumn("ISSNs"),
-                    'total_count': st.column_config.NumberColumn("Total Count"),
-                    "oa_count": st.column_config.NumberColumn("OA Count"),
-                    "oa_percentage": st.column_config.NumberColumn("OA %", format="%.2f%%"),
-                    "counts_by_year": st.column_config.AreaChartColumn(
-                        "Count/year",
-                        width="medium",
-                        y_min=0,
-                        y_max=int(journals_ref['counts_by_year'].apply(max).max())
-                    ),
-                    "normalized_counts": st.column_config.AreaChartColumn(
-                    "Normalized Trend",
-                    width="medium",
-                    y_min=0,
-                    y_max=1
-                    ),
-                    "oa_gold": st.column_config.NumberColumn("Gold OA"),
-                    "oa_hybrid": st.column_config.NumberColumn("Hybrid OA"),
-                    "oa_bronze": st.column_config.NumberColumn("Bronze OA"),
-                    "oa_green": st.column_config.NumberColumn("Green OA"),
-                    "oa_closed": st.column_config.NumberColumn("Closed"),
+                    y_max=int(publishers_ref['counts_by_year'].apply(max).max())
+                ),
+                "normalized_counts": st.column_config.AreaChartColumn(
+                "Normalized Trend",
+                width="medium",
+                y_min=0,
+                y_max=1
+                ),
+                "oa_gold": st.column_config.NumberColumn("Gold OA"),
+                "oa_hybrid": st.column_config.NumberColumn("Hybrid OA"),
+                "oa_bronze": st.column_config.NumberColumn("Bronze OA"),
+                "oa_green": st.column_config.NumberColumn("Green OA"),
+                "oa_closed": st.column_config.NumberColumn("Closed"),
+            },
+            hide_index=True
+        )
+    st.warning('The OCLC API does not always return the correct data. Please double-check the "In collection column" by either clicking on FindUT link in the row, or by selecting the rows you want to check and clicking on the "View OCLC API responses for selected items" button at the bottom of the page.')
 
-                },
-                hide_index=True
-            )
+    dataframe4 = select_data_for_table(journals_ref, jr_raw, attribute='journal', parameters=params_noyears)
+    referenced_jour_frame = st.dataframe(
+        dataframe4,
+        column_config={
+            "journal": st.column_config.TextColumn("Journal"),
+            'in_collection': st.column_config.TextColumn("In collection"),
+            'in_doaj': st.column_config.TextColumn("In DOAJ"),
+            'issns': st.column_config.ListColumn("ISSNs"),
+            'oclc_number': st.column_config.LinkColumn("FindUT link"),
+            'total_count': st.column_config.NumberColumn("Total Count"),
+            "oa_count": st.column_config.NumberColumn("OA Count"),
+            "oa_percentage": st.column_config.NumberColumn("OA %", format="%.2f%%"),
+            "counts_by_year": st.column_config.AreaChartColumn(
+                "Count/year",
+                width="medium",
+                y_min=0,
+                y_max=int(journals_ref['counts_by_year'].apply(max).max())
+            ),
+            "normalized_counts": st.column_config.AreaChartColumn(
+            "Normalized Trend",
+            width="medium",
+            y_min=0,
+            y_max=1
+            ),
+            "oa_gold": st.column_config.NumberColumn("Gold OA"),
+            "oa_hybrid": st.column_config.NumberColumn("Hybrid OA"),
+            "oa_bronze": st.column_config.NumberColumn("Bronze OA"),
+            "oa_green": st.column_config.NumberColumn("Green OA"),
+            "oa_closed": st.column_config.NumberColumn("Closed"),
+
+        },
+        hide_index=True,
+        selection_mode="multi-row",
+        key='referenced_jour_frame',
+        on_select='rerun',
+
+
+        )
+    if st.button('View OCLC API responses for selected items', type='primary'):
+        published_rows = None
+        ref_rows = None
+        try:
+            published_rows = dataframe2.iloc[published_jour_frame.selection.rows]
+        except Exception as e:
+            ...
+        try:
+            ref_rows = dataframe4.iloc[referenced_jour_frame.selection.rows]
+        except Exception as e:
+            ...
+
+        if isinstance(published_rows, pd.DataFrame) or isinstance(ref_rows, pd.DataFrame):
+            st.header('OCLC API responses for selected items')
+            issns = set()
+            if isinstance(published_rows, pd.DataFrame):
+                issn_tmp:pd.Series = published_rows['issns']
+                issn_tmp:list = issn_tmp.to_list()
+                for issnlist in issn_tmp:
+                    for issn in issnlist:
+                        issns.add(issn)
+            if isinstance(ref_rows, pd.DataFrame):
+                issn_tmp:pd.Series = ref_rows['issns']
+                issn_tmp:list = issn_tmp.to_list()
+                for issnlist in issn_tmp:
+                    for issn in issnlist:
+                        issns.add(issn)
+            issns = list(issns)
+            if issns:
+                result = asyncio.run(get_oclc_data(issns=issns, raw=True))
+                if isinstance(result, pd.DataFrame):
+                    st.dataframe(result)
+                elif isinstance(result, list):
+                    for item in result:
+                        st.json(item)
+            else:
+                st.write('No results found..?')
+
+
+
 with publishertab:
     with st.form('Publisher Filter'):
         publishers=get_publisherlist()
@@ -577,7 +709,7 @@ with publishertab:
 
         with st.spinner('Retrieving data & creating Excel files...'):
             stats_pub = get_stats('data_export_rich', selected_publisher=publisher, item_type=itemtype, attribute='group')
-            stats_ref = get_stats('data_export_refs', selected_publisher=publisher, item_type=itemtype, attribute='group')
+            stats_ref = get_stats('data_refs', selected_publisher=publisher, item_type=itemtype, attribute='group')
 
         writer.close()
         st.toast(f'Data for {publisher} retrieved! Itemtypes included: {itemtype if itemtype else "All items"}', icon="✅")

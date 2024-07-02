@@ -12,7 +12,13 @@ from rich.style import Style
 from rich.segment import Segment
 from rich.color import Color
 from mus_wizard.constants import MONGOURL
-
+import altair as alt
+import pandas as pd
+import numpy as np
+from scipy import stats
+import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 class PureReport():
     def __init__(self, filenames: list[str] = None):
@@ -133,7 +139,8 @@ class PureReport():
 
     def run(self):
         #self.mongoclient.get_io_loop().run_until_complete(self.load_reports())
-        self.mongoclient.get_io_loop().run_until_complete(self.process_data())
+        #self.mongoclient.get_io_loop().run_until_complete(self.process_data())
+        self.mongoclient.get_io_loop().run_until_complete(self.items_per_year())
 
     async def load_reports(self):
         async def load_report(filename):
@@ -158,6 +165,86 @@ class PureReport():
             async for response in results:
                 uploadresult = await self.mongoclient[response[0]].insert_many(response[1])
                 print('retrieved data from', response[0])
+    async def items_per_year(self):
+        afterpilot = self.mongoclient['eemcs_pure_report_final_pilot_26-06-2024.csv']
+        itemtype_mapping = {'Article':'article', 'Review Article':'article', 'Preprint':'article', 'Conference contribution':'conference-proceeding','Conference article':'conference-proceeding', 'Chapter':'book-chapter', 'PhD Thesis - Research UT, graduation UT':'thesis', 'Report':'article', 'Paper':'article', 'EngD Thesis':'thesis', 'Book':'book', 'Conference proceeding':'conference-proceeding', 'Thesis':'thesis', 'Other':'other'}
+        years = [2019, 2020, 2021, 2022, 2023, 2024]
+        resultdict = {'article': {i:0 for i in years}, 'conference-proceeding': {i:0 for i in years}, 'thesis': {i:0 for i in years}, 'book': {i:0 for i in years}, 'book-chapter': {i:0 for i in years}, 'other': {i:0 for i in years}}
+        async for item in afterpilot.find():
+            created = datetime.strptime(item['date_created'][0:10], '%Y-%m-%d')
+            year = created.year
+            if year not in years:
+                continue
+            year = year
+            if item['item_type'] in itemtype_mapping:
+                resultdict[itemtype_mapping[item['item_type']]][year] += 1
+            else:
+                resultdict['other'][year] += 1
+        print(resultdict)
+        # Convert the nested dict to a pandas DataFrame
+        df = pd.DataFrame(resultdict).reset_index().rename(columns={'index': 'year'})
+        df = df.melt(id_vars=['year'], var_name='type', value_name='count')
+        df = df[df['year'] >= 2019].sort_values('year')
+
+        # Calculate year-over-year change and percentage change for 'article' and 'conference-proceeding'
+        for item_type in ['article', 'conference-proceeding']:
+            type_data = df[df['type'] == item_type].sort_values('year')
+            type_data = type_data[type_data['year'] >= 2019]
+            type_data['change'] = type_data['count'].diff()
+            type_data['pct_change'] = type_data['count'].pct_change() * 100
+            df.loc[df['type'] == item_type, 'change'] = type_data['change']
+            df.loc[df['type'] == item_type, 'pct_change'] = type_data['pct_change']
+        color_map = {
+            'article': 'rgb(31, 119, 180)',
+            'conference-proceeding': 'rgb(255, 127, 14)',
+            'thesis': 'rgb(44, 160, 44)',
+            'book': 'rgb(214, 39, 40)',
+            'book-chapter': 'rgb(148, 103, 189)',
+            'other': 'rgb(140, 86, 75)'
+        }
+        # Create subplots
+        fig = make_subplots(rows=2, cols=1, shared_xaxes=False, vertical_spacing=0.1,
+                            subplot_titles=("Research Output CS (2019 onwards)", 
+                                            "Yearly Change in Articles and Conference Proceedings"))
+
+        # Add traces for each type in the main chart
+        for item_type in df['type'].unique():
+            type_data = df[df['type'] == item_type]
+            fig.add_trace(go.Scatter(x=type_data['year'], y=type_data['count'], 
+                                    mode='lines+markers', name=item_type,
+                                    line=dict(color=color_map[item_type])), row=1, col=1)
+        for i,item_type in enumerate(['article', 'conference-proceeding']):
+            type_data = df[df['type'] == item_type]
+            last_point = type_data.iloc[-2]
+            
+            fig.add_annotation(x=last_point['year'], y=last_point['count'],
+                            text=item_type, showarrow=True, arrowhead=2,
+                            row=1, col=1 )
+
+        # Add bar traces for the change chart
+        change_data = df[df['type'].isin(['article', 'conference-proceeding'])]
+        change_data = change_data[change_data['year'] >= 2020]
+        change_data.loc[:, 'change'] = change_data.loc[:, 'change'].fillna(0)
+        change_data.loc[:, 'pct_change'] = change_data.loc[:, 'pct_change'].fillna(0)
+
+        for item_type in ['article', 'conference-proceeding']:
+            type_data = change_data[change_data['type'] == item_type]
+            fig.add_trace(go.Bar(x=type_data['year'], y=type_data['change'], name=f"{item_type} change",
+                                text=type_data['pct_change'].apply(lambda x: f"{x:+.1f}%"),
+                                textposition='outside', marker_color=color_map[item_type]), row=2, col=1)
+
+        # Update layout
+        fig.update_layout(height=800, width=800, title_text="Pure registration analysis",
+                  showlegend=True, plot_bgcolor='white')
+
+        # Update y-axes
+        fig.update_yaxes(title_text="Count", row=1, col=1)
+        fig.update_yaxes(title_text="Change", row=2, col=1)
+
+        # Save the chart as an HTML file
+        fig.write_html("research_output_cs.html")
+
+                    
 
     async def process_data(self):
         COLORS = {

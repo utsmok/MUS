@@ -4,6 +4,10 @@ static/authoravatars
 static/papers
 static/author_avatars
 
+
+data_publishers.json
+data_export_rich.json
+data_refs.json
 # specific:
 compose.yaml
 
